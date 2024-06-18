@@ -110,7 +110,9 @@ init_compute_shader_ctx(ComputeShaderCtx *ctx, uv3 rf_data_dim)
 
 	ctx->rf_data_dim  = rf_data_dim;
 	size rf_data_size = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(f32);
-	ctx->rf_data_ssbo = rlLoadShaderBuffer(rf_data_size,  NULL, GL_DYNAMIC_COPY);
+	for (u32 i = 0; i < ARRAY_COUNT(ctx->rf_data_ssbos); i++)
+		ctx->rf_data_ssbos[i] = rlLoadShaderBuffer(rf_data_size, NULL, GL_DYNAMIC_COPY);
+	ctx->rf_data_idx = 0;
 }
 
 static void

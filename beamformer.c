@@ -3,6 +3,7 @@
 #include <raylib.h>
 #include <rlgl.h>
 
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -15,12 +16,12 @@
 #include "util.c"
 
 static void
-do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
+do_compute_shader(BeamformerCtx *ctx, u32 rf_ssbo_idx, enum compute_shaders shader)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
 	glUseProgram(csctx->programs[shader]);
 
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbo);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[rf_ssbo_idx]);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ctx->out_data_ssbo);
 
 	glUniform3uiv(csctx->rf_data_dim_id,  1, csctx->rf_data_dim.E);
@@ -60,11 +61,16 @@ do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 		scale.y *= -1.0;
 	}
 
-	/* Load RF Data into GPU */
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbo);
+	/* NOTE: grab operating idx and swap it; other buffer can now be used for storage */
+	u32 rf_ssbo_idx = atomic_fetch_xor_explicit(&ctx->csctx.rf_data_idx, 1, memory_order_relaxed);
+	ASSERT(rf_ssbo_idx == 0 || rf_ssbo_idx == 1);
+
+	/* NOTE: Load RF Data into GPU */
+	/* TODO: This should be done in a seperate thread */
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbos[!rf_ssbo_idx]);
 	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, rf_data.len, rf_data.data);
 
-	do_compute_shader(ctx, CS_UFORCES);
+	do_compute_shader(ctx, rf_ssbo_idx, CS_UFORCES);
 
 	BeginDrawing();
 

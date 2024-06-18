@@ -67,7 +67,14 @@ enum program_flags {
 typedef struct {
 	u32 programs[CS_LAST];
 
-	u32 rf_data_ssbo;
+	/* need 3 storage buffers: incoming rf data, currently decoding rf data, decoded data.
+	 * last buffer will always be for decoded data. other two will swap everytime there
+	 * is new data. current operating idx is stored in rf_data_idx (0 or 1) which needs
+	 * to be accessed atomically
+	 */
+	u32 rf_data_ssbos[3];
+	_Atomic u32 rf_data_idx;
+
 	uv3 rf_data_dim;
 	i32 rf_data_dim_id;
 	i32 out_data_dim_id;
