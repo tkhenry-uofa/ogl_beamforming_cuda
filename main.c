@@ -95,7 +95,7 @@ update_output_image_dimensions(BeamformerCtx *ctx, uv2 new_size)
 #endif
 
 static void
-init_compute_shader_ctx(ComputeShaderCtx *ctx, uv3 rf_data_dim, uv2 out_img_dim)
+init_compute_shader_ctx(ComputeShaderCtx *ctx, uv3 rf_data_dim)
 {
 	for (u32 i = 0; i < ARRAY_COUNT(ctx->programs); i++) {
 		char *shader_text = LoadFileText(compute_shader_paths[i]);
@@ -105,30 +105,27 @@ init_compute_shader_ctx(ComputeShaderCtx *ctx, uv3 rf_data_dim, uv2 out_img_dim)
 		UnloadFileText(shader_text);
 	}
 
-	ctx->u_rf_dim_id  = glGetUniformLocation(ctx->programs[CS_UFORCES], "u_rf_dim");
-	ctx->u_out_dim_id = glGetUniformLocation(ctx->programs[CS_UFORCES], "u_out_dim");
+	ctx->rf_data_dim_id  = glGetUniformLocation(ctx->programs[CS_UFORCES], "u_rf_data_dim");
+	ctx->out_data_dim_id = glGetUniformLocation(ctx->programs[CS_UFORCES], "u_out_data_dim");
 
-	ctx->rf_data_dim = rf_data_dim;
-
+	ctx->rf_data_dim  = rf_data_dim;
 	size rf_data_size = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(f32);
-	size out_img_size = out_img_dim.w * out_img_dim.h * sizeof(f32);
-
-	ctx->rf_data_ssbo = rlLoadShaderBuffer(rf_data_size, NULL, GL_DYNAMIC_COPY);
-	ctx->out_img_ssbo = rlLoadShaderBuffer(out_img_size, NULL, GL_DYNAMIC_COPY);
+	ctx->rf_data_ssbo = rlLoadShaderBuffer(rf_data_size,  NULL, GL_DYNAMIC_COPY);
 }
 
 static void
-init_fragment_shader_ctx(FragmentShaderCtx *ctx, uv2 window_size)
+init_fragment_shader_ctx(FragmentShaderCtx *ctx, uv3 out_data_dim)
 {
-	ctx->shader       = LoadShader(NULL, "shaders/render.glsl");
-	ctx->u_out_dim_id = glGetUniformLocation(ctx->shader.id, "u_out_img_dim");
-	glUniform2uiv(ctx->u_out_dim_id, 1, window_size.E);
+	ctx->shader = LoadShader(NULL, "shaders/render.glsl");
+
+	ctx->out_data_dim_id = glGetUniformLocation(ctx->shader.id, "u_out_data_dim");
+	glUniform3uiv(ctx->out_data_dim_id, 1, out_data_dim.E);
 	/* TODO: add min max uniform */
 
 	/* output texture for image blitting */
 	Texture2D new;
-	new.width   = window_size.w;
-	new.height  = window_size.h;
+	new.width   = out_data_dim.w;
+	new.height  = out_data_dim.h;
 	new.mipmaps = 1;
 	new.format  = RL_PIXELFORMAT_UNCOMPRESSED_R32G32B32A32;
 	new.id      = rlLoadTexture(0, new.width, new.height, new.format, new.mipmaps);
@@ -167,18 +164,16 @@ compile_shader(Arena a, u32 type, s8 shader)
 }
 
 static void
-reload_shaders(Arena a, BeamformerCtx *ctx)
+reload_shaders(BeamformerCtx *ctx, Arena a)
 {
-	u32 cs_programs[ARRAY_COUNT(((ComputeShaderCtx *)0)->programs)];
-
 	ComputeShaderCtx *csctx = &ctx->csctx;
-	for (u32 i = 0; i < ARRAY_COUNT(cs_programs); i++) {
+	for (u32 i = 0; i < ARRAY_COUNT(csctx->programs); i++) {
 		Arena tmp = a;
 		os_file_stats fs = os_get_file_stats(compute_shader_paths[i]);
 		s8 shader_text   = os_read_file(&tmp, compute_shader_paths[i], fs.filesize);
 		u32 shader_id    = compile_shader(tmp, GL_COMPUTE_SHADER, shader_text);
 
-		if (shader_id != rlGetShaderIdDefault()) {
+		if (shader_id) {
 			glDeleteProgram(csctx->programs[i]);
 			csctx->programs[i] = rlLoadComputeShaderProgram(shader_id);
 		}
@@ -186,15 +181,15 @@ reload_shaders(Arena a, BeamformerCtx *ctx)
 		glDeleteShader(shader_id);
 	}
 
-	csctx->u_rf_dim_id  = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_rf_dim");
-	csctx->u_out_dim_id = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_out_dim");
+	csctx->rf_data_dim_id  = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_rf_data_dim");
+	csctx->out_data_dim_id = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_out_data_dim");
 
 	Shader updated_fs       = LoadShader(NULL, "shaders/render.glsl");
 	if (updated_fs.id != rlGetShaderIdDefault()) {
 		UnloadShader(ctx->fsctx.shader);
-		ctx->fsctx.shader       = updated_fs;
-		ctx->fsctx.u_out_dim_id = GetShaderLocation(updated_fs, "u_out_img_dim");
-		glUniform2ui(ctx->fsctx.u_out_dim_id, ctx->out_img_dim.x, ctx->out_img_dim.y);
+		ctx->fsctx.shader = updated_fs;
+		ctx->fsctx.out_data_dim_id = GetShaderLocation(updated_fs, "u_out_data_dim");
+		glUniform3uiv(ctx->fsctx.out_data_dim_id, 1, ctx->out_data_dim.E);
 	}
 }
 
@@ -209,17 +204,19 @@ main(void)
 	os_file_stats decoded_stats = os_get_file_stats(decoded_name);
 	s8 raw_rf_data              = os_read_file(&temp_arena, decoded_name, decoded_stats.filesize);
 
-	ctx.window_size = (uv2){.w = 720, .h = 720};
-	ctx.out_img_dim = (uv2){.w = 720, .h = 720};
+	ctx.window_size  = (uv2){.w = 720, .h = 720};
+	ctx.out_data_dim = (uv3){.w = 720, .h = 720, .d = 1};
 
-	ctx.bg = DARKGRAY;
+	ctx.bg = PINK;
 	ctx.fg = (Color){ .r = 0xea, .g = 0xe1, .b = 0xb4, .a = 0xff };
 
 	SetConfigFlags(FLAG_VSYNC_HINT);
 	InitWindow(ctx.window_size.w, ctx.window_size.h, "OGL Beamformer");
 
-	init_compute_shader_ctx(&ctx.csctx, (uv3){.w = 4093, .h = 128, .d = 1}, ctx.window_size);
-	init_fragment_shader_ctx(&ctx.fsctx, ctx.window_size);
+	size out_data_size = ctx.out_data_dim.w * ctx.out_data_dim.h * ctx.out_data_dim.d * sizeof(f32);
+	ctx.out_data_ssbo  = rlLoadShaderBuffer(out_data_size, NULL, GL_DYNAMIC_COPY);
+	init_compute_shader_ctx(&ctx.csctx, (uv3){.w = 4093, .h = 128, .d = 1});
+	init_fragment_shader_ctx(&ctx.fsctx, ctx.out_data_dim);
 
 	ctx.flags |= RELOAD_SHADERS;
 
@@ -228,7 +225,7 @@ main(void)
 
 		if (ctx.flags & RELOAD_SHADERS) {
 			ctx.flags &= ~RELOAD_SHADERS;
-			reload_shaders(temp_arena, &ctx);
+			reload_shaders(&ctx, temp_arena);
 		}
 
 		do_beamformer(&ctx, temp_arena, raw_rf_data);

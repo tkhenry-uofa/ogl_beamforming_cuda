@@ -67,19 +67,16 @@ enum program_flags {
 typedef struct {
 	u32 programs[CS_LAST];
 
-	u32 out_img_ssbo;
-
 	u32 rf_data_ssbo;
 	uv3 rf_data_dim;
-
-	i32 u_rf_dim_id;
-	i32 u_out_dim_id;
+	i32 rf_data_dim_id;
+	i32 out_data_dim_id;
 } ComputeShaderCtx;
 
 typedef struct {
 	Shader    shader;
 	Texture2D output;
-	i32       u_out_dim_id;
+	i32       out_data_dim_id;
 } FragmentShaderCtx;
 
 typedef struct {
@@ -88,7 +85,8 @@ typedef struct {
 
 	Color bg, fg;
 
-	uv2 out_img_dim; /* shared output image dimension */
+	u32 out_data_ssbo;
+	uv3 out_data_dim;
 
 	ComputeShaderCtx  csctx;
 	FragmentShaderCtx fsctx;

@@ -14,6 +14,21 @@
 
 #include "util.c"
 
+static void
+do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
+{
+	ComputeShaderCtx *csctx = &ctx->csctx;
+	glUseProgram(csctx->programs[shader]);
+
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbo);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ctx->out_data_ssbo);
+
+	glUniform3uiv(csctx->rf_data_dim_id,  1, csctx->rf_data_dim.E);
+	glUniform3uiv(csctx->out_data_dim_id, 1, ctx->out_data_dim.E);
+
+	glDispatchCompute(ctx->out_data_dim.x, ctx->out_data_dim.y, ctx->out_data_dim.z);
+}
+
 DEBUG_EXPORT void
 do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 {
@@ -45,31 +60,20 @@ do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 		scale.y *= -1.0;
 	}
 
-	{
-		ComputeShaderCtx *csctx = &ctx->csctx;
-		glUseProgram(csctx->programs[CS_UFORCES]);
+	/* Load RF Data into GPU */
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbo);
+	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, rf_data.len, rf_data.data);
 
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, csctx->rf_data_ssbo);
-		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, rf_data.len, rf_data.data);
-
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbo);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->out_img_ssbo);
-
-		glUniform3uiv(csctx->u_rf_dim_id,  1, csctx->rf_data_dim.E);
-		glUniform3ui(csctx->u_out_dim_id, ctx->out_img_dim.x, ctx->out_img_dim.y, 0);
-
-		glDispatchCompute(ctx->out_img_dim.x, ctx->out_img_dim.y, 1);
-	}
+	do_compute_shader(ctx, CS_UFORCES);
 
 	BeginDrawing();
 
-	ClearBackground(PINK);
+	ClearBackground(ctx->bg);
 
 	BeginShaderMode(ctx->fsctx.shader);
 		glUseProgram(ctx->fsctx.shader.id);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ctx->csctx.out_img_ssbo);
-		glUniform2uiv(ctx->fsctx.u_out_dim_id, 1, ctx->out_img_dim.E);
-		ASSERT(ctx->fsctx.u_out_dim_id != -1);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ctx->out_data_ssbo);
+		glUniform3uiv(ctx->fsctx.out_data_dim_id, 1, ctx->out_data_dim.E);
 		DrawTexture(ctx->fsctx.output, 0, 0, WHITE);
 	EndShaderMode();
 
