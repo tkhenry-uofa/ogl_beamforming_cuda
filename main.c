@@ -10,12 +10,13 @@
 #include <GL/glcorearb.h>
 #include <GL/glext.h>
 
-#include "util.c"
+#include "util.h"
 #include "os_unix.c"
 
 static char *compute_shader_paths[CS_LAST] = {
 	//[CS_MIN_MAX] = "shaders/min_max.glsl",
-	[CS_UFORCES] = "shaders/uforces.glsl",
+	[CS_HADAMARD] = "shaders/hadamard.glsl",
+	[CS_UFORCES]  = "shaders/uforces.glsl",
 };
 
 #ifndef _DEBUG
@@ -76,6 +77,27 @@ do_debug(void)
 
 #endif /* _DEBUG */
 
+static void
+fill_hadamard(i32 *m, u32 dim)
+{
+	/* bit hack to check if dim is power of 2 */
+	ASSERT(!(dim & (dim - 1)) && dim);
+
+	#define IND(i, j) ((i) * dim + (j))
+	m[0] = 1;
+	for (u32 k = 1; k < dim; k *= 2) {
+		for (u32 i = 0; i < k; i++) {
+			for (u32 j = 0; j < k; j++) {
+				i32 val = m[IND(i, j)];
+				m[IND(i + k, j)]     =  val;
+				m[IND(i, j + k)]     =  val;
+				m[IND(i + k, j + k)] = -val;
+			}
+		}
+	}
+	#undef IND
+}
+
 #if 0
 static void
 update_output_image_dimensions(BeamformerCtx *ctx, uv2 new_size)
@@ -95,7 +117,7 @@ update_output_image_dimensions(BeamformerCtx *ctx, uv2 new_size)
 #endif
 
 static void
-init_compute_shader_ctx(ComputeShaderCtx *ctx, uv3 rf_data_dim)
+init_compute_shader_ctx(ComputeShaderCtx *ctx, Arena a, uv3 rf_data_dim)
 {
 	for (u32 i = 0; i < ARRAY_COUNT(ctx->programs); i++) {
 		char *shader_text = LoadFileText(compute_shader_paths[i]);
@@ -113,6 +135,13 @@ init_compute_shader_ctx(ComputeShaderCtx *ctx, uv3 rf_data_dim)
 	for (u32 i = 0; i < ARRAY_COUNT(ctx->rf_data_ssbos); i++)
 		ctx->rf_data_ssbos[i] = rlLoadShaderBuffer(rf_data_size, NULL, GL_DYNAMIC_COPY);
 	ctx->rf_data_idx = 0;
+
+	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
+	ctx->hadamard_dim       = (uv2){ .x = rf_data_dim.y, .y = rf_data_dim.y };
+	size hadamard_elements  = ctx->hadamard_dim.x * ctx->hadamard_dim.y;
+	i32  *hadamard          = alloc(&a, i32, hadamard_elements);
+	fill_hadamard(hadamard, ctx->hadamard_dim.x);
+	ctx->hadamard_ssbo = rlLoadShaderBuffer(hadamard_elements * sizeof(i32), hadamard, GL_DYNAMIC_COPY);
 }
 
 static void
@@ -200,11 +229,11 @@ main(void)
 {
 	BeamformerCtx ctx = {0};
 
-	Arena temp_arena = os_new_arena(256 * MEGABYTE);
+	Arena temp_memory = os_new_arena(256 * MEGABYTE);
 
 	char *decoded_name          = "/tmp/decoded.bin";
 	os_file_stats decoded_stats = os_get_file_stats(decoded_name);
-	s8 raw_rf_data              = os_read_file(&temp_arena, decoded_name, decoded_stats.filesize);
+	s8 raw_rf_data              = os_read_file(&temp_memory, decoded_name, decoded_stats.filesize);
 
 	ctx.window_size  = (uv2){.w = 720, .h = 720};
 	ctx.out_data_dim = (uv3){.w = 720, .h = 720, .d = 1};
@@ -217,7 +246,7 @@ main(void)
 
 	size out_data_size = ctx.out_data_dim.w * ctx.out_data_dim.h * ctx.out_data_dim.d * sizeof(f32);
 	ctx.out_data_ssbo  = rlLoadShaderBuffer(out_data_size, NULL, GL_DYNAMIC_COPY);
-	init_compute_shader_ctx(&ctx.csctx, (uv3){.w = 4093, .h = 128, .d = 1});
+	init_compute_shader_ctx(&ctx.csctx, temp_memory, (uv3){.w = 4093, .h = 128, .d = 1});
 	init_fragment_shader_ctx(&ctx.fsctx, ctx.out_data_dim);
 
 	ctx.flags |= RELOAD_SHADERS;
@@ -227,9 +256,9 @@ main(void)
 
 		if (ctx.flags & RELOAD_SHADERS) {
 			ctx.flags &= ~RELOAD_SHADERS;
-			reload_shaders(&ctx, temp_arena);
+			reload_shaders(&ctx, temp_memory);
 		}
 
-		do_beamformer(&ctx, temp_arena, raw_rf_data);
+		do_beamformer(&ctx, temp_memory, raw_rf_data);
 	}
 }
