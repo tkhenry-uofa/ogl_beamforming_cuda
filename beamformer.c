@@ -44,22 +44,29 @@ do_compute_shader(BeamformerCtx *ctx, u32 rf_ssbo_idx, enum compute_shaders shad
 }
 
 static void
-draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Font font)
+draw_debug_overlay(BeamformerCtx *ctx, Arena arena)
 {
 	DrawFPS(20, 20);
 
 	u32 fontsize  = 32;
-	u32 fontspace = 4;
+	u32 fontspace = 1;
 	s8 decode_txt  = s8alloc(&arena, 64);
 	s8 compute_txt = s8alloc(&arena, 64);
 	snprintf((char *)decode_txt.data,  decode_txt.len,  "Decoding: %d", !!(ctx->flags & DO_DECODE));
 	snprintf((char *)compute_txt.data, compute_txt.len, "Compute:  %d", !!(ctx->flags & DO_COMPUTE));
-	v2 decode_fs  = {.rl = MeasureTextEx(font, (char *)decode_txt.data,  fontsize, fontspace)};
-	v2 compute_fs = {.rl = MeasureTextEx(font, (char *)compute_txt.data, fontsize, fontspace)};
-	v2 dpos = {.x = 20, .y = ctx->window_size.y - decode_fs.y - compute_fs.y - fontspace};
-	DrawTextEx(font, (char *)decode_txt.data, dpos.rl,  fontsize, fontspace, RED);
+	v2 decode_fs  = {.rl = MeasureTextEx(ctx->font, (char *)decode_txt.data,  fontsize, fontspace)};
+	v2 compute_fs = {.rl = MeasureTextEx(ctx->font, (char *)compute_txt.data, fontsize, fontspace)};
+
+	v2 scale = {.x = 90, .y = 20 };
+	v2 dpos  = {.x = 20, .y = ctx->window_size.y - decode_fs.y - compute_fs.y - 20};
+	v2 dposa = {.x = dpos.x + decode_fs.x / scale.x, .y = dpos.y + decode_fs.y / scale.y };
+	DrawTextEx(ctx->font, (char *)decode_txt.data, dposa.rl, fontsize, fontspace, Fade(BLACK, 0.8));
+	DrawTextEx(ctx->font, (char *)decode_txt.data, dpos.rl,  fontsize, fontspace, RED);
+
 	dpos.y += 2 + decode_fs.y;
-	DrawTextEx(font, (char *)compute_txt.data, dpos.rl, fontsize, fontspace, RED);
+	dposa   = (v2){ .x = dpos.x + compute_fs.x / scale.x, .y = dpos.y + compute_fs.y / scale.y };
+	DrawTextEx(ctx->font, (char *)compute_txt.data, dposa.rl, fontsize, fontspace, Fade(BLACK, 0.8));
+	DrawTextEx(ctx->font, (char *)compute_txt.data, dpos.rl,  fontsize, fontspace, RED);
 }
 
 
@@ -69,28 +76,32 @@ do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 	uv2 ws = ctx->window_size;
 	f32 dt = GetFrameTime();
 
-	static v2 pos   = {.x = 32, .y = 128 };
-	static v2 scale = {.x = 1.0, .y = 1.0};
-	static u32 txt_idx = 0;
+	static v2 pos       = {.x = 32,  .y = 128};
+	static v2 scale     = {.x = 1.0, .y = 1.0};
+	static u32 txt_idx  = 0;
 	static char *txt[2] = { "-_-", "^_^" };
 
-	Font font = GetFontDefault();
-	v2 fs     = { .rl = MeasureTextEx(font, txt[txt_idx], 60, 6) };
+	u32 fontsize  = 32;
+	u32 fontspace = 1;
+
+	static v2 fs[2];
+	if (fs[0].x == 0) {
+		fs[0] = (v2){ .rl = MeasureTextEx(ctx->font, txt[0], fontsize, fontspace) };
+		fs[1] = (v2){ .rl = MeasureTextEx(ctx->font, txt[1], fontsize, fontspace) };
+	}
 
 	pos.x += 130 * dt * scale.x;
 	pos.y += 120 * dt * scale.y;
 
-	if (pos.x > (ws.w - fs.x) || pos.x < 0) {
+	if (pos.x > (ws.w - fs[txt_idx].x) || pos.x < 0) {
 		txt_idx = !txt_idx;
-		fs = (v2){ .rl = MeasureTextEx(font, txt[txt_idx], 60, 6) };
-		CLAMP(pos.x, 0, ws.w - fs.x);
+		CLAMP(pos.x, 0, ws.w - fs[txt_idx].x);
 		scale.x *= -1.0;
 	}
 
-	if (pos.y > (ws.h - fs.y) || pos.y < 0) {
+	if (pos.y > (ws.h - fs[txt_idx].y) || pos.y < 0) {
 		txt_idx = !txt_idx;
-		fs = (v2){ .rl = MeasureTextEx(font, txt[txt_idx], 60, 6) };
-		CLAMP(pos.y, 0, ws.h - fs.y);
+		CLAMP(pos.y, 0, ws.h - fs[txt_idx].y);
 		scale.y *= -1.0;
 	}
 
@@ -120,8 +131,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 		DrawTexture(ctx->fsctx.output, 0, 0, WHITE);
 	EndShaderMode();
 
-	DrawTextEx(font, txt[txt_idx], pos.rl, 60, 6, BLACK);
-	draw_debug_overlay(ctx, arena, font);
+	DrawTextEx(ctx->font, txt[txt_idx], pos.rl, fontsize, fontspace, BLACK);
+	draw_debug_overlay(ctx, arena);
 
 	EndDrawing();
 

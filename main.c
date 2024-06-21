@@ -244,6 +244,8 @@ main(void)
 	SetConfigFlags(FLAG_VSYNC_HINT);
 	InitWindow(ctx.window_size.w, ctx.window_size.h, "OGL Beamformer");
 
+	ctx.font = GetFontDefault();
+
 	size out_data_size = ctx.out_data_dim.w * ctx.out_data_dim.h * ctx.out_data_dim.d * sizeof(f32);
 	ctx.out_data_ssbo  = rlLoadShaderBuffer(out_data_size, NULL, GL_DYNAMIC_COPY);
 	init_compute_shader_ctx(&ctx.csctx, temp_memory, (uv3){.w = 4093, .h = 128, .d = 1});

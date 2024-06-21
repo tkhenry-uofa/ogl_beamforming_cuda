@@ -94,6 +94,8 @@ typedef struct {
 	uv2 window_size;
 	u32 flags;
 
+	Font font;
+
 	Color bg, fg;
 
 	u32 out_data_ssbo;
