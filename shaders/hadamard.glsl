@@ -2,7 +2,7 @@
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 layout(std430, binding = 1) readonly restrict buffer buffer_1 {
-	float rf_data[];
+	int rf_data[];
 };
 
 layout(std430, binding = 2) writeonly restrict buffer buffer_2 {
@@ -22,10 +22,11 @@ void main()
 	 * the result is stored to the same row, column index of the output data.
 	 */
 	uint time_sample = gl_GlobalInvocationID.x;
-	uint column      = gl_GlobalInvocationID.y;
+	uint channel     = gl_GlobalInvocationID.y;
+	uint acq         = gl_GlobalInvocationID.z;
 
 	/* offset to get the correct column in hadamard matrix */
-	uint hoff = column * u_rf_data_dim.y;
+	uint hoff = u_rf_data_dim.z * acq;
 
 	/* TODO: make sure incoming data is organized so that stride is 1
 	 * i.e. each column should be a single time sample for all channels
@@ -33,13 +34,13 @@ void main()
 	 */
 
 	/* offset to get the time sample and row in rf data */
-	uint rstride = u_rf_data_dim.x;
-	uint rfoff   = column * rstride + time_sample;
+	uint rstride = u_rf_data_dim.x * u_rf_data_dim.y;
+	uint rfoff   = u_rf_data_dim.x * channel + time_sample;
 
 	/* N-D dot product */
-	float sum = 0;
-	for (int i = 0; i < u_rf_data_dim.y; i++)
+	int sum = 0;
+	for (int i = 0; i < u_rf_data_dim.z; i++)
 		sum += hadamard[hoff + i] * rf_data[rfoff + rstride * i];
 
-	out_data[rfoff] = float(sum);
+	out_data[rfoff + rstride * acq] = float(sum);
 }

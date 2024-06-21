@@ -11,6 +11,7 @@ layout(std430, binding = 2) writeonly restrict buffer buffer_2 {
 
 layout(location = 3) uniform uvec3 u_rf_data_dim;
 layout(location = 4) uniform uvec3 u_out_data_dim;
+layout(location = 5) uniform uint  u_acquisition;
 
 uint rf_idx(uint x, uint y, uint z)
 {
@@ -24,16 +25,17 @@ uint out_idx(uint x, uint y, uint z)
 
 void main()
 {
-	vec3 scale      = vec3(u_out_data_dim) / vec3(u_rf_data_dim);
+	vec3  scale     = vec3(u_rf_data_dim) / vec3(u_out_data_dim);
 	ivec3 rf_coord  = ivec3(gl_GlobalInvocationID.xyz * scale);
 	ivec3 out_coord = ivec3(gl_GlobalInvocationID.xyz);
 
-	/* TODO: Probably should rotate in the fragment shader */
-	uint x = rf_coord.y;
-	uint y = rf_coord.x;
-	uint z = 0;
+	uint x = rf_coord.x;
+	uint y = rf_coord.y;
+	uint z = u_acquisition;
 
-	uint oidx = out_idx(out_coord.x, out_coord.y, out_coord.z);
+	/* TODO: Probably should rotate in the fragment shader */
+	uint oidx = out_idx(out_coord.y, out_coord.x, out_coord.z);
+
 	uint ridx = rf_idx(x, y, z);
 	out_data[oidx] = rf_data[ridx];
 }

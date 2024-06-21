@@ -129,19 +129,27 @@ init_compute_shader_ctx(ComputeShaderCtx *ctx, Arena a, uv3 rf_data_dim)
 
 	ctx->rf_data_dim_id  = glGetUniformLocation(ctx->programs[CS_UFORCES], "u_rf_data_dim");
 	ctx->out_data_dim_id = glGetUniformLocation(ctx->programs[CS_UFORCES], "u_out_data_dim");
+	ctx->acquisition_id  = glGetUniformLocation(ctx->programs[CS_UFORCES], "u_acquisition");
 
 	ctx->rf_data_dim  = rf_data_dim;
-	size rf_data_size = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(f32);
-	for (u32 i = 0; i < ARRAY_COUNT(ctx->rf_data_ssbos); i++)
-		ctx->rf_data_ssbos[i] = rlLoadShaderBuffer(rf_data_size, NULL, GL_DYNAMIC_COPY);
+	size rf_data_size = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i32);
+
+	glGenBuffers(ARRAY_COUNT(ctx->rf_data_ssbos), ctx->rf_data_ssbos);
+	for (u32 i = 0; i < ARRAY_COUNT(ctx->rf_data_ssbos); i++) {
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->rf_data_ssbos[i]);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, rf_data_size, 0, GL_DYNAMIC_COPY);
+		/* TODO: This doesn't actually work; need to use
+		 * a texture to store i16 data and load i32 data */
+		glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32I, GL_R16I, GL_SHORT, 0);
+	}
 	ctx->rf_data_idx = 0;
 
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
-	ctx->hadamard_dim       = (uv2){ .x = rf_data_dim.y, .y = rf_data_dim.y };
+	ctx->hadamard_dim       = (uv2){ .x = rf_data_dim.d, .y = rf_data_dim.d };
 	size hadamard_elements  = ctx->hadamard_dim.x * ctx->hadamard_dim.y;
 	i32  *hadamard          = alloc(&a, i32, hadamard_elements);
 	fill_hadamard(hadamard, ctx->hadamard_dim.x);
-	ctx->hadamard_ssbo = rlLoadShaderBuffer(hadamard_elements * sizeof(i32), hadamard, GL_DYNAMIC_COPY);
+	ctx->hadamard_ssbo = rlLoadShaderBuffer(hadamard_elements * sizeof(i32), hadamard, GL_STATIC_DRAW);
 }
 
 static void
@@ -214,8 +222,9 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 
 	csctx->rf_data_dim_id  = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_rf_data_dim");
 	csctx->out_data_dim_id = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_out_data_dim");
+	csctx->acquisition_id  = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_acquisition");
 
-	Shader updated_fs       = LoadShader(NULL, "shaders/render.glsl");
+	Shader updated_fs = LoadShader(NULL, "shaders/render.glsl");
 	if (updated_fs.id != rlGetShaderIdDefault()) {
 		UnloadShader(ctx->fsctx.shader);
 		ctx->fsctx.shader = updated_fs;
@@ -248,7 +257,7 @@ main(void)
 
 	size out_data_size = ctx.out_data_dim.w * ctx.out_data_dim.h * ctx.out_data_dim.d * sizeof(f32);
 	ctx.out_data_ssbo  = rlLoadShaderBuffer(out_data_size, NULL, GL_DYNAMIC_COPY);
-	init_compute_shader_ctx(&ctx.csctx, temp_memory, (uv3){.w = 4093, .h = 128, .d = 1});
+	init_compute_shader_ctx(&ctx.csctx, temp_memory, (uv3){.w = 3456, .h = 128, .d = 8});
 	init_fragment_shader_ctx(&ctx.fsctx, ctx.out_data_dim);
 
 	ctx.flags |= RELOAD_SHADERS;

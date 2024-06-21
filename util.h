@@ -14,6 +14,7 @@
 #endif
 
 typedef uint8_t   u8;
+typedef int16_t   i16;
 typedef int32_t   i32;
 typedef uint32_t  u32;
 typedef uint32_t  b32;
@@ -81,6 +82,7 @@ typedef struct {
 
 	uv3 rf_data_dim;
 	i32 rf_data_dim_id;
+	i32 acquisition_id;
 	i32 out_data_dim_id;
 } ComputeShaderCtx;
 
@@ -100,6 +102,8 @@ typedef struct {
 
 	u32 out_data_ssbo;
 	uv3 out_data_dim;
+
+	i32 acquisition;
 
 	ComputeShaderCtx  csctx;
 	FragmentShaderCtx fsctx;
