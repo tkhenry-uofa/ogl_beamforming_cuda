@@ -129,7 +129,6 @@ init_compute_shader_ctx(ComputeShaderCtx *ctx, Arena a, uv3 rf_data_dim)
 
 	ctx->rf_data_dim_id  = glGetUniformLocation(ctx->programs[CS_UFORCES], "u_rf_data_dim");
 	ctx->out_data_dim_id = glGetUniformLocation(ctx->programs[CS_UFORCES], "u_out_data_dim");
-	ctx->acquisition_id  = glGetUniformLocation(ctx->programs[CS_UFORCES], "u_acquisition");
 
 	ctx->rf_data_dim  = rf_data_dim;
 	size rf_data_size = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i32);
@@ -222,7 +221,6 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 
 	csctx->rf_data_dim_id  = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_rf_data_dim");
 	csctx->out_data_dim_id = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_out_data_dim");
-	csctx->acquisition_id  = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_acquisition");
 
 	Shader updated_fs = LoadShader(NULL, "shaders/render.glsl");
 	if (updated_fs.id != rlGetShaderIdDefault()) {
@@ -244,8 +242,8 @@ main(void)
 	os_file_stats decoded_stats = os_get_file_stats(decoded_name);
 	s8 raw_rf_data              = os_read_file(&temp_memory, decoded_name, decoded_stats.filesize);
 
-	ctx.window_size  = (uv2){.w = 720, .h = 720};
-	ctx.out_data_dim = (uv3){.w = 720, .h = 720, .d = 1};
+	ctx.window_size  = (uv2){.w = 2048, .h = 2048};
+	ctx.out_data_dim = (uv3){.w = 2048, .h = 2048, .d = 1};
 
 	ctx.bg = PINK;
 	ctx.fg = (Color){ .r = 0xea, .g = 0xe1, .b = 0xb4, .a = 0xff };

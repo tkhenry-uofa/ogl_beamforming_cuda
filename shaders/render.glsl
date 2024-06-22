@@ -23,7 +23,7 @@ void main()
 {
 	ivec2 coord = ivec2(fragTexCoord * u_out_data_dim.xy);
 	float smp = out_data[coord.y * u_out_data_dim.x + coord.x];
-	smp = 20 * log(abs(smp) + 1e-12) + 60;
+	smp = 20 * log(abs(smp)) + 50;
 
 	v_out_colour = vec4(hsv2rgb(vec3(smp, 0.8, 0.95)), 1);
 }

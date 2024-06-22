@@ -82,7 +82,6 @@ typedef struct {
 
 	uv3 rf_data_dim;
 	i32 rf_data_dim_id;
-	i32 acquisition_id;
 	i32 out_data_dim_id;
 } ComputeShaderCtx;
 
@@ -102,8 +101,6 @@ typedef struct {
 
 	u32 out_data_ssbo;
 	uv3 out_data_dim;
-
-	i32 acquisition;
 
 	ComputeShaderCtx  csctx;
 	FragmentShaderCtx fsctx;
