@@ -157,7 +157,6 @@ init_fragment_shader_ctx(FragmentShaderCtx *ctx, uv3 out_data_dim)
 	ctx->shader = LoadShader(NULL, "shaders/render.glsl");
 
 	ctx->out_data_dim_id = glGetUniformLocation(ctx->shader.id, "u_out_data_dim");
-	glUniform3uiv(ctx->out_data_dim_id, 1, out_data_dim.E);
 	/* TODO: add min max uniform */
 
 	/* output texture for image blitting */
@@ -227,7 +226,6 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		UnloadShader(ctx->fsctx.shader);
 		ctx->fsctx.shader = updated_fs;
 		ctx->fsctx.out_data_dim_id = GetShaderLocation(updated_fs, "u_out_data_dim");
-		glUniform3uiv(ctx->fsctx.out_data_dim_id, 1, ctx->out_data_dim.E);
 	}
 }
 
