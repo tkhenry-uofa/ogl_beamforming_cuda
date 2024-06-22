@@ -63,7 +63,6 @@ enum compute_shaders {
 enum program_flags {
 	RELOAD_SHADERS = 1 << 0,
 	DO_COMPUTE     = 1 << 1,
-	DO_DECODE      = 1 << 2,
 };
 
 typedef struct {

@@ -24,18 +24,16 @@ do_compute_shader(BeamformerCtx *ctx, u32 rf_ssbo_idx, enum compute_shaders shad
 	glUniform3uiv(csctx->rf_data_dim_id,  1, csctx->rf_data_dim.E);
 	glUniform3uiv(csctx->out_data_dim_id, 1, ctx->out_data_dim.E);
 
-	/* NOTE: Temporary flag for testing */
-	u32 data_idx = ctx->flags & DO_DECODE? 2 : rf_ssbo_idx;
-
+	u32 decoded_ssbo_idx = 2;
 	switch (shader) {
 	case CS_HADAMARD:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[rf_ssbo_idx]);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[2]);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[decoded_ssbo_idx]);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, csctx->hadamard_ssbo);
 		glDispatchCompute(csctx->rf_data_dim.x / 32, csctx->rf_data_dim.y / 32, csctx->rf_data_dim.z);
 		break;
 	case CS_UFORCES:
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[data_idx]);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[decoded_ssbo_idx]);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ctx->out_data_ssbo);
 		glDispatchCompute(ctx->out_data_dim.x / 32, ctx->out_data_dim.y / 32, ctx->out_data_dim.z);
 		break;
@@ -50,23 +48,15 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena)
 
 	u32 fontsize  = 32;
 	u32 fontspace = 1;
-	s8 decode_txt  = s8alloc(&arena, 64);
 	s8 compute_txt = s8alloc(&arena, 64);
-	snprintf((char *)decode_txt.data,  decode_txt.len,  "Decoding:    %d", !!(ctx->flags & DO_DECODE));
-	snprintf((char *)compute_txt.data, compute_txt.len, "Compute:     %d", !!(ctx->flags & DO_COMPUTE));
+	snprintf((char *)compute_txt.data, compute_txt.len, "Compute: %d", !!(ctx->flags & DO_COMPUTE));
 
-	v2 decode_fs  = {.rl = MeasureTextEx(ctx->font, (char *)decode_txt.data,  fontsize, fontspace)};
 	v2 compute_fs = {.rl = MeasureTextEx(ctx->font, (char *)compute_txt.data, fontsize, fontspace)};
 
 	v2 scale = {.x = 90, .y = 20 };
 
-	v2 dpos  = {.x = 20, .y = ctx->window_size.y - decode_fs.y - compute_fs.y - 20};
-	v2 dposa = {.x = dpos.x + decode_fs.x / scale.x, .y = dpos.y + decode_fs.y / scale.y };
-	DrawTextEx(ctx->font, (char *)decode_txt.data, dposa.rl, fontsize, fontspace, Fade(BLACK, 0.8));
-	DrawTextEx(ctx->font, (char *)decode_txt.data, dpos.rl,  fontsize, fontspace, RED);
-
-	dpos.y += 2 + decode_fs.y;
-	dposa   = (v2){ .x = dpos.x + compute_fs.x / scale.x, .y = dpos.y + compute_fs.y / scale.y };
+	v2 dpos  = {.x = 20, .y = ctx->window_size.y - compute_fs.y - 20};
+	v2 dposa = {.x = dpos.x + compute_fs.x / scale.x, .y = dpos.y + compute_fs.y / scale.y };
 	DrawTextEx(ctx->font, (char *)compute_txt.data, dposa.rl, fontsize, fontspace, Fade(BLACK, 0.8));
 	DrawTextEx(ctx->font, (char *)compute_txt.data, dpos.rl,  fontsize, fontspace, RED);
 }
@@ -117,8 +107,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, rf_data.len, rf_data.data);
 
 	if (ctx->flags & DO_COMPUTE) {
-		if (ctx->flags & DO_DECODE)
-			do_compute_shader(ctx, rf_ssbo_idx, CS_HADAMARD);
+		do_compute_shader(ctx, rf_ssbo_idx, CS_HADAMARD);
 		do_compute_shader(ctx, rf_ssbo_idx, CS_UFORCES);
 	}
 
@@ -142,6 +131,4 @@ do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 		ctx->flags |= RELOAD_SHADERS;
 	if (IsKeyPressed(KEY_SPACE))
 		ctx->flags ^= DO_COMPUTE;
-	if (IsKeyPressed(KEY_D))
-		ctx->flags ^= DO_DECODE;
 }
