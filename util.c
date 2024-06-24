@@ -1,4 +1,8 @@
 /* See LICENSE for license details. */
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+
 static void __attribute__((noreturn))
 die(char *fmt, ...)
 {

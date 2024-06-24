@@ -1,17 +1,8 @@
 /* See LICENSE for license details. */
 
+#define GRAPHICS_API_OPENGL_43
 #include <raylib.h>
 #include <rlgl.h>
-
-#include <stdatomic.h>
-#include <stdio.h>
-#include <stdlib.h>
-
-#ifndef GL_GLEXT_PROTOTYPES
-#define GL_GLEXT_PROTOTYPES 1
-#include <GL/glcorearb.h>
-#include <GL/glext.h>
-#endif
 
 #include "util.h"
 

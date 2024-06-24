@@ -3,15 +3,7 @@
 #include <raylib.h>
 #include <rlgl.h>
 
-#include <stdio.h>
-#include <stdlib.h>
-
-#define GL_GLEXT_PROTOTYPES 1
-#include <GL/glcorearb.h>
-#include <GL/glext.h>
-
 #include "util.h"
-#include "os_unix.c"
 
 static char *compute_shader_paths[CS_LAST] = {
 	//[CS_MIN_MAX] = "shaders/min_max.glsl",

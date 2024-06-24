@@ -1,13 +1,24 @@
 #!/bin/sh
-
 cflags="-march=native -ggdb -O0 -Wall"
-ldflags="-lraylib -lGL"
+ldflags="-lraylib"
 
-# Hot Reloading/Debugging
-cflags="$cflags -D_DEBUG"
+case "$1" in
+"win32")
+	cflags="$cflags -I./external/include"
+	ldflags="$ldflags -lgdi32 -lwinmm -L./external"
+	;;
+*)
+	ldflags="$ldflags -lGL"
 
-libcflags="$cflags -fPIC -flto"
-libldflags="$ldflags -shared"
+	# Hot Reloading/Debugging
+	cflags="$cflags -D_DEBUG"
 
-cc $libcflags beamformer.c -o beamformer.so $libldflags
+	libcflags="$cflags -fPIC -flto -Wno-unused-function"
+	libldflags="$ldflags -shared"
+
+	cc $libcflags beamformer.c -o beamformer.so $libldflags
+	;;
+esac
+
+
 cc $cflags -o ogl main.c $ldflags

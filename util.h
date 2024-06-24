@@ -2,8 +2,9 @@
 #ifndef _UTIL_H_
 #define _UTIL_H_
 
-#include <stdint.h>
+#include <stdatomic.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef _DEBUG
 #define ASSERT(c) do { if (!(c)) asm("int3; nop"); } while (0);
@@ -108,9 +109,24 @@ typedef struct {
 #define MEGABYTE (1024ULL * 1024ULL)
 #define GIGABYTE (1024ULL * 1024ULL * 1024ULL)
 
+#define U32_MAX  (0xFFFFFFFFUL)
+
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof(*a))
 #define ABS(x)         ((x) < 0 ? (-x) : (x))
 #define CLAMP(x, a, b) ((x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x))
 
 #include "util.c"
+
+#if defined(__unix__)
+#define GL_GLEXT_PROTOTYPES 1
+#include <GL/glcorearb.h>
+#include <GL/glext.h>
+#include "os_unix.c"
+#elif defined(_WIN32)
+#include <glad.h>
+#include "os_win32.c"
+#else
+#error Unsupported Platform!
+#endif
+
 #endif /*_UTIL_H_ */
