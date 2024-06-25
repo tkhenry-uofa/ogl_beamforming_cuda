@@ -9,6 +9,8 @@ layout(std430, binding = 2) writeonly restrict buffer buffer_2 {
 	float out_data[];
 };
 
+#define C_SPLINE 0.5
+
 layout(location = 3)  uniform uvec3     u_rf_data_dim;
 layout(location = 4)  uniform uvec3     u_out_data_dim;
 layout(location = 5)  uniform float     u_sound_speed = 1452;
@@ -16,10 +18,30 @@ layout(location = 6)  uniform float     u_sampling_frequency = 2.0833e7;
 layout(location = 7)  uniform float     u_focal_depth = 0.07;
 //layout(location = 9) uniform sampler2D u_element_positions;
 
-float cubic(float a, float b, float t)
+/* NOTE: See: https://en.wikipedia.org/wiki/Cubic_Hermite_spline */
+float cubic(uint ridx, float x)
 {
-	float param = -2 * t * t * t + 3 * t * t;
-	return (1 - param) * a + param * b;
+	uint  xk  = uint(floor(x));
+
+	//float t = x - float(xk);
+	//float param = -2 * t * t * t + 3 * t * t;
+	//return rf_data[ridx + xk] + param * (rf_data[ridx + xk + 1] - rf_data[ridx + xk]);
+
+	//float param = smoothstep(xk, xk + 1, x);
+	//return mix(rf_data[ridx + xk], rf_data[ridx + xk + 1], param);
+
+	float t   = (x  - float(xk));
+	float pm1 = rf_data[ridx + xk - 1];
+	float p0  = rf_data[ridx + xk];
+	float p1  = rf_data[ridx + xk + 1];
+	float p2  = rf_data[ridx + xk + 2];
+	float m0  = 0.5 * (1 - C_SPLINE) * (p1 - pm1);
+	float m1  = 0.5 * (1 - C_SPLINE) * (p2 - p0);
+
+	return   (2 * p0 + m0 - 2 * p1 + m1) * t * t * t
+	       + (-3 * p0 + 3 * p1 - 2 * m0 - m1) * t * t
+	       + m0 * t
+	       + p0;
 }
 
 void main()
@@ -63,11 +85,7 @@ void main()
 			float rsample = dist * u_sampling_frequency / u_sound_speed;
 
 			/* NOTE: do cubic interp between adjacent time samples */
-			uint rx1     = uint(floor(rsample));
-			uint rx2     = uint(ceil(rsample));
-			float param  = rsample - float(rx1);
-			sum         += cubic(rf_data[ridx + rx1], rf_data[ridx + rx2], param);
-
+			sum     += cubic(ridx, rsample);
 			rdist.x -= dx;
 			ridx    += u_rf_data_dim.x;
 		}
