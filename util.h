@@ -86,9 +86,9 @@ typedef struct {
 } ComputeShaderCtx;
 
 typedef struct {
-	Shader    shader;
-	Texture2D output;
-	i32       out_data_dim_id;
+	Shader          shader;
+	RenderTexture2D output;
+	i32             out_data_dim_id;
 } FragmentShaderCtx;
 
 typedef struct {

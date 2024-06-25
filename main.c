@@ -152,13 +152,7 @@ init_fragment_shader_ctx(FragmentShaderCtx *ctx, uv3 out_data_dim)
 	/* TODO: add min max uniform */
 
 	/* output texture for image blitting */
-	Texture2D new;
-	new.width   = out_data_dim.w;
-	new.height  = out_data_dim.h;
-	new.mipmaps = 1;
-	new.format  = RL_PIXELFORMAT_UNCOMPRESSED_R32G32B32A32;
-	new.id      = rlLoadTexture(0, new.width, new.height, new.format, new.mipmaps);
-	ctx->output = new;
+	ctx->output = LoadRenderTexture(out_data_dim.w, out_data_dim.h);
 }
 
 static u32

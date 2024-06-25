@@ -102,20 +102,25 @@ do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 		do_compute_shader(ctx, rf_ssbo_idx, CS_UFORCES);
 	}
 
+	BeginTextureMode(ctx->fsctx.output);
+		ClearBackground(ctx->bg);
+		BeginShaderMode(ctx->fsctx.shader);
+			glUseProgram(ctx->fsctx.shader.id);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ctx->out_data_ssbo);
+			glUniform3uiv(ctx->fsctx.out_data_dim_id, 1, ctx->out_data_dim.E);
+			DrawTexture(ctx->fsctx.output.texture, 0, 0, WHITE);
+		EndShaderMode();
+	EndTextureMode();
+
 	BeginDrawing();
+		ClearBackground(ctx->bg);
 
-	ClearBackground(ctx->bg);
+		Texture *rtext = &ctx->fsctx.output.texture;
+		Rectangle rect = { 0.0f, 0.0f, (f32)rtext->width, -(f32)rtext->height };
+		DrawTextureRec(*rtext, rect, (Vector2){0}, WHITE);
 
-	BeginShaderMode(ctx->fsctx.shader);
-		glUseProgram(ctx->fsctx.shader.id);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ctx->out_data_ssbo);
-		glUniform3uiv(ctx->fsctx.out_data_dim_id, 1, ctx->out_data_dim.E);
-		DrawTexture(ctx->fsctx.output, 0, 0, WHITE);
-	EndShaderMode();
-
-	DrawTextEx(ctx->font, txt[txt_idx], pos.rl, fontsize, fontspace, BLACK);
-	draw_debug_overlay(ctx, arena);
-
+		DrawTextEx(ctx->font, txt[txt_idx], pos.rl, fontsize, fontspace, BLACK);
+		draw_debug_overlay(ctx, arena);
 	EndDrawing();
 
 	if (IsKeyPressed(KEY_R))
