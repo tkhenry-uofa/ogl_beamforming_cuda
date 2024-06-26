@@ -1,12 +1,11 @@
 /* See LICENSE for license details. */
-#version 430
+#version 430 core
 
 in  vec2 fragTexCoord;
 out vec4 v_out_colour;
 
-layout(rg32f, location = 1) uniform image3D u_out_data_tex;
-layout(rg32f, location = 2) uniform image3D u_mip_view_tex;
-layout(location = 3)        uniform float   u_db_cutoff = -60;
+layout(location = 1) uniform sampler3D u_out_data_tex;
+layout(location = 2) uniform float     u_db_cutoff = -60;
 
 /* input:  h [0,360] | s,v [0, 1] *
  * output: rgb [0,1]              */
@@ -19,11 +18,11 @@ vec3 hsv2rgb(vec3 hsv)
 
 void main()
 {
-	ivec3 out_data_dim = imageSize(u_out_data_tex);
+	ivec3 out_data_dim = textureSize(u_out_data_tex, 0);
 	ivec2 coord  = ivec2(fragTexCoord * out_data_dim.xy);
-	vec2 min_max = imageLoad(u_mip_view_tex, ivec3(0, 0, 0)).xy;
+	vec2 min_max = texelFetch(u_out_data_tex, ivec3(0), textureQueryLevels(u_out_data_tex) - 1).xy;
 
-	float smp    = imageLoad(u_out_data_tex, ivec3(coord.x, coord.y, 0)).x;
+	float smp    = texelFetch(u_out_data_tex, ivec3(coord.x, coord.y, 0), 0).x;
 	float absmax = max(abs(min_max.y), abs(min_max.x));
 
 	smp = 20 * log(abs(smp) / absmax);

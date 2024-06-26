@@ -100,24 +100,24 @@ do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 	u32 fontsize  = 32;
 	u32 fontspace = 1;
 
-	static v2 fs[2];
-	if (fs[0].x == 0) {
-		fs[0] = (v2){ .rl = MeasureTextEx(ctx->font, txt[0], fontsize, fontspace) };
-		fs[1] = (v2){ .rl = MeasureTextEx(ctx->font, txt[1], fontsize, fontspace) };
+	static v2 fts[2];
+	if (fts[0].x == 0) {
+		fts[0] = (v2){ .rl = MeasureTextEx(ctx->font, txt[0], fontsize, fontspace) };
+		fts[1] = (v2){ .rl = MeasureTextEx(ctx->font, txt[1], fontsize, fontspace) };
 	}
 
 	pos.x += 130 * dt * scale.x;
 	pos.y += 120 * dt * scale.y;
 
-	if (pos.x > (ws.w - fs[txt_idx].x) || pos.x < 0) {
+	if (pos.x > (ws.w - fts[txt_idx].x) || pos.x < 0) {
 		txt_idx = !txt_idx;
-		CLAMP(pos.x, 0, ws.w - fs[txt_idx].x);
+		CLAMP(pos.x, 0, ws.w - fts[txt_idx].x);
 		scale.x *= -1.0;
 	}
 
-	if (pos.y > (ws.h - fs[txt_idx].y) || pos.y < 0) {
+	if (pos.y > (ws.h - fts[txt_idx].y) || pos.y < 0) {
 		txt_idx = !txt_idx;
-		CLAMP(pos.y, 0, ws.h - fs[txt_idx].y);
+		CLAMP(pos.y, 0, ws.h - fts[txt_idx].y);
 		scale.y *= -1.0;
 	}
 
@@ -144,16 +144,11 @@ do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 	BeginTextureMode(ctx->fsctx.output);
 		ClearBackground(ctx->bg);
 		BeginShaderMode(ctx->fsctx.shader);
-			glUseProgram(ctx->fsctx.shader.id);
-			u32 otu = ctx->out_texture_unit;
-			glBindImageTexture(otu + 1, ctx->out_texture, ctx->out_texture_mips - 1,
-			                   GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
-			glBindImageTexture(otu, ctx->out_texture, 0,
-			                   GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
-			glUniform1i(ctx->fsctx.out_data_tex_id, otu);
-			glUniform1i(ctx->fsctx.mip_view_tex_id, otu + 1);
-			glUniform1f(ctx->fsctx.db_cutoff_id, ctx->fsctx.db);
-			DrawTexture(ctx->fsctx.output.texture, 0, 0, WHITE);
+			FragmentShaderCtx *fs = &ctx->fsctx;
+			glUseProgram(fs->shader.id);
+			glUniform1i(fs->out_data_tex_id, ctx->out_texture_unit);
+			glUniform1f(fs->db_cutoff_id, fs->db);
+			DrawTexture(fs->output.texture, 0, 0, WHITE);
 		EndShaderMode();
 	EndTextureMode();
 

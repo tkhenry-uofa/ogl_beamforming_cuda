@@ -164,7 +164,6 @@ init_fragment_shader_ctx(FragmentShaderCtx *ctx, uv3 out_data_dim)
 	ctx->shader          = LoadShader(NULL, "shaders/render.glsl");
 	ctx->output          = LoadRenderTexture(out_data_dim.w, out_data_dim.h);
 	ctx->out_data_tex_id = glGetUniformLocation(ctx->shader.id, "u_out_data_tex");
-	ctx->mip_view_tex_id = glGetUniformLocation(ctx->shader.id, "u_mip_view_tex");
 	ctx->db_cutoff_id    = glGetUniformLocation(ctx->shader.id, "u_db_cutoff");
 	ctx->db              = -50.0f;
 }
@@ -197,7 +196,6 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		UnloadShader(ctx->fsctx.shader);
 		ctx->fsctx.shader = updated_fs;
 		ctx->fsctx.out_data_tex_id = GetShaderLocation(updated_fs, "u_out_data_tex");
-		ctx->fsctx.mip_view_tex_id = GetShaderLocation(updated_fs, "u_mip_view_tex");
 		ctx->fsctx.db_cutoff_id    = GetShaderLocation(updated_fs, "u_db_cutoff");
 	}
 }
