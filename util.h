@@ -56,7 +56,7 @@ enum compute_shaders {
 //	CS_FORCES,
 	CS_HADAMARD,
 //	CS_HERCULES,
-//	CS_MIN_MAX,
+	CS_MIN_MAX,
 	CS_UFORCES,
 	CS_LAST
 };
@@ -82,13 +82,18 @@ typedef struct {
 
 	uv3 rf_data_dim;
 	i32 rf_data_dim_id;
-	i32 out_data_dim_id;
+	i32 out_data_tex_id;
+	i32 mip_view_tex_id;
+	i32 mips_level_id;
 } ComputeShaderCtx;
 
 typedef struct {
 	Shader          shader;
 	RenderTexture2D output;
-	i32             out_data_dim_id;
+	i32             out_data_tex_id;
+	i32             mip_view_tex_id;
+	i32             db_cutoff_id;
+	f32             db;
 } FragmentShaderCtx;
 
 typedef struct {
@@ -99,8 +104,10 @@ typedef struct {
 
 	Color bg, fg;
 
-	u32 out_data_ssbo;
 	uv3 out_data_dim;
+	u32 out_texture;
+	u32 out_texture_unit;
+	u32 out_texture_mips;
 
 	ComputeShaderCtx  csctx;
 	FragmentShaderCtx fsctx;
@@ -113,7 +120,9 @@ typedef struct {
 
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof(*a))
 #define ABS(x)         ((x) < 0 ? (-x) : (x))
+#define MAX(a, b)      ((a) > (b) ? (a) : (b))
 #define CLAMP(x, a, b) ((x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x))
+#define ISPOWEROF2(a)  (((a) & ((a) - 1)) == 0)
 
 #include "util.c"
 

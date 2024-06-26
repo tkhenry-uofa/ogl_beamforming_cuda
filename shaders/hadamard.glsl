@@ -1,3 +1,4 @@
+/* See LICENSE for license details. */
 #version 460 core
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 
@@ -13,7 +14,7 @@ layout(std430, binding = 3) readonly restrict buffer buffer_3 {
 	int hadamard[];
 };
 
-layout(location = 3) uniform uvec3 u_rf_data_dim;
+layout(location = 2) uniform uvec3 u_rf_data_dim;
 
 void main()
 {

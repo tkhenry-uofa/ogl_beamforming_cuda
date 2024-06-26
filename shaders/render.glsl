@@ -1,14 +1,12 @@
+/* See LICENSE for license details. */
 #version 430
 
 in  vec2 fragTexCoord;
 out vec4 v_out_colour;
 
-layout(std430, binding = 1) readonly buffer beamformed_data
-{
-	float out_data[];
-};
-
-layout(location = 1) uniform uvec3 u_out_data_dim;
+layout(rg32f, location = 1) uniform image3D u_out_data_tex;
+layout(rg32f, location = 2) uniform image3D u_mip_view_tex;
+layout(location = 3)        uniform float   u_db_cutoff = -60;
 
 /* input:  h [0,360] | s,v [0, 1] *
  * output: rgb [0,1]              */
@@ -21,9 +19,17 @@ vec3 hsv2rgb(vec3 hsv)
 
 void main()
 {
-	ivec2 coord = ivec2(fragTexCoord * u_out_data_dim.xy);
-	float smp   = out_data[coord.y * u_out_data_dim.x + coord.x];
-	smp = 20 * log(abs(smp)) + 50;
+	ivec3 out_data_dim = imageSize(u_out_data_tex);
+	ivec2 coord  = ivec2(fragTexCoord * out_data_dim.xy);
+	vec2 min_max = imageLoad(u_mip_view_tex, ivec3(0, 0, 0)).xy;
 
-	v_out_colour = vec4(hsv2rgb(vec3(smp, 0.8, 0.95)), 1);
+	float smp    = imageLoad(u_out_data_tex, ivec3(coord.x, coord.y, 0)).x;
+	float absmax = max(abs(min_max.y), abs(min_max.x));
+
+	smp = 20 * log(abs(smp) / absmax);
+	smp = clamp(smp, u_db_cutoff, 0) / u_db_cutoff;
+	smp = 1 - smp;
+
+	//v_out_colour = vec4(hsv2rgb(vec3(360 * smp + 120, 0.8, 0.95)), 1);
+	v_out_colour = vec4(smp, smp, smp, 1);
 }

@@ -1,3 +1,4 @@
+/* See LICENSE for license details. */
 #version 460 core
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 
@@ -5,18 +6,14 @@ layout(std430, binding = 1) readonly restrict buffer buffer_1 {
 	float rf_data[];
 };
 
-layout(std430, binding = 2) writeonly restrict buffer buffer_2 {
-	float out_data[];
-};
-
 #define C_SPLINE 0.5
 
-layout(location = 3)  uniform uvec3     u_rf_data_dim;
-layout(location = 4)  uniform uvec3     u_out_data_dim;
-layout(location = 5)  uniform float     u_sound_speed = 1452;
-layout(location = 6)  uniform float     u_sampling_frequency = 2.0833e7;
-layout(location = 7)  uniform float     u_focal_depth = 0.07;
-//layout(location = 9) uniform sampler2D u_element_positions;
+layout(rg32f, location = 1) uniform image3D   u_out_data_tex;
+layout(location = 2)        uniform uvec3     u_rf_data_dim;
+layout(location = 3)        uniform float     u_sound_speed = 1452;
+layout(location = 4)        uniform float     u_sampling_frequency = 2.0833e7;
+layout(location = 5)        uniform float     u_focal_depth = 0.07;
+//layout(location = 6) uniform sampler2D u_element_positions;
 
 /* NOTE: See: https://en.wikipedia.org/wiki/Cubic_Hermite_spline */
 float cubic(uint ridx, float x)
@@ -47,7 +44,9 @@ float cubic(uint ridx, float x)
 void main()
 {
 	vec2  pixel     = vec2(gl_GlobalInvocationID.xy);
-	ivec2 out_coord = ivec2(gl_GlobalInvocationID.xy);
+	ivec3 out_coord = ivec3(gl_GlobalInvocationID.xyz);
+
+	ivec3 out_data_dim = imageSize(u_out_data_tex);
 
 	/* NOTE: Convert pixel to physical coordinates */
 	/* TODO: Send these in like the 3D program */
@@ -60,9 +59,9 @@ void main()
 	/* TODO: image extent can be different than xdc_size */
 	/* TODO: for now assume y-dimension is along transducer center */
 	vec3 image_point = vec3(
-		xdc_upper_left.x + pixel.x * xdc_size.x / u_out_data_dim.x,
+		xdc_upper_left.x + pixel.x * xdc_size.x / out_data_dim.x,
 		0,
-		pixel.y * 60e-3 / u_out_data_dim.y + 10e-3
+		pixel.y * 60e-3 / out_data_dim.y + 10e-3
 	);
 
 	/* TODO: Send this into the GPU */
@@ -91,6 +90,5 @@ void main()
 		}
 		ridx += u_rf_data_dim.y * u_rf_data_dim.x;
 	}
-	uint oidx = u_out_data_dim.x * out_coord.y + out_coord.x;
-	out_data[oidx] = sum;
+	imageStore(u_out_data_tex, out_coord, vec4(sum, sum, 0, 0));
 }
