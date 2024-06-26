@@ -40,7 +40,7 @@ do_compute_shader(BeamformerCtx *ctx, u32 rf_ssbo_idx, enum compute_shaders shad
 			u32 width  = ctx->out_data_dim.w >> i;
 			u32 height = ctx->out_data_dim.h >> i;
 			u32 depth  = ctx->out_data_dim.d >> i;
-			glDispatchCompute(ORONE(width), ORONE(height), ORONE(depth));
+			glDispatchCompute(ORONE(width / 32), ORONE(height / 32), ORONE(depth));
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
 		break;
