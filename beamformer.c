@@ -53,12 +53,14 @@ do_compute_shader(BeamformerCtx *ctx, u32 rf_ssbo_idx, enum compute_shaders shad
 }
 
 static void
-draw_debug_overlay(BeamformerCtx *ctx, Arena arena)
+draw_debug_overlay(BeamformerCtx *ctx, Arena arena, f32 dt)
 {
 	DrawFPS(20, 20);
 
+	uv2 ws = ctx->window_size;
 	u32 fontsize  = 32;
 	u32 fontspace = 1;
+
 	s8 db_txt      = s8alloc(&arena, 64);
 	s8 compute_txt = s8alloc(&arena, 64);
 	snprintf((char *)db_txt.data, db_txt.len, "Dynamic Range: %0.01f [db]", ctx->fsctx.db);
@@ -70,7 +72,7 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena)
 	v2 scale = {.x = 90, .y = 20 };
 	/* NOTE: Dynamic Range */
 	{
-		v2 dpos  = {.x = 20, .y = ctx->window_size.y - db_fs.y - compute_fs.y - 20};
+		v2 dpos  = {.x = 20, .y = ws.h - db_fs.y - compute_fs.y - 20};
 		v2 dposa = {.x = dpos.x + db_fs.x / scale.x, .y = dpos.y + db_fs.y / scale.y };
 		DrawTextEx(ctx->font, (char *)db_txt.data, dposa.rl, fontsize, fontspace, Fade(BLACK, 0.8));
 		DrawTextEx(ctx->font, (char *)db_txt.data, dpos.rl,  fontsize, fontspace, RED);
@@ -78,10 +80,39 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena)
 
 	/* NOTE: Compute Status */
 	{
-		v2 dpos  = {.x = 20, .y = ctx->window_size.y - compute_fs.y - 20};
+		v2 dpos  = {.x = 20, .y = ws.h - compute_fs.y - 20};
 		v2 dposa = {.x = dpos.x + compute_fs.x / scale.x, .y = dpos.y + compute_fs.y / scale.y };
 		DrawTextEx(ctx->font, (char *)compute_txt.data, dposa.rl, fontsize, fontspace, Fade(BLACK, 0.8));
 		DrawTextEx(ctx->font, (char *)compute_txt.data, dpos.rl,  fontsize, fontspace, RED);
+	}
+
+	{
+		static v2 pos       = {.x = 32,  .y = 128};
+		static v2 scale     = {.x = 1.0, .y = 1.0};
+		static u32 txt_idx  = 0;
+		static char *txt[2] = { "-_-", "^_^" };
+		static v2 ts[2];
+		if (ts[0].x == 0) {
+			ts[0] = (v2){ .rl = MeasureTextEx(ctx->font, txt[0], fontsize, fontspace) };
+			ts[1] = (v2){ .rl = MeasureTextEx(ctx->font, txt[1], fontsize, fontspace) };
+		}
+
+		pos.x += 130 * dt * scale.x;
+		pos.y += 120 * dt * scale.y;
+
+		if (pos.x > (ws.w - ts[txt_idx].x) || pos.x < 0) {
+			txt_idx = !txt_idx;
+			CLAMP(pos.x, 0, ws.w - ts[txt_idx].x);
+			scale.x *= -1.0;
+		}
+
+		if (pos.y > (ws.h - ts[txt_idx].y) || pos.y < 0) {
+			txt_idx = !txt_idx;
+			CLAMP(pos.y, 0, ws.h - ts[txt_idx].y);
+			scale.y *= -1.0;
+		}
+
+		DrawTextEx(ctx->font, txt[txt_idx], pos.rl, fontsize, fontspace, RED);
 	}
 }
 
@@ -89,37 +120,7 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena)
 DEBUG_EXPORT void
 do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 {
-	uv2 ws = ctx->window_size;
 	f32 dt = GetFrameTime();
-
-	static v2 pos       = {.x = 32,  .y = 128};
-	static v2 scale     = {.x = 1.0, .y = 1.0};
-	static u32 txt_idx  = 0;
-	static char *txt[2] = { "-_-", "^_^" };
-
-	u32 fontsize  = 32;
-	u32 fontspace = 1;
-
-	static v2 fts[2];
-	if (fts[0].x == 0) {
-		fts[0] = (v2){ .rl = MeasureTextEx(ctx->font, txt[0], fontsize, fontspace) };
-		fts[1] = (v2){ .rl = MeasureTextEx(ctx->font, txt[1], fontsize, fontspace) };
-	}
-
-	pos.x += 130 * dt * scale.x;
-	pos.y += 120 * dt * scale.y;
-
-	if (pos.x > (ws.w - fts[txt_idx].x) || pos.x < 0) {
-		txt_idx = !txt_idx;
-		CLAMP(pos.x, 0, ws.w - fts[txt_idx].x);
-		scale.x *= -1.0;
-	}
-
-	if (pos.y > (ws.h - fts[txt_idx].y) || pos.y < 0) {
-		txt_idx = !txt_idx;
-		CLAMP(pos.y, 0, ws.h - fts[txt_idx].y);
-		scale.y *= -1.0;
-	}
 
 	/* NOTE: grab operating idx and swap it; other buffer can now be used for storage */
 	u32 rf_ssbo_idx = atomic_fetch_xor_explicit(&ctx->csctx.rf_data_idx, 1, memory_order_relaxed);
@@ -155,12 +156,13 @@ do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 	BeginDrawing();
 		ClearBackground(ctx->bg);
 
-		Texture *rtext = &ctx->fsctx.output.texture;
-		Rectangle rect = { 0.0f, 0.0f, (f32)rtext->width, -(f32)rtext->height };
-		DrawTextureRec(*rtext, rect, (Vector2){0}, WHITE);
+		Texture *output   = &ctx->fsctx.output.texture;
+		Rectangle win_r   = { 0.0f, 0.0f, (f32)ctx->window_size.w, (f32)ctx->window_size.h };
+		Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
+		NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
+		DrawTextureNPatch(*output, tex_np, win_r, (Vector2){0}, 0, WHITE);
 
-		DrawTextEx(ctx->font, txt[txt_idx], pos.rl, fontsize, fontspace, RED);
-		draw_debug_overlay(ctx, arena);
+		draw_debug_overlay(ctx, arena, dt);
 	EndDrawing();
 
 	if (IsKeyPressed(KEY_R))
