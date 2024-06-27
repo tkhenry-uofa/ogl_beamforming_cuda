@@ -124,19 +124,6 @@ compile_shader(Arena a, u32 type, s8 shader)
 static void
 init_compute_shader_ctx(ComputeShaderCtx *ctx, Arena a, uv3 rf_data_dim)
 {
-	for (u32 i = 0; i < ARRAY_COUNT(ctx->programs); i++) {
-		Arena tmp        = a;
-		os_file_stats fs = os_get_file_stats(compute_shader_paths[i]);
-		s8 shader_text   = os_read_file(&tmp, compute_shader_paths[i], fs.filesize);
-		u32 shader_id    = compile_shader(tmp, GL_COMPUTE_SHADER, shader_text);
-		ctx->programs[i] = rlLoadComputeShaderProgram(shader_id);
-		glDeleteShader(shader_id);
-	}
-
-	ctx->rf_data_dim_id  = glGetUniformLocation(ctx->programs[CS_UFORCES], "u_rf_data_dim");
-	ctx->out_data_tex_id = glGetUniformLocation(ctx->programs[CS_UFORCES], "u_out_data_tex");
-	ctx->mip_view_tex_id = glGetUniformLocation(ctx->programs[CS_MIN_MAX], "u_mip_view_tex");
-
 	ctx->rf_data_dim  = rf_data_dim;
 	size rf_data_size = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i32);
 
@@ -161,11 +148,8 @@ init_compute_shader_ctx(ComputeShaderCtx *ctx, Arena a, uv3 rf_data_dim)
 static void
 init_fragment_shader_ctx(FragmentShaderCtx *ctx, uv3 out_data_dim)
 {
-	ctx->shader          = LoadShader(NULL, "shaders/render.glsl");
-	ctx->output          = LoadRenderTexture(out_data_dim.w, out_data_dim.h);
-	ctx->out_data_tex_id = glGetUniformLocation(ctx->shader.id, "u_out_data_tex");
-	ctx->db_cutoff_id    = glGetUniformLocation(ctx->shader.id, "u_db_cutoff");
-	ctx->db              = -50.0f;
+	ctx->output = LoadRenderTexture(out_data_dim.w, out_data_dim.h);
+	ctx->db     = -50.0f;
 }
 
 static void
@@ -194,7 +178,7 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 	Shader updated_fs = LoadShader(NULL, "shaders/render.glsl");
 	if (updated_fs.id != rlGetShaderIdDefault()) {
 		UnloadShader(ctx->fsctx.shader);
-		ctx->fsctx.shader = updated_fs;
+		ctx->fsctx.shader          = updated_fs;
 		ctx->fsctx.out_data_tex_id = GetShaderLocation(updated_fs, "u_out_data_tex");
 		ctx->fsctx.db_cutoff_id    = GetShaderLocation(updated_fs, "u_db_cutoff");
 	}
