@@ -4,6 +4,17 @@
 #include <memoryapi.h>
 #include <sysinfoapi.h>
 
+/* NOTE: copied from wtypes.h; we don't actually use this type but winbase.h needs it defined */
+typedef void *HWND;
+#include <winbase.h>
+
+#define OS_INVALID_FILE (INVALID_HANDLE_VALUE)
+typedef HANDLE os_file;
+typedef struct {
+	os_file  file;
+	char    *name;
+} os_pipe;
+
 typedef FILETIME os_filetime;
 
 typedef struct {
@@ -73,4 +84,33 @@ os_get_file_stats(char *fname)
 		.filesize  = filesize,
 		.timestamp = fileinfo.ftLastWriteTime,
 	};
+}
+
+/* NOTE: win32 doesn't pollute the filesystem so no need to waste the user's time */
+static void
+os_close_named_pipe(os_pipe p)
+{
+}
+
+static os_pipe
+os_open_named_pipe(char *name)
+{
+	HANDLE h = CreateNamedPipeA(name, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE, 1,
+	                            0, 1 * MEGABYTE, 0, 0);
+	return (os_pipe){.file = h, .name = name};
+}
+
+static b32
+os_poll_pipe(os_pipe p)
+{
+	DWORD bytes_available = 0;
+	return PeekNamedPipe(p.file, 0, 1 * MEGABYTE, 0, &bytes_available, 0) && bytes_available;
+}
+
+static size
+os_read_pipe_data(os_pipe p, void *buf, size len)
+{
+	DWORD total_read = 0;
+	ReadFile(p.file, buf, len, &total_read, 0);
+	return total_read;
 }

@@ -6,12 +6,23 @@
 #include <stdint.h>
 
 #ifdef _DEBUG
-#define ASSERT(c) do { if (!(c)) asm("int3; nop"); } while (0);
-#define DEBUG_EXPORT
+	#define ASSERT(c) do { if (!(c)) asm("int3; nop"); } while (0);
+	#define DEBUG_EXPORT
 #else
-#define ASSERT(c)
-#define DEBUG_EXPORT static
+	#define ASSERT(c)
+	#define DEBUG_EXPORT static
 #endif
+
+#define MEGABYTE (1024ULL * 1024ULL)
+#define GIGABYTE (1024ULL * 1024ULL * 1024ULL)
+
+#define U32_MAX  (0xFFFFFFFFUL)
+
+#define ARRAY_COUNT(a) (sizeof(a) / sizeof(*a))
+#define ABS(x)         ((x) < 0 ? (-x) : (x))
+#define MAX(a, b)      ((a) > (b) ? (a) : (b))
+#define CLAMP(x, a, b) ((x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x))
+#define ISPOWEROF2(a)  (((a) & ((a) - 1)) == 0)
 
 typedef uint8_t   u8;
 typedef int16_t   i16;
@@ -65,16 +76,18 @@ enum program_flags {
 };
 
 #include "util.c"
+
+
 #if defined(__unix__)
-#define GL_GLEXT_PROTOTYPES 1
-#include <GL/glcorearb.h>
-#include <GL/glext.h>
-#include "os_unix.c"
+	#define GL_GLEXT_PROTOTYPES 1
+	#include <GL/glcorearb.h>
+	#include <GL/glext.h>
+	#include "os_unix.c"
 #elif defined(_WIN32)
-#include <glad.h>
-#include "os_win32.c"
+	#include <glad.h>
+	#include "os_win32.c"
 #else
-#error Unsupported Platform!
+	#error Unsupported Platform!
 #endif
 
 typedef struct {
@@ -119,16 +132,5 @@ typedef struct {
 	os_pipe data_pipe;
 	u32     partial_transfer_count;
 } BeamformerCtx;
-
-#define MEGABYTE (1024ULL * 1024ULL)
-#define GIGABYTE (1024ULL * 1024ULL * 1024ULL)
-
-#define U32_MAX  (0xFFFFFFFFUL)
-
-#define ARRAY_COUNT(a) (sizeof(a) / sizeof(*a))
-#define ABS(x)         ((x) < 0 ? (-x) : (x))
-#define MAX(a, b)      ((a) > (b) ? (a) : (b))
-#define CLAMP(x, a, b) ((x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x))
-#define ISPOWEROF2(a)  (((a) & ((a) - 1)) == 0)
 
 #endif /*_UTIL_H_ */
