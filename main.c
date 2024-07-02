@@ -125,17 +125,16 @@ static void
 init_compute_shader_ctx(ComputeShaderCtx *ctx, Arena a, uv3 rf_data_dim)
 {
 	ctx->rf_data_dim  = rf_data_dim;
-	size rf_data_size = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i32);
+	/* TODO: send i16 data and convert to i32 on GPU */
+	size rf_raw_size     = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i32);
+	size rf_decoded_size = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i32);
 
 	glGenBuffers(ARRAY_COUNT(ctx->rf_data_ssbos), ctx->rf_data_ssbos);
-	for (u32 i = 0; i < ARRAY_COUNT(ctx->rf_data_ssbos); i++) {
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->rf_data_ssbos[i]);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, rf_data_size, 0, GL_DYNAMIC_COPY);
-		/* TODO: This doesn't actually work; need to use
-		 * a texture to store i16 data and load i32 data */
-		glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32I, GL_R16I, GL_SHORT, 0);
-	}
-	ctx->rf_data_idx = 0;
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->rf_data_ssbos[0]);
+	glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_raw_size, 0,
+	                GL_DYNAMIC_STORAGE_BIT|GL_MAP_WRITE_BIT);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->rf_data_ssbos[1]);
+	glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_decoded_size, 0, GL_DYNAMIC_STORAGE_BIT);
 
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
 	ctx->hadamard_dim       = (uv2){ .x = rf_data_dim.d, .y = rf_data_dim.d };
@@ -223,6 +222,10 @@ main(void)
 	init_compute_shader_ctx(&ctx.csctx, temp_memory, (uv3){.w = 3456, .h = 128, .d = 8});
 	init_fragment_shader_ctx(&ctx.fsctx, ctx.out_data_dim);
 
+	ctx.data_pipe = os_open_named_pipe("/tmp/beamformer_data_fifo");
+	/* TODO: properly handle this? */
+	ASSERT(ctx.data_pipe.file != OS_INVALID_FILE);
+
 	ctx.flags |= RELOAD_SHADERS;
 
 	while(!WindowShouldClose()) {
@@ -235,4 +238,7 @@ main(void)
 
 		do_beamformer(&ctx, temp_memory, raw_rf_data);
 	}
+
+	/* NOTE: garbage code needed for Linux */
+	os_close_named_pipe(ctx.data_pipe);
 }

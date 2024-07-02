@@ -11,7 +11,7 @@ case "$1" in
 	ldflags="$ldflags -lGL"
 
 	# Hot Reloading/Debugging
-	cflags="$cflags -D_DEBUG"
+	cflags="$cflags -D_DEBUG -Wno-unused-function"
 
 	libcflags="$cflags -fPIC -flto -Wno-unused-function"
 	libldflags="$ldflags -shared"

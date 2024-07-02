@@ -2,7 +2,6 @@
 #ifndef _UTIL_H_
 #define _UTIL_H_
 
-#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -63,22 +62,28 @@ enum compute_shaders {
 
 enum program_flags {
 	RELOAD_SHADERS = 1 << 0,
-	DO_COMPUTE     = 1 << 1,
 };
+
+#include "util.c"
+#if defined(__unix__)
+#define GL_GLEXT_PROTOTYPES 1
+#include <GL/glcorearb.h>
+#include <GL/glext.h>
+#include "os_unix.c"
+#elif defined(_WIN32)
+#include <glad.h>
+#include "os_win32.c"
+#else
+#error Unsupported Platform!
+#endif
 
 typedef struct {
 	u32 programs[CS_LAST];
 
-	/* NOTE: need 3 storage buffers: incoming rf, currently decoding rf, decoded.
-	 * last buffer will always be for decoded data. other two will swap everytime there
-	 * is new data. current operating idx is stored in rf_data_idx (0 or 1) which needs
-	 * to be accessed atomically
-	 */
-	u32 rf_data_ssbos[3];
-	_Atomic u32 rf_data_idx;
-
-	u32  hadamard_ssbo;
-	uv2  hadamard_dim;
+	/* NOTE: One SSBO for raw data and one for decoded data */
+	u32 rf_data_ssbos[2];
+	u32 hadamard_ssbo;
+	uv2 hadamard_dim;
 
 	uv3 rf_data_dim;
 	i32 rf_data_dim_id;
@@ -110,6 +115,9 @@ typedef struct {
 
 	ComputeShaderCtx  csctx;
 	FragmentShaderCtx fsctx;
+
+	os_pipe data_pipe;
+	u32     partial_transfer_count;
 } BeamformerCtx;
 
 #define MEGABYTE (1024ULL * 1024ULL)
@@ -122,19 +130,5 @@ typedef struct {
 #define MAX(a, b)      ((a) > (b) ? (a) : (b))
 #define CLAMP(x, a, b) ((x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x))
 #define ISPOWEROF2(a)  (((a) & ((a) - 1)) == 0)
-
-#include "util.c"
-
-#if defined(__unix__)
-#define GL_GLEXT_PROTOTYPES 1
-#include <GL/glcorearb.h>
-#include <GL/glext.h>
-#include "os_unix.c"
-#elif defined(_WIN32)
-#include <glad.h>
-#include "os_win32.c"
-#else
-#error Unsupported Platform!
-#endif
 
 #endif /*_UTIL_H_ */

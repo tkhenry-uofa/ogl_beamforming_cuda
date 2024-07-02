@@ -7,7 +7,7 @@
 #include "util.h"
 
 static void
-do_compute_shader(BeamformerCtx *ctx, u32 rf_ssbo_idx, enum compute_shaders shader)
+do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
 	glUseProgram(csctx->programs[shader]);
@@ -17,7 +17,8 @@ do_compute_shader(BeamformerCtx *ctx, u32 rf_ssbo_idx, enum compute_shaders shad
 	                   GL_WRITE_ONLY, GL_RG32F);
 	glUniform1i(csctx->out_data_tex_id, ctx->out_texture_unit);
 
-	u32 decoded_ssbo_idx = 2;
+	u32 rf_ssbo_idx      = 0;
+	u32 decoded_ssbo_idx = 1;
 	switch (shader) {
 	case CS_HADAMARD:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[rf_ssbo_idx]);
@@ -61,29 +62,29 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, f32 dt)
 	u32 fontsize  = 32;
 	u32 fontspace = 1;
 
+	s8 partial_txt = s8alloc(&arena, 64);
 	s8 db_txt      = s8alloc(&arena, 64);
-	s8 compute_txt = s8alloc(&arena, 64);
+	snprintf((char *)partial_txt.data, partial_txt.len, "Partial Transfers: %u", ctx->partial_transfer_count);
 	snprintf((char *)db_txt.data, db_txt.len, "Dynamic Range: %0.01f [db]", ctx->fsctx.db);
-	snprintf((char *)compute_txt.data, compute_txt.len, "Compute: %d", !!(ctx->flags & DO_COMPUTE));
 
+	v2 partial_fs = {.rl = MeasureTextEx(ctx->font, (char *)partial_txt.data, fontsize, fontspace)};
 	v2 db_fs      = {.rl = MeasureTextEx(ctx->font, (char *)db_txt.data, fontsize, fontspace)};
-	v2 compute_fs = {.rl = MeasureTextEx(ctx->font, (char *)compute_txt.data, fontsize, fontspace)};
 
-	v2 scale = {.x = 90, .y = 20 };
+	v2 scale = {.x = 90, .y = 20};
+	v2 pos   = {.x = 20, .y = ws.h - db_fs.y - partial_fs.y - 20};
 	/* NOTE: Dynamic Range */
 	{
-		v2 dpos  = {.x = 20, .y = ws.h - db_fs.y - compute_fs.y - 20};
-		v2 dposa = {.x = dpos.x + db_fs.x / scale.x, .y = dpos.y + db_fs.y / scale.y };
+		v2 dposa = {.x = pos.x + db_fs.x / scale.x, .y = pos.y + db_fs.y / scale.y };
 		DrawTextEx(ctx->font, (char *)db_txt.data, dposa.rl, fontsize, fontspace, Fade(BLACK, 0.8));
-		DrawTextEx(ctx->font, (char *)db_txt.data, dpos.rl,  fontsize, fontspace, RED);
+		DrawTextEx(ctx->font, (char *)db_txt.data, pos.rl,  fontsize, fontspace, RED);
+		pos.y += db_fs.y;
 	}
-
-	/* NOTE: Compute Status */
+	/* NOTE: Partial Tranfers */
 	{
-		v2 dpos  = {.x = 20, .y = ws.h - compute_fs.y - 20};
-		v2 dposa = {.x = dpos.x + compute_fs.x / scale.x, .y = dpos.y + compute_fs.y / scale.y };
-		DrawTextEx(ctx->font, (char *)compute_txt.data, dposa.rl, fontsize, fontspace, Fade(BLACK, 0.8));
-		DrawTextEx(ctx->font, (char *)compute_txt.data, dpos.rl,  fontsize, fontspace, RED);
+		v2 dposa = {.x = pos.x + partial_fs.x / scale.x, .y = pos.y + partial_fs.y / scale.y };
+		DrawTextEx(ctx->font, (char *)partial_txt.data, dposa.rl, fontsize, fontspace, Fade(BLACK, 0.8));
+		DrawTextEx(ctx->font, (char *)partial_txt.data, pos.rl,  fontsize, fontspace, RED);
+		pos.y += partial_fs.y;
 	}
 
 	{
@@ -122,19 +123,23 @@ do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 {
 	f32 dt = GetFrameTime();
 
-	/* NOTE: grab operating idx and swap it; other buffer can now be used for storage */
-	u32 rf_ssbo_idx = atomic_fetch_xor_explicit(&ctx->csctx.rf_data_idx, 1, memory_order_relaxed);
-	ASSERT(rf_ssbo_idx == 0 || rf_ssbo_idx == 1);
-
-	/* NOTE: Load RF Data into GPU */
-	/* TODO: This should be done in a separate thread */
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbos[!rf_ssbo_idx]);
-	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, rf_data.len, rf_data.data);
-
-	if (ctx->flags & DO_COMPUTE) {
-		do_compute_shader(ctx, rf_ssbo_idx, CS_HADAMARD);
-		do_compute_shader(ctx, rf_ssbo_idx, CS_UFORCES);
-		do_compute_shader(ctx, rf_ssbo_idx, CS_MIN_MAX);
+	/* NOTE: Check for and Load RF Data into GPU */
+	if (os_poll_pipe(ctx->data_pipe)) {
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbos[0]);
+		void *rf_data_buf = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+		ASSERT(rf_data_buf);
+		uv3  rf_data_dim  = ctx->csctx.rf_data_dim;
+		size rf_raw_size  = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i32);
+		size rlen         = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
+		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+		if (rlen == rf_raw_size) {
+			/* NOTE: this will skip partially read data */
+			do_compute_shader(ctx, CS_HADAMARD);
+			do_compute_shader(ctx, CS_UFORCES);
+			do_compute_shader(ctx, CS_MIN_MAX);
+		} else {
+			ctx->partial_transfer_count++;
+		}
 	}
 
 	/* NOTE: check mouse wheel for adjusting dynamic range of image */
@@ -167,6 +172,4 @@ do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
 
 	if (IsKeyPressed(KEY_R))
 		ctx->flags |= RELOAD_SHADERS;
-	if (IsKeyPressed(KEY_SPACE))
-		ctx->flags ^= DO_COMPUTE;
 }

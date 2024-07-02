@@ -1,7 +1,15 @@
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#define OS_INVALID_FILE (-1)
+typedef i32 os_file;
+typedef struct {
+	os_file  file;
+	char    *name;
+} os_pipe;
 
 typedef struct timespec os_filetime;
 
@@ -58,4 +66,38 @@ os_get_file_stats(char *fname)
 		.filesize  = st.st_size,
 		.timestamp = st.st_mtim,
 	};
+}
+
+static os_pipe
+os_open_named_pipe(char *name)
+{
+	mkfifo(name, 0660);
+	return (os_pipe){.file = open(name, O_RDONLY|O_NONBLOCK), .name = name};
+}
+
+static void
+os_close_named_pipe(os_pipe p)
+{
+	close(p.file);
+	unlink(p.name);
+}
+
+static b32
+os_poll_pipe(os_pipe p)
+{
+	struct pollfd pfd = {.fd = p.file, .events = POLLIN};
+	poll(&pfd, 1, 0);
+	return !!(pfd.revents & POLLIN);
+}
+
+static size
+os_read_pipe_data(os_pipe p, void *buf, size len)
+{
+	size r = 0, total_read = 0;
+	do {
+		if (r != -1)
+			total_read += r;
+		r = read(p.file, buf + total_read, len - total_read);
+	} while (r);
+	return total_read;
 }
