@@ -8,6 +8,8 @@
 typedef void *HWND;
 #include <winbase.h>
 
+#include "util.h"
+
 #define OS_INVALID_FILE (INVALID_HANDLE_VALUE)
 typedef HANDLE os_file;
 typedef struct {

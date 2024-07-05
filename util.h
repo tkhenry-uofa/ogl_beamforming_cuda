@@ -13,16 +13,16 @@
 	#define DEBUG_EXPORT static
 #endif
 
-#define MEGABYTE (1024ULL * 1024ULL)
-#define GIGABYTE (1024ULL * 1024ULL * 1024ULL)
-
-#define U32_MAX  (0xFFFFFFFFUL)
-
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof(*a))
 #define ABS(x)         ((x) < 0 ? (-x) : (x))
 #define MAX(a, b)      ((a) > (b) ? (a) : (b))
 #define CLAMP(x, a, b) ((x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x))
 #define ISPOWEROF2(a)  (((a) & ((a) - 1)) == 0)
+
+#define MEGABYTE (1024ULL * 1024ULL)
+#define GIGABYTE (1024ULL * 1024ULL * 1024ULL)
+
+#define U32_MAX  (0xFFFFFFFFUL)
 
 typedef uint8_t   u8;
 typedef int16_t   i16;
@@ -37,100 +37,6 @@ typedef struct { u8 *beg, *end; } Arena;
 
 typedef struct { size len; u8 *data; } s8;
 
-typedef union {
-	struct { u32 x, y; };
-	struct { u32 w, h; };
-	u32 E[2];
-} uv2;
-
-typedef union {
-	struct { u32 x, y, z; };
-	struct { u32 w, h, d; };
-	u32 E[3];
-} uv3;
-
-typedef union {
-	struct { f32 x, y; };
-	f32 E[2];
-	Vector2 rl;
-} v2;
-
-typedef union {
-	struct { f32 x, y, z, w; };
-	struct { f32 r, g, b, a; };
-	f32 E[4];
-	Vector4 rl;
-} v4;
-
-enum compute_shaders {
-//	CS_FORCES,
-	CS_HADAMARD,
-//	CS_HERCULES,
-	CS_MIN_MAX,
-	CS_UFORCES,
-	CS_LAST
-};
-
-enum program_flags {
-	RELOAD_SHADERS = 1 << 0,
-};
-
 #include "util.c"
 
-
-#if defined(__unix__)
-	#define GL_GLEXT_PROTOTYPES 1
-	#include <GL/glcorearb.h>
-	#include <GL/glext.h>
-	#include "os_unix.c"
-#elif defined(_WIN32)
-	#include <glad.h>
-	#include "os_win32.c"
-#else
-	#error Unsupported Platform!
-#endif
-
-typedef struct {
-	u32 programs[CS_LAST];
-
-	/* NOTE: One SSBO for raw data and one for decoded data */
-	u32 rf_data_ssbos[2];
-	u32 hadamard_ssbo;
-	uv2 hadamard_dim;
-
-	uv3 rf_data_dim;
-	i32 rf_data_dim_id;
-	i32 out_data_tex_id;
-	i32 mip_view_tex_id;
-	i32 mips_level_id;
-} ComputeShaderCtx;
-
-typedef struct {
-	Shader          shader;
-	RenderTexture2D output;
-	i32             out_data_tex_id;
-	i32             db_cutoff_id;
-	f32             db;
-} FragmentShaderCtx;
-
-typedef struct {
-	uv2 window_size;
-	u32 flags;
-
-	Font font;
-
-	Color bg, fg;
-
-	uv3 out_data_dim;
-	u32 out_texture;
-	u32 out_texture_unit;
-	u32 out_texture_mips;
-
-	ComputeShaderCtx  csctx;
-	FragmentShaderCtx fsctx;
-
-	os_pipe data_pipe;
-	u32     partial_transfer_count;
-} BeamformerCtx;
-
-#endif /*_UTIL_H_ */
+#endif /* _UTIL_H_ */

@@ -1,10 +1,5 @@
 /* See LICENSE for license details. */
-
-#define GRAPHICS_API_OPENGL_43
-#include <raylib.h>
-#include <rlgl.h>
-
-#include "util.h"
+#include "beamformer.h"
 
 static void
 do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)

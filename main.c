@@ -1,10 +1,5 @@
 /* See LICENSE for license details. */
-
-#include <immintrin.h>
-#include <raylib.h>
-#include <rlgl.h>
-
-#include "util.h"
+#include "beamformer.h"
 
 static char *compute_shader_paths[CS_LAST] = {
 	[CS_MIN_MAX]  = "shaders/min_max.glsl",
