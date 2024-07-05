@@ -119,8 +119,7 @@ compile_shader(Arena a, u32 type, s8 shader)
 static void
 init_compute_shader_ctx(ComputeShaderCtx *ctx, Arena a, uv3 rf_data_dim)
 {
-	ctx->rf_data_dim  = rf_data_dim;
-	/* TODO: send i16 data and convert to i32 on GPU */
+	ctx->rf_data_dim     = rf_data_dim;
 	size rf_raw_size     = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i16);
 	size rf_decoded_size = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i32);
 

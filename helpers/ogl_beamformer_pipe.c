@@ -85,29 +85,26 @@ mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 		return;
 	}
 
-	/* TODO: send i16 data */
 	char *pipe_name       = mxArrayToString(prhs[0]);
 	const mxArray *mxdata = prhs[1];
-	size data_size        = 0;
 
 	os_pipe p = os_open_named_pipe(pipe_name);
 	if (p.file == OS_INVALID_FILE) {
-		mexPrintf("Couldn't open pipe\n");
+		mexPrintf("ogl_beamformer_pipe: failed to open pipe\n");
 		return;
 	}
 
-	if (mxIsInt16(mxdata)) {
+	if (!mxIsInt16(mxdata)) {
 		os_close_pipe(p);
-		mexPrintf("Int16 is not yet supported; convert to Int32 first\n");
+		mexPrintf("ogl_beamformer_pipe: invalid data type; only int16 is supported\n");
 		return;
-	} else if (mxIsInt32(mxdata)) {
-		data_size = mxGetNumberOfElements(mxdata) * sizeof(i32);
 	}
 
-	void *data = mxGetPr(mxdata);
-	size written = os_write_to_pipe(p, data, data_size);
+	void *data     = mxGetPr(mxdata);
+	size data_size = mxGetNumberOfElements(mxdata) * sizeof(i16);
+	size written   = os_write_to_pipe(p, data, data_size);
 	if (written != data_size)
-		mexPrintf("Failed to write full data to pipe: wrote: %ld\n", written);
+		mexPrintf("ogl_beamformer_pipe: failed to write full data to pipe: wrote: %ld\n", written);
 
 	os_close_pipe(p);
 }
