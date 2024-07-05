@@ -124,7 +124,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		void *rf_data_buf = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 		ASSERT(rf_data_buf);
 		uv3  rf_data_dim  = ctx->csctx.rf_data_dim;
-		size rf_raw_size  = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i32);
+		size rf_raw_size  = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i16);
 		size rlen         = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
 		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 		if (rlen == rf_raw_size) {
