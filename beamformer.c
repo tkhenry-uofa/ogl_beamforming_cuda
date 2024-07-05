@@ -114,7 +114,7 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, f32 dt)
 
 
 DEBUG_EXPORT void
-do_beamformer(BeamformerCtx *ctx, Arena arena, s8 rf_data)
+do_beamformer(BeamformerCtx *ctx, Arena arena)
 {
 	f32 dt = GetFrameTime();
 

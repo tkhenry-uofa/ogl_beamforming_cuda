@@ -19,7 +19,7 @@ static void do_debug(void) { }
 static char *libname = "./beamformer.so";
 static void *libhandle;
 
-typedef void do_beamformer_fn(BeamformerCtx *, Arena, s8);
+typedef void do_beamformer_fn(BeamformerCtx *, Arena);
 static do_beamformer_fn *do_beamformer;
 
 static os_filetime
@@ -185,10 +185,6 @@ main(void)
 
 	Arena temp_memory = os_new_arena(256 * MEGABYTE);
 
-	char *decoded_name          = "/tmp/decoded.bin";
-	os_file_stats decoded_stats = os_get_file_stats(decoded_name);
-	s8 raw_rf_data              = os_read_file(&temp_memory, decoded_name, decoded_stats.filesize);
-
 	ctx.window_size  = (uv2){.w = 2048, .h = 2048};
 	ctx.out_data_dim = (uv3){.w = 2048, .h = 2048, .d = 1};
 
@@ -231,7 +227,7 @@ main(void)
 			reload_shaders(&ctx, temp_memory);
 		}
 
-		do_beamformer(&ctx, temp_memory, raw_rf_data);
+		do_beamformer(&ctx, temp_memory);
 	}
 
 	/* NOTE: garbage code needed for Linux */
