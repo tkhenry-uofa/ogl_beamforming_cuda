@@ -41,20 +41,16 @@ void main()
 	uint ridx       = rfoff / 2;
 	uint ridx_delta = rstride / 2;
 
+	/* NOTE: rf_data is i16 so each access grabs two time samples at time.
+	 * We need to shift arithmetically (maintaining the sign) to get the
+	 * desired element. If the time sample is even we take the upper half
+	 * and if its odd we take the lower half. */
+	int lfs = (int(time_sample) & 1) * int(16);
+
 	/* NOTE: Compute N-D dot product */
 	int sum = 0;
 	for (int i = 0; i < u_rf_data_dim.z; i++) {
-		int data = rf_data[ridx];
-
-		/* NOTE: rf_data is i16 so each access grabs two time samples at time.
-		 * We need to shift and mask to get the desired element. If the time sample
-		 * is even we take the upper half and if its odd we take the lower half.
-		 * Hopefully shader compiler is smart enough to lift this out of the loop. */
-		if ((int(time_sample) & 1) == 1)
-			data = data >> 16;
-		else
-			data = (data << 16) >> 16;
-
+		int data = (rf_data[ridx] << lfs) >> 16;
 		sum += hadamard[hoff + i] * data;
 		ridx += ridx_delta;
 	}
