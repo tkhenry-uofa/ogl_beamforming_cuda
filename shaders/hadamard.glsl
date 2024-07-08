@@ -45,7 +45,7 @@ void main()
 	 * We need to shift arithmetically (maintaining the sign) to get the
 	 * desired element. If the time sample is even we take the upper half
 	 * and if its odd we take the lower half. */
-	int lfs = (int(time_sample) & 1) * int(16);
+	uint lfs = ~(time_sample & 1) * 16;
 
 	/* NOTE: Compute N-D dot product */
 	int sum = 0;
