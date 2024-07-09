@@ -11,18 +11,6 @@
 #include "util.h"
 
 typedef union {
-	struct { u32 x, y; };
-	struct { u32 w, h; };
-	u32 E[2];
-} uv2;
-
-typedef union {
-	struct { u32 x, y, z; };
-	struct { u32 w, h, d; };
-	u32 E[3];
-} uv3;
-
-typedef union {
 	struct { f32 x, y; };
 	f32 E[2];
 	Vector2 rl;
@@ -46,6 +34,7 @@ enum compute_shaders {
 
 enum program_flags {
 	RELOAD_SHADERS = 1 << 0,
+	DO_COMPUTE     = 1 << 1,
 };
 
 typedef struct {
@@ -72,12 +61,13 @@ typedef struct {
 } FragmentShaderCtx;
 
 typedef struct {
-	i16 channel_row_mapping[128];
-	i16 channel_column_mapping[128];
-	i16 uforces_channels[128];
+	u32 channel_row_mapping[128];
+	u32 channel_column_mapping[128];
+	u32 uforces_channels[128];
 	u32 channel_data_stride;
 	f32 speed_of_sound;
 	f32 sampling_frequency;
+	uv3 rf_data_dim;
 	uv3 output_points;
 } BeamformerParameters;
 

@@ -23,12 +23,13 @@ typedef struct { u32 x, y, z; } uv3;
 typedef struct { f32 x, y, z; } v3;
 
 typedef struct {
-	i16 channel_row_mapping[128];
-	i16 channel_column_mapping[128];
-	i16 uforces_channels[128];
+	u32 channel_row_mapping[128];
+	u32 channel_column_mapping[128];
+	u32 uforces_channels[128];
 	u32 channel_data_stride;
 	f32 speed_of_sound;
 	f32 sampling_frequency;
+	uv3 rf_data_dim;
 	uv3 output_points;
 } BeamformerParameters;
 

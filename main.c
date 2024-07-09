@@ -65,26 +65,6 @@ do_debug(void)
 
 #endif /* _DEBUG */
 
-static void
-fill_hadamard(i32 *m, u32 dim)
-{
-	ASSERT(dim && ISPOWEROF2(dim));
-
-	#define IND(i, j) ((i) * dim + (j))
-	m[0] = 1;
-	for (u32 k = 1; k < dim; k *= 2) {
-		for (u32 i = 0; i < k; i++) {
-			for (u32 j = 0; j < k; j++) {
-				i32 val = m[IND(i, j)];
-				m[IND(i + k, j)]     =  val;
-				m[IND(i, j + k)]     =  val;
-				m[IND(i + k, j + k)] = -val;
-			}
-		}
-	}
-	#undef IND
-}
-
 static u32
 compile_shader(Arena a, u32 type, s8 shader)
 {
@@ -117,28 +97,6 @@ compile_shader(Arena a, u32 type, s8 shader)
 }
 
 static void
-init_compute_shader_ctx(ComputeShaderCtx *ctx, Arena a, uv3 rf_data_dim)
-{
-	ctx->rf_data_dim     = rf_data_dim;
-	size rf_raw_size     = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i16);
-	size rf_decoded_size = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i32);
-
-	glGenBuffers(ARRAY_COUNT(ctx->rf_data_ssbos), ctx->rf_data_ssbos);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->rf_data_ssbos[0]);
-	glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_raw_size, 0,
-	                GL_DYNAMIC_STORAGE_BIT|GL_MAP_WRITE_BIT);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->rf_data_ssbos[1]);
-	glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_decoded_size, 0, GL_DYNAMIC_STORAGE_BIT);
-
-	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
-	ctx->hadamard_dim       = (uv2){ .x = rf_data_dim.d, .y = rf_data_dim.d };
-	size hadamard_elements  = ctx->hadamard_dim.x * ctx->hadamard_dim.y;
-	i32  *hadamard          = alloc(&a, i32, hadamard_elements);
-	fill_hadamard(hadamard, ctx->hadamard_dim.x);
-	ctx->hadamard_ssbo = rlLoadShaderBuffer(hadamard_elements * sizeof(i32), hadamard, GL_STATIC_DRAW);
-}
-
-static void
 init_fragment_shader_ctx(FragmentShaderCtx *ctx, uv3 out_data_dim)
 {
 	ctx->output = LoadRenderTexture(out_data_dim.w, out_data_dim.h);
@@ -158,6 +116,7 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		if (shader_id) {
 			glDeleteProgram(csctx->programs[i]);
 			csctx->programs[i] = rlLoadComputeShaderProgram(shader_id);
+			ctx->flags |= DO_COMPUTE;
 		}
 
 		glDeleteShader(shader_id);
@@ -184,8 +143,8 @@ main(void)
 
 	Arena temp_memory = os_new_arena(256 * MEGABYTE);
 
-	ctx.window_size  = (uv2){.w = 2048, .h = 2048};
-	ctx.out_data_dim = (uv3){.w = 2048, .h = 2048, .d = 1};
+	ctx.window_size  = (uv2){.w = 1024, .h = 1024};
+	ctx.out_data_dim = (uv3){.w = 256, .h = 1024, .d = 1};
 
 	ctx.bg = PINK;
 	ctx.fg = (Color){ .r = 0xea, .g = 0xe1, .b = 0xb4, .a = 0xff };
@@ -195,21 +154,6 @@ main(void)
 
 	ctx.font = GetFontDefault();
 
-	/* NOTE: allocate storage for beamformed output data;
-	 * this is shared between compute and fragment shaders */
-	{
-		uv3 odim = ctx.out_data_dim;
-		u32 max_dim = MAX(odim.x, MAX(odim.y, odim.z));
-		/* TODO: does this actually matter or is 0 fine? */
-		ctx.out_texture_unit = 0;
-		ctx.out_texture_mips = _tzcnt_u32(max_dim) + 1;
-		glActiveTexture(GL_TEXTURE0 + ctx.out_texture_unit);
-		glGenTextures(1, &ctx.out_texture);
-		glBindTexture(GL_TEXTURE_3D, ctx.out_texture);
-		glTexStorage3D(GL_TEXTURE_3D, ctx.out_texture_mips, GL_RG32F, odim.x, odim.y, odim.z);
-	}
-
-	init_compute_shader_ctx(&ctx.csctx, temp_memory, (uv3){.w = 3456, .h = 128, .d = 8});
 	init_fragment_shader_ctx(&ctx.fsctx, ctx.out_data_dim);
 
 	ctx.data_pipe = os_open_named_pipe("/tmp/beamformer_data_fifo");
@@ -217,6 +161,8 @@ main(void)
 	/* TODO: properly handle this? */
 	ASSERT(ctx.data_pipe.file != OS_INVALID_FILE);
 	ASSERT(ctx.params);
+
+	ctx.params->output_points = ctx.out_data_dim;
 
 	ctx.flags |= RELOAD_SHADERS;
 

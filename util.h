@@ -37,6 +37,18 @@ typedef struct { u8 *beg, *end; } Arena;
 
 typedef struct { size len; u8 *data; } s8;
 
+typedef union {
+	struct { u32 x, y; };
+	struct { u32 w, h; };
+	u32 E[2];
+} uv2;
+
+typedef union {
+	struct { u32 x, y, z; };
+	struct { u32 w, h, d; };
+	u32 E[3];
+} uv3;
+
 #include "util.c"
 
 #endif /* _UTIL_H_ */
