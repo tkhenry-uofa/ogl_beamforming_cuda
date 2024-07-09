@@ -48,18 +48,6 @@ enum program_flags {
 	RELOAD_SHADERS = 1 << 0,
 };
 
-#if defined(__unix__)
-	#define GL_GLEXT_PROTOTYPES 1
-	#include <GL/glcorearb.h>
-	#include <GL/glext.h>
-	#include "os_unix.c"
-#elif defined(_WIN32)
-	#include <glad.h>
-	#include "os_win32.c"
-#else
-	#error Unsupported Platform!
-#endif
-
 typedef struct {
 	u32 programs[CS_LAST];
 
@@ -84,6 +72,28 @@ typedef struct {
 } FragmentShaderCtx;
 
 typedef struct {
+	i16 channel_row_mapping[128];
+	i16 channel_column_mapping[128];
+	i16 uforces_channels[128];
+	u32 channel_data_stride;
+	f32 speed_of_sound;
+	f32 sampling_frequency;
+	uv3 output_points;
+} BeamformerParameters;
+
+#if defined(__unix__)
+	#define GL_GLEXT_PROTOTYPES 1
+	#include <GL/glcorearb.h>
+	#include <GL/glext.h>
+	#include "os_unix.c"
+#elif defined(_WIN32)
+	#include <glad.h>
+	#include "os_win32.c"
+#else
+	#error Unsupported Platform!
+#endif
+
+typedef struct {
 	uv2 window_size;
 	u32 flags;
 
@@ -101,6 +111,8 @@ typedef struct {
 
 	os_pipe data_pipe;
 	u32     partial_transfer_count;
+
+	BeamformerParameters *params;
 } BeamformerCtx;
 
 #endif /*_BEAMFORMER_H_ */

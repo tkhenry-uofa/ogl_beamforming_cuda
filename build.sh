@@ -20,5 +20,4 @@ case "$1" in
 	;;
 esac
 
-
 cc $cflags -o ogl main.c $ldflags
