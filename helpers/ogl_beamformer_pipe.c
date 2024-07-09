@@ -17,7 +17,25 @@ typedef struct {
 	os_file  file;
 	char    *name;
 } os_pipe;
+#elif defined(_WIN32)
+#include <windows.h>
 
+#define OS_INVALID_FILE (INVALID_HANDLE_VALUE)
+typedef HANDLE os_file;
+typedef struct {
+	os_file  file;
+	char    *name;
+} os_pipe;
+
+#else
+#error Unsupported Platform
+#endif
+
+/* NOTE: the mexAtExit function is poorly designed and doesn't
+ * take a context pointer so this must be a global */
+static os_pipe g_pipe = {.file = OS_INVALID_FILE};
+
+#if defined(__unix__)
 static os_pipe
 os_open_named_pipe(char *name)
 {
@@ -36,20 +54,13 @@ os_write_to_pipe(os_pipe p, void *data, size len)
 }
 
 static void
-os_close_pipe(os_pipe p)
+os_close_pipe(void)
 {
-	close(p.file);
+	close(g_pipe.file);
+	mxFree(g_pipe.name);
 }
 
 #elif defined(_WIN32)
-#include <windows.h>
-
-#define OS_INVALID_FILE (INVALID_HANDLE_VALUE)
-typedef HANDLE os_file;
-typedef struct {
-	os_file  file;
-	char    *name;
-} os_pipe;
 
 static os_pipe
 os_open_named_pipe(char *name)
@@ -67,13 +78,11 @@ os_write_to_pipe(os_pipe p, void *data, size len)
 }
 
 static void
-os_close_pipe(os_pipe p)
+os_close_pipe(void)
 {
-	CloseHandle(p.file);
+	CloseHandle(g_pipe.file);
+	mxFree(g_pipe.name);
 }
-
-#else
-#error Unsupported Platform
 #endif
 
 /* NOTE: usage: pipe_data_to_beamformer(pipe_name, data) */
@@ -81,30 +90,33 @@ void
 mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 	if (nrhs != 2) {
-		mexPrintf("usage: ogl_beamformer_pipe(pipe_name, data)\n");
+		mexErrMsgIdAndTxt("ogl_beamformer:wrong_input",
+		                  "usage: ogl_beamformer_pipe(pipe_name, data)");
 		return;
 	}
 
-	char *pipe_name       = mxArrayToString(prhs[0]);
+	if (g_pipe.file == OS_INVALID_FILE) {
+		char *pipe_name = mxArrayToString(prhs[0]);
+		g_pipe = os_open_named_pipe(pipe_name);
+		if (g_pipe.file == OS_INVALID_FILE) {
+			mexErrMsgIdAndTxt("ogl_beamformer:pipe_error", "failed to open pipe");
+			mxFree(pipe_name);
+			return;
+		}
+		mexAtExit(os_close_pipe);
+	}
+
 	const mxArray *mxdata = prhs[1];
-
-	os_pipe p = os_open_named_pipe(pipe_name);
-	if (p.file == OS_INVALID_FILE) {
-		mexPrintf("ogl_beamformer_pipe: failed to open pipe\n");
-		return;
-	}
-
 	if (!mxIsInt16(mxdata)) {
-		os_close_pipe(p);
-		mexPrintf("ogl_beamformer_pipe: invalid data type; only int16 is supported\n");
+		mexErrMsgIdAndTxt("ogl_beamformer:invalid_type",
+		                  "invalid data type; only int16 is supported");
 		return;
 	}
 
 	void *data     = mxGetPr(mxdata);
 	size data_size = mxGetNumberOfElements(mxdata) * sizeof(i16);
-	size written   = os_write_to_pipe(p, data, data_size);
+	size written   = os_write_to_pipe(g_pipe, data, data_size);
 	if (written != data_size)
-		mexPrintf("ogl_beamformer_pipe: failed to write full data to pipe: wrote: %ld\n", written);
-
-	os_close_pipe(p);
+		mexWarnMsgIdAndTxt("ogl_beamformer:write_error",
+		                   "failed to write full data to pipe: wrote: %ld", written);
 }
