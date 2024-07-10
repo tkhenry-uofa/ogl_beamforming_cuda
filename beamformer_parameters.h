@@ -7,6 +7,8 @@ typedef struct {
 	u32 uforces_channels[128];  /* Channels used for virtual UFORCES elements */
 	uv4 rf_data_dim;            /* Samples * Channels * Acquisitions; last element ignored */
 	uv4 output_points;          /* Width * Height * Depth; last element ignored */
+	v2  output_min_xz;          /* [m] Top left corner of output region */
+	v2  output_max_xz;          /* [m] Bottom right corner of output region */
 	u32 channel_data_stride;    /* Data points between channels (samples * acq + padding) */
 	u32 channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	f32 speed_of_sound;         /* [m/s] */

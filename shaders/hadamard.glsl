@@ -19,6 +19,8 @@ layout(std140, binding = 0) uniform parameters {
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
 	uvec4 rf_data_dim;            /* Samples * Channels * Acquisitions; last element ignored */
 	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
+	vec2  output_min_xz;          /* [m] Top left corner of output region */
+	vec2  output_max_xz;          /* [m] Bottom right corner of output region */
 	uint  channel_data_stride;    /* Data points between channels (samples * acq + padding) */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	float speed_of_sound;         /* [m/s] */

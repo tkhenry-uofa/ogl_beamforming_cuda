@@ -11,6 +11,8 @@ layout(std140, binding = 0) uniform parameters {
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
 	uvec4 rf_data_dim;            /* Samples * Channels * Acquisitions; last element ignored */
 	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
+	vec2  output_min_xz;          /* [m] Top left corner of output region */
+	vec2  output_max_xz;          /* [m] Bottom right corner of output region */
 	uint  channel_data_stride;    /* Data points between channels (samples * acq + padding) */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	float speed_of_sound;         /* [m/s] */
@@ -63,13 +65,14 @@ void main()
 	vec2 xdc_upper_left   = vec2(-0.0096, -0.0096);
 	vec2 xdc_bottom_right = vec2( 0.0096,  0.0096);
 	vec2 xdc_size         = abs(xdc_upper_left - xdc_bottom_right);
+	vec2 output_size      = abs(output_max_xz - output_min_xz);
 
 	/* TODO: image extent can be different than xdc_size */
 	/* TODO: for now assume y-dimension is along transducer center */
 	vec3 image_point = vec3(
-		xdc_upper_left.x + pixel.x * xdc_size.x / out_data_dim.x,
+		output_min_xz.x + pixel.x * output_size.x / out_data_dim.x,
 		0,
-		pixel.y * 60e-3 / out_data_dim.y + 10e-3
+		output_min_xz.y + pixel.y * output_size.y / out_data_dim.y
 	);
 
 	/* TODO: Send this into the GPU */
@@ -80,8 +83,9 @@ void main()
 	float dzsign = sign(image_point.z - focal_depth);
 
 	float sum = 0;
-	/* NOTE: skip first acquisition since its garbage */
+
 	uint ridx = rf_data_dim.y * rf_data_dim.x;
+	/* NOTE: skip first acquisition since its garbage */
 	for (uint i = 1; i < rf_data_dim.z; i++) {
 		vec3  focal_point   = vec3(sparse_elems[i - 1] * dx, 0, focal_depth);
 		float transmit_dist = focal_depth + dzsign * distance(image_point, focal_point);

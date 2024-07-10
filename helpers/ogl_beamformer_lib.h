@@ -19,6 +19,7 @@ typedef ptrdiff_t size;
 #define LIB_FN
 #endif
 
+typedef struct { f32 x, y; }       v2;
 typedef struct { u32 x, y, z, w; } uv4;
 
 #include "../beamformer_parameters.h"
