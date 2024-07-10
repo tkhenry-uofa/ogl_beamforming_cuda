@@ -6,14 +6,22 @@ layout(std430, binding = 1) readonly restrict buffer buffer_1 {
 	float rf_data[];
 };
 
-#define C_SPLINE 0.5
+layout(std140, binding = 0) uniform parameters {
+	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
+	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
+	uvec4 rf_data_dim;            /* Samples * Channels * Acquisitions; last element ignored */
+	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
+	uint  channel_data_stride;    /* Data points between channels (samples * acq + padding) */
+	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
+	float speed_of_sound;         /* [m/s] */
+	float sampling_frequency;     /* [Hz]  */
+	float focal_depth;            /* [m]   */
+};
+//layout(location = 6) uniform sampler2D u_element_positions;
 
 layout(rg32f, location = 1) uniform image3D   u_out_data_tex;
-layout(location = 2)        uniform uvec3     u_rf_data_dim;
-layout(location = 3)        uniform float     u_sound_speed = 1452;
-layout(location = 4)        uniform float     u_sampling_frequency = 2.0833e7;
-layout(location = 5)        uniform float     u_focal_depth = 0.07;
-//layout(location = 6) uniform sampler2D u_element_positions;
+
+#define C_SPLINE 0.5
 
 /* NOTE: See: https://en.wikipedia.org/wiki/Cubic_Hermite_spline */
 float cubic(uint ridx, float x)
@@ -68,27 +76,27 @@ void main()
 	float sparse_elems[] = {17, 33, 49, 65, 80, 96, 112};
 
 	float x      = image_point.x - xdc_upper_left.x;
-	float dx     = xdc_size.x / float(u_rf_data_dim.y);
-	float dzsign = sign(image_point.z - u_focal_depth);
+	float dx     = xdc_size.x / float(rf_data_dim.y);
+	float dzsign = sign(image_point.z - focal_depth);
 
 	float sum = 0;
 	/* NOTE: skip first acquisition since its garbage */
-	uint ridx = u_rf_data_dim.y * u_rf_data_dim.x;
-	for (uint i = 1; i < u_rf_data_dim.z; i++) {
-		vec3  focal_point   = vec3(sparse_elems[i - 1] * dx, 0, u_focal_depth);
-		float transmit_dist = u_focal_depth + dzsign * distance(image_point, focal_point);
+	uint ridx = rf_data_dim.y * rf_data_dim.x;
+	for (uint i = 1; i < rf_data_dim.z; i++) {
+		vec3  focal_point   = vec3(sparse_elems[i - 1] * dx, 0, focal_depth);
+		float transmit_dist = focal_depth + dzsign * distance(image_point, focal_point);
 
 		vec2 rdist = vec2(x, image_point.z);
-		for (uint j = 0; j < u_rf_data_dim.y; j++) {
+		for (uint j = 0; j < rf_data_dim.y; j++) {
 			float dist    = transmit_dist + length(rdist);
-			float rsample = dist * u_sampling_frequency / u_sound_speed;
+			float rsample = dist * sampling_frequency / speed_of_sound;
 
 			/* NOTE: do cubic interp between adjacent time samples */
 			sum     += cubic(ridx, rsample);
 			rdist.x -= dx;
-			ridx    += u_rf_data_dim.x;
+			ridx    += rf_data_dim.x;
 		}
-		ridx += u_rf_data_dim.y * u_rf_data_dim.x;
+		ridx += rf_data_dim.y * rf_data_dim.x;
 	}
 	imageStore(u_out_data_tex, out_coord, vec4(sum, sum, 0, 0));
 }

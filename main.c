@@ -122,7 +122,6 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		glDeleteShader(shader_id);
 	}
 
-	csctx->rf_data_dim_id  = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_rf_data_dim");
 	csctx->out_data_tex_id = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_out_data_tex");
 	csctx->mip_view_tex_id = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_view_tex");
 	csctx->mips_level_id   = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_map");
@@ -163,6 +162,11 @@ main(void)
 	ASSERT(ctx.params);
 
 	ctx.params->output_points = ctx.out_data_dim;
+
+	/* NOTE: allocate space for Uniform Buffer Object but don't send anything yet */
+	glGenBuffers(1, &ctx.csctx.shared_ubo);
+	glBindBuffer(GL_UNIFORM_BUFFER, ctx.csctx.shared_ubo);
+	glBufferData(GL_UNIFORM_BUFFER, sizeof(BeamformerParameters), 0, GL_STATIC_DRAW);
 
 	ctx.flags |= RELOAD_SHADERS;
 

@@ -14,7 +14,17 @@ layout(std430, binding = 3) readonly restrict buffer buffer_3 {
 	int hadamard[];
 };
 
-layout(location = 2) uniform uvec3 u_rf_data_dim;
+layout(std140, binding = 0) uniform parameters {
+	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
+	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
+	uvec4 rf_data_dim;            /* Samples * Channels * Acquisitions; last element ignored */
+	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
+	uint  channel_data_stride;    /* Data points between channels (samples * acq + padding) */
+	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
+	float speed_of_sound;         /* [m/s] */
+	float sampling_frequency;     /* [Hz]  */
+	float focal_depth;            /* [m]   */
+};
 
 void main()
 {
@@ -27,7 +37,7 @@ void main()
 	uint acq         = gl_GlobalInvocationID.z;
 
 	/* offset to get the correct column in hadamard matrix */
-	uint hoff = u_rf_data_dim.z * acq;
+	uint hoff = rf_data_dim.z * acq;
 
 	/* TODO: make sure incoming data is organized so that stride is 1
 	 * i.e. each column should be a single time sample for all channels
@@ -35,8 +45,8 @@ void main()
 	 */
 
 	/* offset to get the time sample and row in rf data */
-	uint rstride = u_rf_data_dim.x * u_rf_data_dim.y;
-	uint rfoff   = u_rf_data_dim.x * channel + time_sample;
+	uint rstride = rf_data_dim.x * rf_data_dim.y;
+	uint rfoff   = rf_data_dim.x * channel + time_sample;
 
 	uint ridx       = rfoff / 2;
 	uint ridx_delta = rstride / 2;
@@ -49,7 +59,7 @@ void main()
 
 	/* NOTE: Compute N-D dot product */
 	int sum = 0;
-	for (int i = 0; i < u_rf_data_dim.z; i++) {
+	for (int i = 0; i < rf_data_dim.z; i++) {
 		int data = (rf_data[ridx] << lfs) >> 16;
 		sum += hadamard[hoff + i] * data;
 		ridx += ridx_delta;

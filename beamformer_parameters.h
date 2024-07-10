@@ -9,6 +9,7 @@ typedef struct {
 	uv4 output_points;          /* Width * Height * Depth; last element ignored */
 	u32 channel_data_stride;    /* Data points between channels (samples * acq + padding) */
 	u32 channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
-	f32 speed_of_sound;
-	f32 sampling_frequency;
+	f32 speed_of_sound;         /* [m/s] */
+	f32 sampling_frequency;     /* [Hz]  */
+	f32 focal_depth;            /* [m]   */
 } BeamformerParameters;

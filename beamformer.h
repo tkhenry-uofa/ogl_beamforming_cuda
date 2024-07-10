@@ -35,6 +35,7 @@ enum compute_shaders {
 enum program_flags {
 	RELOAD_SHADERS = 1 << 0,
 	DO_COMPUTE     = 1 << 1,
+	UPLOAD_UBO     = 1 << 2,
 };
 
 typedef struct {
@@ -45,8 +46,9 @@ typedef struct {
 	u32 hadamard_ssbo;
 	uv2 hadamard_dim;
 
+	u32 shared_ubo;
+
 	uv4 rf_data_dim;
-	i32 rf_data_dim_id;
 	i32 out_data_tex_id;
 	i32 mip_view_tex_id;
 	i32 mips_level_id;

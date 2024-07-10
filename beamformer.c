@@ -50,10 +50,11 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 	ComputeShaderCtx *csctx = &ctx->csctx;
 	glUseProgram(csctx->programs[shader]);
 
-	glUniform3uiv(csctx->rf_data_dim_id,  1, csctx->rf_data_dim.E);
 	glBindImageTexture(ctx->out_texture_unit, ctx->out_texture, 0, GL_FALSE, 0,
 	                   GL_WRITE_ONLY, GL_RG32F);
 	glUniform1i(csctx->out_data_tex_id, ctx->out_texture_unit);
+
+	glBindBufferBase(GL_UNIFORM_BUFFER, 0, csctx->shared_ubo);
 
 	u32 rf_ssbo_idx      = 0;
 	u32 decoded_ssbo_idx = 1;
@@ -181,6 +182,14 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	}
 
 	if (ctx->flags & DO_COMPUTE) {
+		if (ctx->flags & UPLOAD_UBO) {
+			glBindBuffer(GL_UNIFORM_BUFFER, ctx->csctx.shared_ubo);
+			void *ubo = glMapBuffer(GL_UNIFORM_BUFFER, GL_WRITE_ONLY);
+			mem_copy((s8){.data = (u8 *)ctx->params, .len = sizeof(BeamformerParameters)},
+			         (s8){.data = (u8 *)ubo,         .len = sizeof(BeamformerParameters)});
+			glUnmapBuffer(GL_UNIFORM_BUFFER);
+			ctx->flags &= ~UPLOAD_UBO;
+		}
 		do_compute_shader(ctx, CS_HADAMARD);
 		do_compute_shader(ctx, CS_UFORCES);
 		do_compute_shader(ctx, CS_MIN_MAX);
