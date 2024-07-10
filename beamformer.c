@@ -109,20 +109,15 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, f32 dt)
 	v2 partial_fs = {.rl = MeasureTextEx(ctx->font, (char *)partial_txt.data, fontsize, fontspace)};
 	v2 db_fs      = {.rl = MeasureTextEx(ctx->font, (char *)db_txt.data, fontsize, fontspace)};
 
-	v2 scale = {.x = 90, .y = 20};
 	v2 pos   = {.x = 20, .y = ws.h - db_fs.y - partial_fs.y - 20};
 	/* NOTE: Dynamic Range */
 	{
-		v2 dposa = {.x = pos.x + db_fs.x / scale.x, .y = pos.y + db_fs.y / scale.y };
-		DrawTextEx(ctx->font, (char *)db_txt.data, dposa.rl, fontsize, fontspace, Fade(BLACK, 0.8));
-		DrawTextEx(ctx->font, (char *)db_txt.data, pos.rl,  fontsize, fontspace, RED);
+		DrawTextEx(ctx->font, (char *)db_txt.data, pos.rl,  fontsize, fontspace, ctx->fg);
 		pos.y += db_fs.y;
 	}
 	/* NOTE: Partial Tranfers */
 	{
-		v2 dposa = {.x = pos.x + partial_fs.x / scale.x, .y = pos.y + partial_fs.y / scale.y };
-		DrawTextEx(ctx->font, (char *)partial_txt.data, dposa.rl, fontsize, fontspace, Fade(BLACK, 0.8));
-		DrawTextEx(ctx->font, (char *)partial_txt.data, pos.rl,  fontsize, fontspace, RED);
+		DrawTextEx(ctx->font, (char *)partial_txt.data, pos.rl,  fontsize, fontspace, ctx->fg);
 		pos.y += partial_fs.y;
 	}
 
@@ -161,6 +156,13 @@ DEBUG_EXPORT void
 do_beamformer(BeamformerCtx *ctx, Arena arena)
 {
 	f32 dt = GetFrameTime();
+
+	if (IsWindowResized()) {
+		f32 aspect_ratio = 3.0f/4.0f;
+		ctx->window_size.h = GetScreenHeight();
+		ctx->window_size.w = ctx->window_size.h * aspect_ratio;
+		SetWindowSize(ctx->window_size.w, ctx->window_size.h);
+	}
 
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
@@ -212,14 +214,112 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		EndShaderMode();
 	EndTextureMode();
 
+	/* NOTE: Draw UI */
 	BeginDrawing();
 		ClearBackground(ctx->bg);
 
 		Texture *output   = &ctx->fsctx.output.texture;
-		Rectangle win_r   = { 0.0f, 0.0f, (f32)ctx->window_size.w, (f32)ctx->window_size.h };
+
+		v2 output_dim = {
+			.x = ctx->params->output_max_xz.x - ctx->params->output_min_xz.x,
+			.y = ctx->params->output_max_xz.y - ctx->params->output_min_xz.y,
+		};
+
+		f32 aspect_ratio = output_dim.x / output_dim.y;
+		/* NOTE: start this on far right and add space for scale-bar text */
+		v2 view_size, view_pos;
+
+		v2 line_step_mm = {.x = 3, .y = 5};
+		uv2 line_count  = {
+			.x = output_dim.x * 1e3/line_step_mm.x + 1,
+			.y = output_dim.y * 1e3/line_step_mm.y + 1,
+		};
+
+		/* NOTE: Horizontal Scale Bar */
+		{
+			Arena tmp = arena;
+
+			s8 txt    = s8alloc(&tmp, 64);
+			snprintf((char *)txt.data, txt.len, "%+0.01f mm", -88.8f);
+			v2 txt_s  = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, 32, 2)};
+
+			f32 pad = txt_s.x + 80;
+			view_size = (v2){
+				.x = ((f32)ctx->window_size.h - pad) * aspect_ratio,
+				.y = ((f32)ctx->window_size.h - pad),
+			};
+
+			view_pos = (v2){
+				.x = ((f32)ctx->window_size.w - view_size.x) - pad + 40,
+				.y = txt_s.y,
+			};
+
+			f32 x_inc    = view_size.x / (line_count.x - 1);
+			v2 start_pos = {
+				.x = view_pos.x,
+				.y = view_pos.y + view_size.y,
+			};
+
+			f32 x_mm     = ctx->params->output_min_xz.x * 1e3;
+			f32 x_mm_inc = x_inc * output_dim.x * 1e3 / view_size.x;
+
+			v2 end_pos  = start_pos;
+			end_pos.y  += 20;
+
+			v2 txt_pos  = end_pos;
+			txt_pos.y  += 10;
+			txt_pos.x   += txt_s.y/2;
+
+			for (u32 i = 0 ; i < line_count.x; i++) {
+				DrawLineEx(start_pos.rl, end_pos.rl, 3, ctx->fg);
+				snprintf((char *)txt.data, txt.len, "%+0.01f mm", x_mm);
+				DrawTextPro(ctx->font, (char *)txt.data, txt_pos.rl, (Vector2){0}, 90, 32, 2, ctx->fg);
+				start_pos.x += x_inc;
+				end_pos.x   += x_inc;
+				txt_pos.x   += x_inc;
+				x_mm        += x_mm_inc;
+			}
+		}
+
+		/* NOTE: Vertical Scale Bar */
+		{
+			Arena tmp = arena;
+
+			s8 txt      = s8alloc(&tmp, 64);
+			snprintf((char *)txt.data, txt.len, "%0.01f mm", 0.0f);
+			v2 txt_s    = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, 32, 2)};
+
+			f32 y_inc    = view_size.y / (line_count.y - 1);
+			v2 start_pos = {
+				.x = view_pos.x + view_size.x,
+				.y = view_pos.y,
+			};
+
+			f32 y_mm     = ctx->params->output_min_xz.y * 1e3;
+			f32 y_mm_inc = y_inc * output_dim.y * 1e3 / view_size.y;
+
+			v2 end_pos  = start_pos;
+			end_pos.x  += 20;
+
+			v2 txt_pos  = end_pos;
+			txt_pos.x  += 10;
+			txt_pos.y   -= txt_s.y/2;
+
+			for (u32 i = 0 ; i < line_count.y; i++) {
+				DrawLineEx(start_pos.rl, end_pos.rl, 3, ctx->fg);
+				snprintf((char *)txt.data, txt.len, "%0.01f mm", y_mm);
+				DrawTextEx(ctx->font, (char *)txt.data, txt_pos.rl, 32, 2, ctx->fg);
+				start_pos.y += y_inc;
+				end_pos.y   += y_inc;
+				txt_pos.y   += y_inc;
+				y_mm        += y_mm_inc;
+			}
+		}
+
+		Rectangle view_r  = { view_pos.x, view_pos.y, view_size.x, view_size.y };
 		Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
 		NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
-		DrawTextureNPatch(*output, tex_np, win_r, (Vector2){0}, 0, WHITE);
+		DrawTextureNPatch(*output, tex_np, view_r, (Vector2){0}, 0, WHITE);
 
 		draw_debug_overlay(ctx, arena, dt);
 	EndDrawing();

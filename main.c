@@ -142,14 +142,16 @@ main(void)
 
 	Arena temp_memory = os_new_arena(256 * MEGABYTE);
 
-	ctx.window_size  = (uv2){.w = 1024, .h = 1024};
+	ctx.window_size  = (uv2){.w = 960, .h = 1280};
 	ctx.out_data_dim = (uv4){.x = 256, .y = 1024, .z = 1};
 
-	ctx.bg = PINK;
-	ctx.fg = (Color){ .r = 0xea, .g = 0xe1, .b = 0xb4, .a = 0xff };
+	ctx.bg = (Color){.r = 0x09, .g = 0x09, .b = 0x09, .a = 0xff};
+	ctx.fg = (Color){.r = 0xea, .g = 0xe1, .b = 0xb4, .a = 0xff};
 
-	SetConfigFlags(FLAG_VSYNC_HINT);
+	SetConfigFlags(FLAG_VSYNC_HINT|FLAG_WINDOW_RESIZABLE);
 	InitWindow(ctx.window_size.w, ctx.window_size.h, "OGL Beamformer");
+
+	SetWindowMinSize(480, 640);
 
 	ctx.font = GetFontDefault();
 
