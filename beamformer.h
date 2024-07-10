@@ -45,7 +45,7 @@ typedef struct {
 	u32 hadamard_ssbo;
 	uv2 hadamard_dim;
 
-	uv3 rf_data_dim;
+	uv4 rf_data_dim;
 	i32 rf_data_dim_id;
 	i32 out_data_tex_id;
 	i32 mip_view_tex_id;
@@ -60,16 +60,7 @@ typedef struct {
 	f32             db;
 } FragmentShaderCtx;
 
-typedef struct {
-	u32 channel_row_mapping[128];
-	u32 channel_column_mapping[128];
-	u32 uforces_channels[128];
-	u32 channel_data_stride;
-	f32 speed_of_sound;
-	f32 sampling_frequency;
-	uv3 rf_data_dim;
-	uv3 output_points;
-} BeamformerParameters;
+#include "beamformer_parameters.h"
 
 #if defined(__unix__)
 	#define GL_GLEXT_PROTOTYPES 1
@@ -91,7 +82,7 @@ typedef struct {
 
 	Color bg, fg;
 
-	uv3 out_data_dim;
+	uv4 out_data_dim;
 	u32 out_texture;
 	u32 out_texture_unit;
 	u32 out_texture_mips;

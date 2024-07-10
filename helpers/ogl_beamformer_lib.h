@@ -19,19 +19,9 @@ typedef ptrdiff_t size;
 #define LIB_FN
 #endif
 
-typedef struct { u32 x, y, z; } uv3;
-typedef struct { f32 x, y, z; } v3;
+typedef struct { u32 x, y, z, w; } uv4;
 
-typedef struct {
-	u32 channel_row_mapping[128];
-	u32 channel_column_mapping[128];
-	u32 uforces_channels[128];
-	u32 channel_data_stride;
-	f32 speed_of_sound;
-	f32 sampling_frequency;
-	uv3 rf_data_dim;
-	uv3 output_points;
-} BeamformerParameters;
+#include "../beamformer_parameters.h"
 
 LIB_FN void set_beamformer_parameters(BeamformerParameters *);
 LIB_FN void send_data(char *, i16 *, uv3 data_dim);

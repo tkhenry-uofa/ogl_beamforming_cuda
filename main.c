@@ -97,9 +97,9 @@ compile_shader(Arena a, u32 type, s8 shader)
 }
 
 static void
-init_fragment_shader_ctx(FragmentShaderCtx *ctx, uv3 out_data_dim)
+init_fragment_shader_ctx(FragmentShaderCtx *ctx, uv4 out_data_dim)
 {
-	ctx->output = LoadRenderTexture(out_data_dim.w, out_data_dim.h);
+	ctx->output = LoadRenderTexture(out_data_dim.x, out_data_dim.y);
 	ctx->db     = -50.0f;
 }
 
@@ -144,7 +144,7 @@ main(void)
 	Arena temp_memory = os_new_arena(256 * MEGABYTE);
 
 	ctx.window_size  = (uv2){.w = 1024, .h = 1024};
-	ctx.out_data_dim = (uv3){.w = 256, .h = 1024, .d = 1};
+	ctx.out_data_dim = (uv4){.x = 256, .y = 1024, .z = 1};
 
 	ctx.bg = PINK;
 	ctx.fg = (Color){ .r = 0xea, .g = 0xe1, .b = 0xb4, .a = 0xff };

@@ -44,10 +44,9 @@ typedef union {
 } uv2;
 
 typedef union {
-	struct { u32 x, y, z; };
-	struct { u32 w, h, d; };
-	u32 E[3];
-} uv3;
+	struct { u32 x, y, z, w; };
+	u32 E[4];
+} uv4;
 
 #include "util.c"
 

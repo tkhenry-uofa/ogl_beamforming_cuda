@@ -4,10 +4,10 @@
 static void
 alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 {
-	uv3 rf_data_dim        = ctx->params->rf_data_dim;
+	uv4 rf_data_dim        = ctx->params->rf_data_dim;
 	ctx->csctx.rf_data_dim = rf_data_dim;
-	size rf_raw_size       = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i16);
-	size rf_decoded_size   = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(f32);
+	size rf_raw_size       = rf_data_dim.x * rf_data_dim.y * rf_data_dim.z * sizeof(i16);
+	size rf_decoded_size   = rf_data_dim.x * rf_data_dim.y * rf_data_dim.z * sizeof(f32);
 
 	glDeleteBuffers(ARRAY_COUNT(ctx->csctx.rf_data_ssbos), ctx->csctx.rf_data_ssbos);
 	glGenBuffers(ARRAY_COUNT(ctx->csctx.rf_data_ssbos), ctx->csctx.rf_data_ssbos);
@@ -18,7 +18,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_decoded_size, 0, GL_DYNAMIC_STORAGE_BIT);
 
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
-	ctx->csctx.hadamard_dim = (uv2){ .x = rf_data_dim.d, .y = rf_data_dim.d };
+	ctx->csctx.hadamard_dim = (uv2){ .x = rf_data_dim.z, .y = rf_data_dim.z };
 	size hadamard_elements  = ctx->csctx.hadamard_dim.x * ctx->csctx.hadamard_dim.y;
 	i32  *hadamard          = alloc(&a, i32, hadamard_elements);
 	fill_hadamard(hadamard, ctx->csctx.hadamard_dim.x);
@@ -29,7 +29,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 
 	/* NOTE: allocate storage for beamformed output data;
 	 * this is shared between compute and fragment shaders */
-	uv3 odim    = ctx->out_data_dim;
+	uv4 odim    = ctx->out_data_dim;
 	u32 max_dim = MAX(odim.x, MAX(odim.y, odim.z));
 	/* TODO: does this actually matter or is 0 fine? */
 	ctx->out_texture_unit = 0;
@@ -41,7 +41,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glTexStorage3D(GL_TEXTURE_3D, ctx->out_texture_mips, GL_RG32F, odim.x, odim.y, odim.z);
 
 	UnloadRenderTexture(ctx->fsctx.output);
-	ctx->fsctx.output = LoadRenderTexture(odim.w, odim.h);
+	ctx->fsctx.output = LoadRenderTexture(odim.x, odim.y);
 }
 
 static void
@@ -76,9 +76,9 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 			glUniform1i(csctx->mips_level_id, i);
 
 			#define ORONE(x) ((x)? (x) : 1)
-			u32 width  = ctx->out_data_dim.w >> i;
-			u32 height = ctx->out_data_dim.h >> i;
-			u32 depth  = ctx->out_data_dim.d >> i;
+			u32 width  = ctx->out_data_dim.x >> i;
+			u32 height = ctx->out_data_dim.y >> i;
+			u32 depth  = ctx->out_data_dim.z >> i;
 			glDispatchCompute(ORONE(width / 32), ORONE(height / 32), ORONE(depth));
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
@@ -163,14 +163,14 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
-		if (!uv3_equal(ctx->csctx.rf_data_dim, ctx->params->rf_data_dim))
+		if (!uv4_equal(ctx->csctx.rf_data_dim, ctx->params->rf_data_dim))
 			alloc_shader_storage(ctx, arena);
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbos[0]);
 		void *rf_data_buf = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 		ASSERT(rf_data_buf);
-		uv3  rf_data_dim  = ctx->csctx.rf_data_dim;
-		size rf_raw_size  = rf_data_dim.w * rf_data_dim.h * rf_data_dim.d * sizeof(i16);
+		uv4  rf_data_dim  = ctx->csctx.rf_data_dim;
+		size rf_raw_size  = rf_data_dim.x * rf_data_dim.y * rf_data_dim.z * sizeof(i16);
 		size rlen         = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
 		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 		if (rlen == rf_raw_size) {

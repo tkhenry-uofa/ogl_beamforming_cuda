@@ -107,7 +107,7 @@ check_shared_memory(void)
 }
 
 void
-send_data(char *pipe_name, i16 *data, uv3 data_dim)
+send_data(char *pipe_name, i16 *data, uv4 data_dim)
 {
 	if (g_pipe.file == OS_INVALID_FILE) {
 		g_pipe = os_open_named_pipe(pipe_name);

@@ -46,9 +46,9 @@ s8alloc(Arena *a, size len)
 }
 
 static b32
-uv3_equal(uv3 a, uv3 b)
+uv4_equal(uv4 a, uv4 b)
 {
-	return a.x == b.x && a.y == b.y && a.z == b.z;
+	return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
 }
 
 static void
