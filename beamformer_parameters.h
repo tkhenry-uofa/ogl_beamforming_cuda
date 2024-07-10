@@ -16,4 +16,5 @@ typedef struct {
 	f32 speed_of_sound;         /* [m/s] */
 	f32 sampling_frequency;     /* [Hz]  */
 	f32 focal_depth;            /* [m]   */
+	f32 _pad[3];
 } BeamformerParameters;

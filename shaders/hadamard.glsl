@@ -33,41 +33,48 @@ layout(std140, binding = 0) uniform parameters {
 void main()
 {
 	/* NOTE: each invocation takes a time sample (row) and a receive channel (column).
-	 * it does the dot product of that column with the equivalent row of the hadamard matrix.
-	 * the result is stored to the same row, column index of the output data.
+	 * It first maps the the column to the correct column in the rf data then
+	 * does the dot product with the equivalent row of the hadamard matrix.
+	 * The result is stored to the equivalent row, column index of the output.
 	 */
 	uint time_sample = gl_GlobalInvocationID.x;
 	uint channel     = gl_GlobalInvocationID.y;
 	uint acq         = gl_GlobalInvocationID.z;
 
-	/* offset to get the correct column in hadamard matrix */
+	/* NOTE: offset to get the correct column in hadamard matrix */
 	uint hoff = rf_data_dim.z * acq;
 
-	/* TODO: make sure incoming data is organized so that stride is 1
-	 * i.e. each column should be a single time sample for all channels
-	 * alternatively we can tell opengl to store the rf data in row major order
-	 */
+	/* NOTE: offsets for storing the results in the output data */
+	uint out_stride = rf_data_dim.x * rf_data_dim.y;
+	uint out_off    = rf_data_dim.x * channel + time_sample;
 
-	/* offset to get the time sample and row in rf data */
-	uint rstride = rf_data_dim.x * rf_data_dim.y;
-	uint rfoff   = rf_data_dim.x * channel + time_sample;
+	/* TODO: channel_mapping */
+	//uint ch_base_idx = (channel + channel_offset) / 4;
+	//uint ch_sub_idx  = (channel + channel_offset) - ch_base_idx;
+	//uint rf_channel  = channel_mapping[ch_base_idx][ch_sub_idx];
+	uint rf_channel = channel;
 
-	uint ridx       = rfoff / 2;
-	uint ridx_delta = rstride / 2;
+	/* NOTE: offsets to get the time sample and row in rf data */
+	uint rf_stride = channel_data_stride * rf_data_dim.y;
+	uint rf_off    = channel_data_stride * rf_channel + time_sample;
+
+	/* NOTE: rf_data index and stride considering the data is i16 not i32 */
+	uint ridx       = rf_off / 2;
+	uint ridx_delta = rf_stride / 2;
 
 	/* NOTE: rf_data is i16 so each access grabs two time samples at time.
 	 * We need to shift arithmetically (maintaining the sign) to get the
 	 * desired element. If the time sample is even we take the upper half
 	 * and if its odd we take the lower half. */
-	uint lfs = ~(time_sample & 1) * 16;
+	uint lfs = ~(time_sample & 1u) * 16;
 
 	/* NOTE: Compute N-D dot product */
 	int sum = 0;
 	for (int i = 0; i < rf_data_dim.z; i++) {
 		int data = (rf_data[ridx] << lfs) >> 16;
-		sum += hadamard[hoff + i] * data;
+		sum  += hadamard[hoff + i] * data;
 		ridx += ridx_delta;
 	}
 
-	out_data[rfoff + rstride * acq] = float(sum);
+	out_data[out_off + out_stride * acq] = float(sum);
 }

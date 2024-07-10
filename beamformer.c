@@ -6,7 +6,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 {
 	uv4 rf_data_dim        = ctx->params->rf_data_dim;
 	ctx->csctx.rf_data_dim = rf_data_dim;
-	size rf_raw_size       = rf_data_dim.x * rf_data_dim.y * rf_data_dim.z * sizeof(i16);
+	size rf_raw_size       = ctx->params->channel_data_stride * rf_data_dim.y * rf_data_dim.z * sizeof(i16);
 	size rf_decoded_size   = rf_data_dim.x * rf_data_dim.y * rf_data_dim.z * sizeof(f32);
 
 	glDeleteBuffers(ARRAY_COUNT(ctx->csctx.rf_data_ssbos), ctx->csctx.rf_data_ssbos);
