@@ -27,7 +27,6 @@ typedef struct {
 #endif
 
 static volatile BeamformerParameters *g_bp;
-static char *shm_name = "/ogl_beamformer_parameters";
 static os_pipe g_pipe = {.file = OS_INVALID_FILE};
 
 #if defined(__unix__)
@@ -93,14 +92,28 @@ os_close_pipe(void)
 {
 	CloseHandle(g_pipe.file);
 }
+
+static BeamformerParameters *
+os_open_shared_memory_area(char *name)
+{
+	HANDLE h = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, name);
+	if (h == OS_INVALID_FILE)
+		return NULL;
+
+	BeamformerParameters *new;
+	new = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(BeamformerParameters));
+	CloseHandle(h);
+
+	return new;
+}
 #endif
 
 static void
-check_shared_memory(void)
+check_shared_memory(char *name)
 {
 	if (g_bp)
 		return;
-	g_bp = os_open_shared_memory_area(shm_name);
+	g_bp = os_open_shared_memory_area(name);
 	if (g_bp == NULL)
 		mexErrMsgIdAndTxt("ogl_beamformer:shared_memory",
 		                  "failed to open shared memory area");
@@ -128,9 +141,9 @@ send_data(char *pipe_name, i16 *data, uv4 data_dim)
 }
 
 void
-set_beamformer_parameters(BeamformerParameters *new_bp)
+set_beamformer_parameters(char *shm_name, BeamformerParameters *new_bp)
 {
-	check_shared_memory();
+	check_shared_memory(shm_name);
 	u8 *src = (u8 *)new_bp, *dest = (u8 *)g_bp;
 	for (size i = 0; i < sizeof(BeamformerParameters); i++)
 		dest[i] = src[i];

@@ -116,3 +116,24 @@ os_read_pipe_data(os_pipe p, void *buf, size len)
 	ReadFile(p.file, buf, len, &total_read, 0);
 	return total_read;
 }
+
+static BeamformerParameters *
+os_open_shared_memory_area(char *name)
+{
+	HANDLE h = CreateFileMappingA(INVALID_HANDLE_VALUE, 0, PAGE_READWRITE, 0,
+	                              sizeof(BeamformerParameters), name);
+	if (h == INVALID_HANDLE_VALUE)
+		return NULL;
+
+	BeamformerParameters *new;
+	new = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(BeamformerParameters));
+	CloseHandle(h);
+
+	return new;
+}
+
+/* NOTE: handle is already closed and view will be unmapped when program terminates */
+static void
+os_remove_shared_memory(char *name)
+{
+}
