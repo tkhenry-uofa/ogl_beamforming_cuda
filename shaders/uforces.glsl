@@ -13,6 +13,8 @@ layout(std140, binding = 0) uniform parameters {
 	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
 	vec2  output_min_xz;          /* [m] Top left corner of output region */
 	vec2  output_max_xz;          /* [m] Bottom right corner of output region */
+	vec2  xdc_min_xy;             /* [m] Min center of transducer elements */
+	vec2  xdc_max_xy;             /* [m] Max center of transducer elements */
 	uint  channel_data_stride;    /* Data points between channels (samples * acq + padding) */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	float speed_of_sound;         /* [m/s] */
@@ -59,15 +61,9 @@ void main()
 	ivec3 out_data_dim = imageSize(u_out_data_tex);
 
 	/* NOTE: Convert pixel to physical coordinates */
-	/* TODO: Send these in like the 3D program */
-	//vec2 xdc_upper_left   = texture(u_element_positions, ivec2(0, 0)).xy;
-	//vec2 xdc_bottom_right = texture(u_element_positions, ivec2(1, 1)).xy;
-	vec2 xdc_upper_left   = vec2(-0.0096, -0.0096);
-	vec2 xdc_bottom_right = vec2( 0.0096,  0.0096);
-	vec2 xdc_size         = abs(xdc_upper_left - xdc_bottom_right);
-	vec2 output_size      = abs(output_max_xz - output_min_xz);
+	vec2 xdc_size    = abs(xdc_max_xy - xdc_min_xy);
+	vec2 output_size = abs(output_max_xz - output_min_xz);
 
-	/* TODO: image extent can be different than xdc_size */
 	/* TODO: for now assume y-dimension is along transducer center */
 	vec3 image_point = vec3(
 		output_min_xz.x + pixel.x * output_size.x / out_data_dim.x,
@@ -78,7 +74,7 @@ void main()
 	/* TODO: Send this into the GPU */
 	float sparse_elems[] = {17, 33, 49, 65, 80, 96, 112};
 
-	float x      = image_point.x - xdc_upper_left.x;
+	float x      = image_point.x - xdc_min_xy.x;
 	float dx     = xdc_size.x / float(rf_data_dim.y);
 	float dzsign = sign(image_point.z - focal_depth);
 

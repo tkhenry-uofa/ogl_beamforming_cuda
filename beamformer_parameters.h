@@ -9,6 +9,8 @@ typedef struct {
 	uv4 output_points;          /* Width * Height * Depth; last element ignored */
 	v2  output_min_xz;          /* [m] Top left corner of output region */
 	v2  output_max_xz;          /* [m] Bottom right corner of output region */
+	v2  xdc_min_xy;             /* [m] Min center of transducer elements */
+	v2  xdc_max_xy;             /* [m] Max center of transducer elements */
 	u32 channel_data_stride;    /* Data points between channels (samples * acq + padding) */
 	u32 channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	f32 speed_of_sound;         /* [m/s] */
