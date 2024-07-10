@@ -71,9 +71,6 @@ void main()
 		output_min_xz.y + pixel.y * output_size.y / out_data_dim.y
 	);
 
-	/* TODO: Send this into the GPU */
-	float sparse_elems[] = {17, 33, 49, 65, 80, 96, 112};
-
 	float x      = image_point.x - xdc_min_xy.x;
 	float dx     = xdc_size.x / float(rf_data_dim.y);
 	float dzsign = sign(image_point.z - focal_depth);
@@ -83,7 +80,10 @@ void main()
 	uint ridx = rf_data_dim.y * rf_data_dim.x;
 	/* NOTE: skip first acquisition since its garbage */
 	for (uint i = 1; i < rf_data_dim.z; i++) {
-		vec3  focal_point   = vec3(sparse_elems[i - 1] * dx, 0, focal_depth);
+		uint base_idx = (i - 1) / 4;
+		uint sub_idx  = (i - 1) - base_idx;
+
+		vec3  focal_point   = vec3(uforces_channels[base_idx][sub_idx] * dx, 0, focal_depth);
 		float transmit_dist = focal_depth + dzsign * distance(image_point, focal_point);
 
 		vec2 rdist = vec2(x, image_point.z);
