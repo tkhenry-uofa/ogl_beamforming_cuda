@@ -27,30 +27,26 @@ layout(rg32f, location = 1) uniform image3D   u_out_data_tex;
 
 #define C_SPLINE 0.5
 
-/* NOTE: See: https://en.wikipedia.org/wiki/Cubic_Hermite_spline */
+/* NOTE: See: https://cubic.org/docs/hermite.htm */
 float cubic(uint ridx, float x)
 {
-	uint  xk  = uint(floor(x));
+	mat4 h = mat4(
+		 2, -3,  0, 1,
+		-2,  3,  0, 0,
+		 1, -2,  1, 0,
+		 1, -1,  0, 0
+	);
 
-	//float t = x - float(xk);
-	//float param = -2 * t * t * t + 3 * t * t;
-	//return rf_data[ridx + xk] + param * (rf_data[ridx + xk + 1] - rf_data[ridx + xk]);
+	uint  xk = uint(floor(x));
+	float t  = (x  - float(xk));
+	vec4  S  = vec4(t * t * t, t * t, t, 1);
 
-	//float param = smoothstep(xk, xk + 1, x);
-	//return mix(rf_data[ridx + xk], rf_data[ridx + xk + 1], param);
-
-	float t   = (x  - float(xk));
-	float pm1 = rf_data[ridx + xk - 1];
-	float p0  = rf_data[ridx + xk];
-	float p1  = rf_data[ridx + xk + 1];
-	float p2  = rf_data[ridx + xk + 2];
-	float m0  = 0.5 * (1 - C_SPLINE) * (p1 - pm1);
-	float m1  = 0.5 * (1 - C_SPLINE) * (p2 - p0);
-
-	return   (2 * p0 + m0 - 2 * p1 + m1) * t * t * t
-	       + (-3 * p0 + 3 * p1 - 2 * m0 - m1) * t * t
-	       + m0 * t
-	       + p0;
+	float P1 = rf_data[ridx + xk];
+	float P2 = rf_data[ridx + xk + 1];
+	float T1 = C_SPLINE * (P2 - rf_data[ridx + xk - 1]);
+	float T2 = C_SPLINE * (rf_data[ridx + xk + 2] - P1);
+	vec4  C  = vec4(P1, P2, T1, T2);
+	return dot(S, h * C);
 }
 
 void main()
