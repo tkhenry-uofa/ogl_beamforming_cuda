@@ -12,6 +12,7 @@
 
 typedef union {
 	struct { f32 x, y; };
+	struct { f32 w, h; };
 	f32 E[2];
 	Vector2 rl;
 } v2;
@@ -22,6 +23,11 @@ typedef union {
 	f32 E[4];
 	Vector4 rl;
 } v4;
+
+typedef union {
+	struct { v2 pos, size; };
+	Rectangle rl;
+} Rect;
 
 enum compute_shaders {
 //	CS_FORCES,

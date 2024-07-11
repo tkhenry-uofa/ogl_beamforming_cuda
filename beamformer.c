@@ -92,8 +92,23 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 	}
 }
 
+static Rect
+cut_rect_left(Rect r, f32 fraction)
+{
+	r.size.w *= fraction;
+	return r;
+}
+
+static Rect
+cut_rect_right(Rect r, f32 fraction)
+{
+	r.pos.x  += fraction * r.size.w;
+	r.size.w *= (1 - fraction);
+	return r;
+}
+
 static void
-draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bottom_right, v2 mouse)
+draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 {
 	struct listing {
 		char *prefix;
@@ -118,8 +133,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bott
 
 	f32 line_pad  = 10;
 
-	v2 pos  = upper_left;
-	pos.y  += 30;
+	v2 pos  = r.pos;
+	pos.y  += 50;
 	pos.x  += 10;
 
 	s8 txt  = s8alloc(&arena, 64);
@@ -136,7 +151,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bott
 		v2 txt_s    = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
 		                                   ctx->font_spacing)};
 
-		v2 rpos  = {.x = bottom_right.x - txt_s.x - suffix_s.x, .y = pos.y};
+		v2 rpos  = {.x = r.pos.x + r.size.w - txt_s.w - suffix_s.w, .y = pos.y};
 
 		Rectangle edit_rect = {rpos.x, rpos.y, txt_s.x, txt_s.y};
 		if (CheckCollisionPointRec(mouse.rl, edit_rect) && l->editable) {
@@ -329,41 +344,34 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data,
 		                                ctx->font_size, ctx->font_spacing)};
 
-		v2 ui_upper_left   = {.x = 10, .y = 10};
-		v2 ui_bottom_right = {
-			.x = ui_upper_left.x + 420,
-			.y = (f32)ctx->window_size.h - ui_upper_left.y,
-		};
+		Rect wr = {.size = {.w = (f32)ctx->window_size.w, .h = (f32)ctx->window_size.h}};
+		Rect lr = cut_rect_left(wr, 0.3), rr = cut_rect_right(wr, 0.3);
 
-		f32 tick_len   = 20;
-		f32 pad        = 1.5 * txt_s.x + tick_len + 10;
+		f32 tick_len = 20;
+		f32 pad      = 1.5 * txt_s.x + tick_len;
 
-		v2 view_pos   = {.x = ui_bottom_right.x + 40, .y = txt_s.y};
-		f32 rem_width = (f32)ctx->window_size.w - view_pos.x;
+		Rect vr = rr;
+		vr.size.h -= pad;
+		vr.size.w  = vr.size.h * output_dim.w / output_dim.h;
+		if (vr.size.w + pad > rr.size.w) {
+			vr.size.h = (rr.size.w - pad) * output_dim.h / output_dim.w;
+			vr.size.w = vr.size.h * output_dim.w / output_dim.h;
+		}
+		vr.pos.x += (rr.size.w - (vr.size.w + pad))/2;
+		vr.pos.y += (rr.size.h - (vr.size.h + pad) + txt_s.h) / 2;
 
-		f32 aspect_ratio = output_dim.x / output_dim.y;
-		v2 view_size = {
-			.x = ((f32)ctx->window_size.h - pad) * aspect_ratio,
-			.y = ((f32)ctx->window_size.h - pad),
-		};
-
-		view_pos.x += (rem_width - view_size.x - pad)/2;
-
-		Rectangle view_r  = { view_pos.x, view_pos.y, view_size.x, view_size.y };
 		Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
 		NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
-		DrawTextureNPatch(*output, tex_np, view_r, (Vector2){0}, 0, WHITE);
+		DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
 
 		/* NOTE: Horizontal Scale Bar */
 		{
-			f32 x_inc    = view_size.x / (line_count.x - 1);
-			v2 start_pos = {
-				.x = view_pos.x,
-				.y = view_pos.y + view_size.y,
-			};
+			f32 x_inc     = vr.size.w / (line_count.x - 1);
+			v2 start_pos  = vr.pos;
+			start_pos.y  += vr.size.h;
 
 			f32 x_mm     = ctx->params->output_min_xz.x * 1e3;
-			f32 x_mm_inc = x_inc * output_dim.x * 1e3 / view_size.x;
+			f32 x_mm_inc = x_inc * output_dim.x * 1e3 / vr.size.w;
 
 			v2 end_pos  = start_pos;
 			end_pos.y  += tick_len;
@@ -386,21 +394,19 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 		/* NOTE: Vertical Scale Bar */
 		{
-			f32 y_inc    = view_size.y / (line_count.y - 1);
-			v2 start_pos = {
-				.x = view_pos.x + view_size.x,
-				.y = view_pos.y,
-			};
+			f32 y_inc     = vr.size.h / (line_count.y - 1);
+			v2 start_pos  = vr.pos;
+			start_pos.x  += vr.size.w;
 
 			f32 y_mm     = ctx->params->output_min_xz.y * 1e3;
-			f32 y_mm_inc = y_inc * output_dim.y * 1e3 / view_size.y;
+			f32 y_mm_inc = y_inc * output_dim.y * 1e3 / vr.size.h;
 
 			v2 end_pos  = start_pos;
 			end_pos.x  += tick_len;
 
 			v2 txt_pos  = end_pos;
 			txt_pos.x  += 10;
-			txt_pos.y   -= txt_s.y/2;
+			txt_pos.y  -= txt_s.y/2;
 
 			for (u32 i = 0 ; i < line_count.y; i++) {
 				DrawLineEx(start_pos.rl, end_pos.rl, 3, ctx->fg);
@@ -416,12 +422,12 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 		/* NOTE: check mouse wheel for adjusting dynamic range of image */
 		v2 mouse = { .rl = GetMousePosition() };
-		if (CheckCollisionPointRec(mouse.rl, view_r)) {
+		if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
 			ctx->fsctx.db += GetMouseWheelMove();
 			CLAMP(ctx->fsctx.db, -120, 0);
 		}
 
-		draw_settings_ui(ctx, arena, dt, ui_upper_left, ui_bottom_right, mouse);
+		draw_settings_ui(ctx, arena, dt, lr, mouse);
 		draw_debug_overlay(ctx, arena, dt);
 	EndDrawing();
 
