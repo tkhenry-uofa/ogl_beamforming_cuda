@@ -77,7 +77,7 @@ void main()
 	/* NOTE: skip first acquisition since its garbage */
 	for (uint i = 1; i < rf_data_dim.z; i++) {
 		uint base_idx = (i - 1) / 4;
-		uint sub_idx  = (i - 1) - base_idx;
+		uint sub_idx  = (i - 1) - base_idx * 4;
 
 		vec3  focal_point   = vec3(uforces_channels[base_idx][sub_idx] * dx, 0, focal_depth);
 		float transmit_dist = focal_depth + dzsign * distance(image_point, focal_point);

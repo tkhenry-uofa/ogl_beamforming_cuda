@@ -48,11 +48,9 @@ void main()
 	uint out_stride = rf_data_dim.x * rf_data_dim.y;
 	uint out_off    = rf_data_dim.x * channel + time_sample;
 
-	/* TODO: channel_mapping */
-	//uint ch_base_idx = (channel + channel_offset) / 4;
-	//uint ch_sub_idx  = (channel + channel_offset) - ch_base_idx;
-	//uint rf_channel  = channel_mapping[ch_base_idx][ch_sub_idx];
-	uint rf_channel = channel;
+	uint ch_base_idx = (channel + channel_offset) / 4;
+	uint ch_sub_idx  = (channel + channel_offset) - ch_base_idx * 4;
+	uint rf_channel  = channel_mapping[ch_base_idx][ch_sub_idx];
 
 	/* NOTE: offsets to get the time sample and row in rf data */
 	uint rf_stride = channel_data_stride * rf_data_dim.y;
