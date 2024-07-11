@@ -127,12 +127,11 @@ os_open_shared_memory_area(char *name)
 
 	BeamformerParameters *new;
 	new = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(BeamformerParameters));
-	CloseHandle(h);
 
 	return new;
 }
 
-/* NOTE: handle is already closed and view will be unmapped when program terminates */
+/* NOTE: closing the handle releases the memory and this happens when program terminates */
 static void
 os_remove_shared_memory(char *name)
 {
