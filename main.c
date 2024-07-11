@@ -142,13 +142,11 @@ main(void)
 
 	Arena temp_memory = os_new_arena(256 * MEGABYTE);
 
-	ctx.window_size  = (uv2){.w = 960, .h = 1280};
+	ctx.window_size  = (uv2){.w = 960, .h = 720};
 	ctx.out_data_dim = (uv4){.x = 256, .y = 1024, .z = 1};
 
 	SetConfigFlags(FLAG_VSYNC_HINT|FLAG_WINDOW_RESIZABLE);
 	InitWindow(ctx.window_size.w, ctx.window_size.h, "OGL Beamformer");
-
-	SetWindowMinSize(960, 960);
 
 	ctx.bg             = (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0};
 	ctx.fg             = (v4){.r = 0.92, .g = 0.88, .b = 0.78, .a = 1.0};

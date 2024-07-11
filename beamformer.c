@@ -498,7 +498,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		if (desired_width > ctx->window_size.w) {
 			ctx->window_size.w = desired_width;
 			SetWindowSize(ctx->window_size.w, ctx->window_size.h);
-			SetWindowMinSize(desired_width, 960);
+			SetWindowMinSize(desired_width, 720);
 		}
 
 		/* NOTE: check mouse wheel for adjusting dynamic range of image */
