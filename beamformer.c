@@ -92,21 +92,6 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 	}
 }
 
-static Rect
-cut_rect_left(Rect r, f32 fraction)
-{
-	r.size.w *= fraction;
-	return r;
-}
-
-static Rect
-cut_rect_right(Rect r, f32 fraction)
-{
-	r.pos.x  += fraction * r.size.w;
-	r.size.w *= (1 - fraction);
-	return r;
-}
-
 static void
 draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 {
@@ -345,20 +330,24 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		                                ctx->font_size, ctx->font_spacing)};
 
 		Rect wr = {.size = {.w = (f32)ctx->window_size.w, .h = (f32)ctx->window_size.h}};
-		Rect lr = cut_rect_left(wr, 0.3), rr = cut_rect_right(wr, 0.3);
+		Rect lr = wr, rr = wr;
+		lr.size.w = 420;
+		rr.size.w = wr.size.w - lr.size.w - 10;
+		rr.pos.x  = lr.pos.x  + lr.size.w + 10;
 
 		f32 tick_len = 20;
-		f32 pad      = 1.5 * txt_s.x + tick_len;
+		f32 x_pad    = txt_s.x + tick_len;
+		f32 y_pad    = 1.5 * txt_s.x + tick_len;
 
-		Rect vr = rr;
-		vr.size.h -= pad;
+		Rect vr    = rr;
+		vr.size.h -= y_pad;
 		vr.size.w  = vr.size.h * output_dim.w / output_dim.h;
-		if (vr.size.w + pad > rr.size.w) {
-			vr.size.h = (rr.size.w - pad) * output_dim.h / output_dim.w;
+		if (vr.size.w + x_pad > rr.size.w) {
+			vr.size.h = (rr.size.w - x_pad) * output_dim.h / output_dim.w;
 			vr.size.w = vr.size.h * output_dim.w / output_dim.h;
 		}
-		vr.pos.x += (rr.size.w - (vr.size.w + pad))/2;
-		vr.pos.y += (rr.size.h - (vr.size.h + pad) + txt_s.h) / 2;
+		vr.pos.x += (rr.size.w - (vr.size.w + x_pad)) / 2;
+		vr.pos.y += (rr.size.h - (vr.size.h + y_pad) + txt_s.h) / 2;
 
 		Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
 		NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
@@ -418,6 +407,13 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 				txt_pos.y   += y_inc;
 				y_mm        += y_mm_inc;
 			}
+		}
+
+		f32 desired_width = lr.size.w + vr.size.w;
+		if (desired_width > ctx->window_size.w) {
+			ctx->window_size.w = desired_width;
+			SetWindowSize(ctx->window_size.w, ctx->window_size.h);
+			SetWindowMinSize(desired_width, 960);
 		}
 
 		/* NOTE: check mouse wheel for adjusting dynamic range of image */
