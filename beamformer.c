@@ -108,7 +108,17 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 		{ "Max X Point:",    " [mm]",  &ctx->params->output_max_xz.x,    1e3,  1 },
 		{ "Min Z Point:",    " [mm]",  &ctx->params->output_min_xz.y,    1e3,  1 },
 		{ "Max Z Point:",    " [mm]",  &ctx->params->output_max_xz.y,    1e3,  1 },
-		{ "Dynamic Range:",  " [dB]",  &ctx->fsctx.db,                   1,    0 },
+		{ "Dynamic Range:",  " [dB]",  &ctx->fsctx.db,                   1,    1 },
+	};
+
+	struct { f32 min, max; } limits[] = {
+		{0},
+		{0,                                   1e6},
+		{-1e3,                                ctx->params->output_max_xz.x - 1e-6},
+		{ctx->params->output_min_xz.x + 1e-6, 1e3},
+		{0,                                   ctx->params->output_max_xz.y - 1e-6},
+		{ctx->params->output_min_xz.y + 1e-6, 1e3},
+		{-120, 0},
 	};
 
 	static char focus_buf[64];
@@ -144,6 +154,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 			f32 mouse_scroll = GetMouseWheelMove();
 			if (mouse_scroll) {
 				*l->data += mouse_scroll / l->data_scale;
+				CLAMP(*l->data, limits[i].min, limits[i].max);
 				ctx->flags |= UPLOAD_UBO|DO_COMPUTE;
 			}
 		}
@@ -162,6 +173,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 		/* TODO: allow zero for certain listings only */
 		if (new_val != 0) {
 			*listings[focused_idx].data = new_val / listings[focused_idx].data_scale;
+			CLAMP(*listings[focused_idx].data, limits[focused_idx].min,
+			      limits[focused_idx].max);
 			ctx->flags |= UPLOAD_UBO|DO_COMPUTE;
 		}
 		focused_idx  = -1;
