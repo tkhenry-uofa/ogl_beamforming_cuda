@@ -25,4 +25,4 @@ typedef struct { u32 x, y, z, w; } uv4;
 #include "../beamformer_parameters.h"
 
 LIB_FN void set_beamformer_parameters(char *shm_name, BeamformerParameters *);
-LIB_FN void send_data(char *, i16 *, uv3 data_dim);
+LIB_FN void send_data(char *pipe_name, char *shm_name, i16 *data, uv4 data_dim);

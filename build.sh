@@ -7,6 +7,10 @@ case "$1" in
 	cflags="$cflags -I./external/include"
 	ldflags="$ldflags -lgdi32 -lwinmm -L./external"
 	;;
+"lib")
+	cflags="$cflags -I"/opt/matlab/extern/include" -shared -fPIC"
+	cc $cflags helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.so
+	;;
 *)
 	ldflags="$ldflags -lGL"
 

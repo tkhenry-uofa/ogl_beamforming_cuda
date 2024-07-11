@@ -120,7 +120,7 @@ check_shared_memory(char *name)
 }
 
 void
-send_data(char *pipe_name, i16 *data, uv4 data_dim)
+send_data(char *pipe_name, char *shm_name, i16 *data, uv4 data_dim)
 {
 	if (g_pipe.file == OS_INVALID_FILE) {
 		g_pipe = os_open_named_pipe(pipe_name);
@@ -130,7 +130,7 @@ send_data(char *pipe_name, i16 *data, uv4 data_dim)
 		}
 	}
 
-	check_shared_memory();
+	check_shared_memory(shm_name);
 	/* TODO: this probably needs a mutex around it if we want to change it here */
 	g_bp->rf_data_dim = data_dim;
 	size data_size    = data_dim.x * data_dim.y * data_dim.z * sizeof(i16);
