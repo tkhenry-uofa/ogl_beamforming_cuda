@@ -144,6 +144,10 @@ void
 set_beamformer_parameters(char *shm_name, BeamformerParameters *new_bp)
 {
 	check_shared_memory(shm_name);
+
+	if (!g_bp)
+		return;
+
 	u8 *src = (u8 *)new_bp, *dest = (u8 *)g_bp;
 	for (size i = 0; i < sizeof(BeamformerParameters); i++)
 		dest[i] = src[i];
