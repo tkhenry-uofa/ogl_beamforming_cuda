@@ -147,7 +147,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bott
 		v2 txt_s    = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
 		                                   ctx->font_spacing)};
 
-		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x - suffix_s.x, .y = pos.y};
+		v2 rpos  = {.x = bottom_right.x - txt_s.x - suffix_s.x, .y = pos.y};
 
 		Rectangle edit_rect = {rpos.x, rpos.y, txt_s.x, txt_s.y};
 		if (CheckCollisionPointRec(mouse.rl, edit_rect) && l->editable) {
@@ -253,10 +253,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	f32 dt = GetFrameTime();
 
 	if (IsWindowResized()) {
-		f32 aspect_ratio = 3.0f/4.0f;
 		ctx->window_size.h = GetScreenHeight();
-		ctx->window_size.w = ctx->window_size.h * aspect_ratio;
-		SetWindowSize(ctx->window_size.w, ctx->window_size.h);
+		ctx->window_size.w = GetScreenWidth();
 	}
 
 	/* NOTE: Check for and Load RF Data into GPU */
@@ -316,8 +314,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			.y = ctx->params->output_max_xz.y - ctx->params->output_min_xz.y,
 		};
 
-		f32 aspect_ratio = output_dim.x / output_dim.y;
-
 		v2 line_step_mm = {.x = 3, .y = 5};
 		uv2 line_count  = {
 			.x = output_dim.x * 1e3/line_step_mm.x + 1,
@@ -329,17 +325,30 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data,
 		                                ctx->font_size, ctx->font_spacing)};
 
-		/* NOTE: start this on far right and add space for scale-bar text */
-		f32 pad = txt_s.x + 80;
+		v2 ui_upper_left   = {.x = 10, .y = 10};
+		v2 ui_bottom_right = {
+			.x = ui_upper_left.x + 420,
+			.y = (f32)ctx->window_size.h - ui_upper_left.y,
+		};
 
-		v2 view_size = (v2){
+		f32 tick_len   = 20;
+		f32 pad        = 1.5 * txt_s.x + tick_len + 10;
+
+		v2 view_pos   = {.x = ui_bottom_right.x + 40, .y = txt_s.y};
+		f32 rem_width = (f32)ctx->window_size.w - view_pos.x;
+
+		f32 aspect_ratio = output_dim.x / output_dim.y;
+		v2 view_size = {
 			.x = ((f32)ctx->window_size.h - pad) * aspect_ratio,
 			.y = ((f32)ctx->window_size.h - pad),
 		};
-		v2 view_pos = (v2){
-			.x = ((f32)ctx->window_size.w - view_size.x) - pad + 40,
-			.y = txt_s.y,
-		};
+
+		view_pos.x += (rem_width - view_size.x - pad)/2;
+
+		Rectangle view_r  = { view_pos.x, view_pos.y, view_size.x, view_size.y };
+		Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
+		NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
+		DrawTextureNPatch(*output, tex_np, view_r, (Vector2){0}, 0, WHITE);
 
 		/* NOTE: Horizontal Scale Bar */
 		{
@@ -353,11 +362,11 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			f32 x_mm_inc = x_inc * output_dim.x * 1e3 / view_size.x;
 
 			v2 end_pos  = start_pos;
-			end_pos.y  += 20;
+			end_pos.y  += tick_len;
 
 			v2 txt_pos  = end_pos;
 			txt_pos.y  += 10;
-			txt_pos.x   += txt_s.y/2;
+			txt_pos.x  += txt_s.y/2;
 
 			for (u32 i = 0 ; i < line_count.x; i++) {
 				DrawLineEx(start_pos.rl, end_pos.rl, 3, ctx->fg);
@@ -383,7 +392,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			f32 y_mm_inc = y_inc * output_dim.y * 1e3 / view_size.y;
 
 			v2 end_pos  = start_pos;
-			end_pos.x  += 20;
+			end_pos.x  += tick_len;
 
 			v2 txt_pos  = end_pos;
 			txt_pos.x  += 10;
@@ -401,11 +410,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			}
 		}
 
-		Rectangle view_r  = { view_pos.x, view_pos.y, view_size.x, view_size.y };
-		Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
-		NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
-		DrawTextureNPatch(*output, tex_np, view_r, (Vector2){0}, 0, WHITE);
-
 		/* NOTE: check mouse wheel for adjusting dynamic range of image */
 		v2 mouse = { .rl = GetMousePosition() };
 		if (CheckCollisionPointRec(mouse.rl, view_r)) {
@@ -413,11 +417,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			CLAMP(ctx->fsctx.db, -120, 0);
 		}
 
-		v2 ui_upper_left   = {.x = 10, .y = 10};
-		v2 ui_bottom_right = {
-			.x = ui_upper_left.x + view_pos.x - 30,
-			.y = (f32)ctx->window_size.h - 10,
-		};
 		draw_settings_ui(ctx, arena, dt, ui_upper_left, ui_bottom_right, mouse);
 		draw_debug_overlay(ctx, arena, dt);
 	EndDrawing();

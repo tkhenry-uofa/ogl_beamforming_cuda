@@ -148,7 +148,7 @@ main(void)
 	SetConfigFlags(FLAG_VSYNC_HINT|FLAG_WINDOW_RESIZABLE);
 	InitWindow(ctx.window_size.w, ctx.window_size.h, "OGL Beamformer");
 
-	SetWindowMinSize(480, 640);
+	SetWindowMinSize(960, 960);
 
 	ctx.bg = (Color){.r = 0x09, .g = 0x09, .b = 0x09, .a = 0xff};
 	ctx.fg = (Color){.r = 0xea, .g = 0xe1, .b = 0xb4, .a = 0xff};
