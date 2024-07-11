@@ -150,8 +150,10 @@ main(void)
 
 	SetWindowMinSize(960, 960);
 
-	ctx.bg = (Color){.r = 0x09, .g = 0x09, .b = 0x09, .a = 0xff};
-	ctx.fg = (Color){.r = 0xea, .g = 0xe1, .b = 0xb4, .a = 0xff};
+	ctx.bg             = (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0};
+	ctx.fg             = (v4){.r = 0.92, .g = 0.88, .b = 0.78, .a = 1.0};
+	ctx.focused_colour = (v4){.r = 0.86, .g = 0.28, .b = 0.21, .a = 1.0};
+	ctx.hovered_colour = (v4){.r = 0.11, .g = 0.50, .b = 0.59, .a = 1.0};
 
 	ctx.font_size    = 32;
 	ctx.font_spacing = 0;

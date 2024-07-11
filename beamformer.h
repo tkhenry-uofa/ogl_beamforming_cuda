@@ -87,7 +87,8 @@ typedef struct {
 	u32 flags;
 
 	/* UI Theming */
-	Color bg, fg;
+	v4 bg, fg;
+	v4 focused_colour, hovered_colour;
 	Font  font;
 	u32   font_size;
 	u32   font_spacing;

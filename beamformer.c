@@ -92,6 +92,49 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 	}
 }
 
+static Color
+colour_from_normalized(v4 rgba)
+{
+	return (Color){.r = rgba.r * 255.0f, .g = rgba.g * 255.0f,
+	               .b = rgba.b * 255.0f, .a = rgba.a * 255.0f};
+}
+
+static f32
+move_towards_f32(f32 current, f32 target, f32 delta)
+{
+	if (target < current) {
+		current -= delta;
+		if (current < target)
+			current = target;
+	} else {
+		current += delta;
+		if (current > target)
+			current = target;
+	}
+	return current;
+}
+
+static v4
+move_towards_v4(v4 current, v4 target, v4 delta)
+{
+	current.x = move_towards_f32(current.x, target.x, delta.x);
+	current.y = move_towards_f32(current.y, target.y, delta.y);
+	current.z = move_towards_f32(current.z, target.z, delta.z);
+	current.w = move_towards_f32(current.w, target.w, delta.w);
+	return current;
+}
+
+static v4
+fmsub_v4(v4 a, v4 b, v4 scale)
+{
+	return (v4){
+		.x = scale.x * (a.x - b.x),
+		.y = scale.y * (a.y - b.y),
+		.z = scale.z * (a.z - b.z),
+		.w = scale.w * (a.w - b.w),
+	};
+}
+
 static void
 draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 {
@@ -121,6 +164,17 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 		{-120, 0},
 	};
 
+	static b32 init = 1;
+	static v4 colours[ARRAY_COUNT(listings)];
+	f32 scale = 6;
+	v4 scaled_dt = (v4){.x = scale * dt, .y = scale * dt, .z = scale * dt, .w = scale * dt};
+	v4 delta = fmsub_v4(ctx->fg, ctx->hovered_colour, scaled_dt);
+	if (init) {
+		for (i32 i = 0; i < ARRAY_COUNT(colours); i++)
+			colours[i] = ctx->fg;
+		init = 0;
+	}
+
 	static char focus_buf[64];
 	static i32 focus_buf_curs = 0;
 	static i32 focused_idx    = -1;
@@ -136,7 +190,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 
 	for (i32 i = 0; i < ARRAY_COUNT(listings); i++) {
 		struct listing *l = listings + i;
-		DrawTextEx(ctx->font, l->prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
+		DrawTextEx(ctx->font, l->prefix, pos.rl, ctx->font_size, ctx->font_spacing,
+		           colour_from_normalized(ctx->fg));
 
 		if (i == focused_idx) snprintf((char *)txt.data, txt.len, "%s", focus_buf);
 		else                  snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
@@ -159,11 +214,23 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 			}
 		}
 
+		Color tcol;
+		if (i == overlap_idx)
+			colours[i] = move_towards_v4(colours[i], ctx->hovered_colour, delta);
+		else
+			colours[i] = move_towards_v4(colours[i], ctx->fg, delta);
+
+		if (i == focused_idx)
+			tcol = colour_from_normalized(ctx->focused_colour);
+		else
+			tcol = colour_from_normalized(colours[i]);
+
 		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
-		           ctx->font_spacing, ctx->fg);
+		           ctx->font_spacing, tcol);
 
 		rpos.x += txt_s.x;
-		DrawTextEx(ctx->font, l->suffix, rpos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
+		DrawTextEx(ctx->font, l->suffix, rpos.rl, ctx->font_size, ctx->font_spacing,
+		           colour_from_normalized(ctx->fg));
 		pos.y += txt_s.y + line_pad;
 	}
 
@@ -229,7 +296,8 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, f32 dt)
 	v2 pos   = {.x = 20, .y = ws.h - partial_fs.y - 20};
 	/* NOTE: Partial Tranfers */
 	{
-		DrawTextEx(ctx->font, (char *)partial_txt.data, pos.rl,  fontsize, fontspace, ctx->fg);
+		DrawTextEx(ctx->font, (char *)partial_txt.data, pos.rl,  fontsize, fontspace,
+		           colour_from_normalized(ctx->fg));
 		pos.y += partial_fs.y;
 	}
 
@@ -310,7 +378,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 	/* NOTE: draw output image texture using render fragment shader */
 	BeginTextureMode(ctx->fsctx.output);
-		ClearBackground(ctx->bg);
+		ClearBackground(PINK);
 		BeginShaderMode(ctx->fsctx.shader);
 			FragmentShaderCtx *fs = &ctx->fsctx;
 			glUseProgram(fs->shader.id);
@@ -322,7 +390,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 	/* NOTE: Draw UI */
 	BeginDrawing();
-		ClearBackground(ctx->bg);
+		ClearBackground(colour_from_normalized(ctx->bg));
 
 		Texture *output   = &ctx->fsctx.output.texture;
 
@@ -383,10 +451,11 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			txt_pos.x  += txt_s.y/2;
 
 			for (u32 i = 0 ; i < line_count.x; i++) {
-				DrawLineEx(start_pos.rl, end_pos.rl, 3, ctx->fg);
+				DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(ctx->fg));
 				snprintf((char *)txt.data, txt.len, "%+0.01f mm", x_mm);
 				DrawTextPro(ctx->font, (char *)txt.data, txt_pos.rl, (Vector2){0},
-				            90, ctx->font_size, ctx->font_spacing, ctx->fg);
+				            90, ctx->font_size, ctx->font_spacing,
+				            colour_from_normalized(ctx->fg));
 				start_pos.x += x_inc;
 				end_pos.x   += x_inc;
 				txt_pos.x   += x_inc;
@@ -411,10 +480,11 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			txt_pos.y  -= txt_s.y/2;
 
 			for (u32 i = 0 ; i < line_count.y; i++) {
-				DrawLineEx(start_pos.rl, end_pos.rl, 3, ctx->fg);
+				DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(ctx->fg));
 				snprintf((char *)txt.data, txt.len, "%0.01f mm", y_mm);
 				DrawTextEx(ctx->font, (char *)txt.data, txt_pos.rl,
-				           ctx->font_size, ctx->font_spacing, ctx->fg);
+				           ctx->font_size, ctx->font_spacing,
+				           colour_from_normalized(ctx->fg));
 				start_pos.y += y_inc;
 				end_pos.y   += y_inc;
 				txt_pos.y   += y_inc;
