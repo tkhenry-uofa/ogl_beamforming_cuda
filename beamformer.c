@@ -95,13 +95,22 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 static void
 draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bottom_right)
 {
+	struct listing {
+		char *prefix;
+		char *suffix;
+		f32  *data;
+		f32  data_scale;
+		b32  editable;
+	} listings[] = {
+		{ "Sampling Rate:", " [MHz]", &ctx->params->sampling_frequency, 1e-6, 0 },
+		{ "Speed of Sound", " [m/s]", &ctx->params->speed_of_sound,     1,    1 },
+		{ "Min X Point:",   " [mm]",  &ctx->params->output_min_xz.x,    1e3,  1 },
+		{ "Max X Point:",   " [mm]",  &ctx->params->output_max_xz.x,    1e3,  1 },
+		{ "Min Z Point:",   " [mm]",  &ctx->params->output_min_xz.y,    1e3,  1 },
+		{ "Max Z Point:",   " [mm]",  &ctx->params->output_max_xz.y,    1e3,  1 },
+		{ "Dynamic Range:", " [dB]",  &ctx->fsctx.db,                   1,    0 },
+	};
 
-	s8 txt  = s8alloc(&arena, 64);
-
-	//v2 size = {
-	//	.x = bottom_right.x - upper_left.x,
-	//	.y = bottom_right.y - upper_left.y,
-	//};
 	f32 line_pad  = 10;
 	f32 right_pad = 10;
 
@@ -109,112 +118,24 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bott
 	pos.y  += 30;
 	pos.x  += 10;
 
-	/* NOTE: Sampling Frequency */
-	{
-		char *prefix = "Sampling Rate:";
-		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
+	s8 txt  = s8alloc(&arena, 64);
 
-		snprintf((char *)txt.data, txt.len, "%0.02f [MHz]",
-		         ctx->params->sampling_frequency/1e6);
-		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
-		                                ctx->font_spacing)};
-		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
-		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
-		           ctx->font_spacing, ctx->fg);
-		pos.y += txt_s.y + line_pad;
-	}
+	for (u32 i = 0; i < ARRAY_COUNT(listings); i++) {
+		struct listing *l = listings + i;
+		DrawTextEx(ctx->font, l->prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
 
-	/* NOTE: Speed of Sound */
-	{
-		char *prefix = "Speed of Sound:";
-		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
+		snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
+		v2 suffix_s = {.rl = MeasureTextEx(ctx->font, l->suffix, ctx->font_size,
+		                                   ctx->font_spacing)};
+		v2 txt_s    = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
+		                                   ctx->font_spacing)};
 
-		snprintf((char *)txt.data, txt.len, "%0.02f [m/s]", ctx->params->speed_of_sound);
-		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
-		                                ctx->font_spacing)};
-		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
+		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x - suffix_s.x, .y = pos.y};
 		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
 		           ctx->font_spacing, ctx->fg);
 
-		pos.y += txt_s.y + line_pad;
-	}
-
-	/* NOTE: Minimum X */
-	{
-		char *prefix = "Min X Point:";
-		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
-
-		snprintf((char *)txt.data, txt.len, "%0.02f [mm]",
-		         ctx->params->output_min_xz.x * 1e3);
-		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
-		                                ctx->font_spacing)};
-		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
-		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
-		           ctx->font_spacing, ctx->fg);
-
-		pos.y += txt_s.y + line_pad;
-	}
-
-	/* NOTE: Maximum X */
-	{
-		char *prefix = "Max X Point:";
-		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
-
-		snprintf((char *)txt.data, txt.len, "%0.02f [mm]",
-		         ctx->params->output_max_xz.x * 1e3);
-		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
-		                                ctx->font_spacing)};
-		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
-		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
-		           ctx->font_spacing, ctx->fg);
-
-		pos.y += txt_s.y + line_pad;
-	}
-
-	/* NOTE: Minimum Z */
-	{
-		char *prefix = "Min Z Point:";
-		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
-
-		snprintf((char *)txt.data, txt.len, "%0.02f [mm]",
-		         ctx->params->output_min_xz.y * 1e3);
-		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
-		                                ctx->font_spacing)};
-		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
-		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
-		           ctx->font_spacing, ctx->fg);
-
-		pos.y += txt_s.y + line_pad;
-	}
-
-	/* NOTE: Maximum Z */
-	{
-		char *prefix = "Max Z Point:";
-		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
-
-		snprintf((char *)txt.data, txt.len, "%0.02f [mm]",
-		         ctx->params->output_max_xz.y * 1e3);
-		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
-		                                ctx->font_spacing)};
-		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
-		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
-		           ctx->font_spacing, ctx->fg);
-
-		pos.y += txt_s.y + line_pad;
-	}
-
-	/* NOTE: Dynamic Range */
-	{
-		char *prefix = "Dynamic Range:";
-		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
-
-		snprintf((char *)txt.data, txt.len, "%0.01f [dB]", ctx->fsctx.db);
-		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
-		                                ctx->font_spacing)};
-		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
-		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
-		           ctx->font_spacing, ctx->fg);
-
+		rpos.x += txt_s.x;
+		DrawTextEx(ctx->font, l->suffix, rpos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
 		pos.y += txt_s.y + line_pad;
 	}
 }
