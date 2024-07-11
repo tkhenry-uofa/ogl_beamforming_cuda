@@ -269,7 +269,9 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 			break;
 		}
 
-		if ((key >= '0' && key <= '9') || key == '.')
+		if ((key >= '0' && key <= '9') ||
+		    (key == '.') ||
+		    (key == '-' && focus_buf_curs == 0))
 			focus_buf[focus_buf_curs++] = key;
 
 		key = GetCharPressed();
