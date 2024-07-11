@@ -93,7 +93,7 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 }
 
 static void
-draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bottom_right)
+draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bottom_right, v2 mouse)
 {
 	struct listing {
 		char *prefix;
@@ -102,17 +102,21 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bott
 		f32  data_scale;
 		b32  editable;
 	} listings[] = {
-		{ "Sampling Rate:", " [MHz]", &ctx->params->sampling_frequency, 1e-6, 0 },
-		{ "Speed of Sound", " [m/s]", &ctx->params->speed_of_sound,     1,    1 },
-		{ "Min X Point:",   " [mm]",  &ctx->params->output_min_xz.x,    1e3,  1 },
-		{ "Max X Point:",   " [mm]",  &ctx->params->output_max_xz.x,    1e3,  1 },
-		{ "Min Z Point:",   " [mm]",  &ctx->params->output_min_xz.y,    1e3,  1 },
-		{ "Max Z Point:",   " [mm]",  &ctx->params->output_max_xz.y,    1e3,  1 },
-		{ "Dynamic Range:", " [dB]",  &ctx->fsctx.db,                   1,    0 },
+		{ "Sampling Rate:",  " [MHz]", &ctx->params->sampling_frequency, 1e-6, 0 },
+		{ "Speed of Sound:", " [m/s]", &ctx->params->speed_of_sound,     1,    1 },
+		{ "Min X Point:",    " [mm]",  &ctx->params->output_min_xz.x,    1e3,  1 },
+		{ "Max X Point:",    " [mm]",  &ctx->params->output_max_xz.x,    1e3,  1 },
+		{ "Min Z Point:",    " [mm]",  &ctx->params->output_min_xz.y,    1e3,  1 },
+		{ "Max Z Point:",    " [mm]",  &ctx->params->output_max_xz.y,    1e3,  1 },
+		{ "Dynamic Range:",  " [dB]",  &ctx->fsctx.db,                   1,    0 },
 	};
 
+	static char focus_buf[64];
+	static i32 focus_buf_curs = 0;
+	static i32 focused_idx    = -1;
+	i32 overlap_idx           = -1;
+
 	f32 line_pad  = 10;
-	f32 right_pad = 10;
 
 	v2 pos  = upper_left;
 	pos.y  += 30;
@@ -120,17 +124,46 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bott
 
 	s8 txt  = s8alloc(&arena, 64);
 
-	for (u32 i = 0; i < ARRAY_COUNT(listings); i++) {
+	if (IsKeyPressed(KEY_ENTER) && focused_idx != -1) {
+		f32 new_val = strtof(focus_buf, NULL);
+		/* TODO: allow zero for certain listings only */
+		if (new_val != 0) {
+			*listings[focused_idx].data = new_val / listings[focused_idx].data_scale;
+			ctx->flags |= UPLOAD_UBO|DO_COMPUTE;
+		}
+		focused_idx = -1;
+		focus_buf[0] = 0;
+	}
+
+	for (i32 i = 0; i < ARRAY_COUNT(listings); i++) {
 		struct listing *l = listings + i;
 		DrawTextEx(ctx->font, l->prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
 
-		snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
+		if (i == focused_idx) snprintf((char *)txt.data, txt.len, "%s", focus_buf);
+		else                  snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
+
 		v2 suffix_s = {.rl = MeasureTextEx(ctx->font, l->suffix, ctx->font_size,
 		                                   ctx->font_spacing)};
 		v2 txt_s    = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
 		                                   ctx->font_spacing)};
 
 		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x - suffix_s.x, .y = pos.y};
+
+		Rectangle edit_rect = {rpos.x, rpos.y, txt_s.x, txt_s.y};
+		if (CheckCollisionPointRec(mouse.rl, edit_rect) && l->editable) {
+			overlap_idx = i;
+			f32 mouse_scroll = GetMouseWheelMove();
+			if (mouse_scroll) {
+				*l->data += mouse_scroll / l->data_scale;
+				ctx->flags |= UPLOAD_UBO|DO_COMPUTE;
+			}
+			if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+				focused_idx = i;
+				focus_buf_curs = snprintf(focus_buf, sizeof(focus_buf), "%0.02f",
+				                          *l->data * l->data_scale);
+			}
+		}
+
 		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
 		           ctx->font_spacing, ctx->fg);
 
@@ -138,6 +171,28 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bott
 		DrawTextEx(ctx->font, l->suffix, rpos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
 		pos.y += txt_s.y + line_pad;
 	}
+
+	if (overlap_idx != -1) SetMouseCursor(MOUSE_CURSOR_IBEAM);
+	else                   SetMouseCursor(MOUSE_CURSOR_DEFAULT);
+
+	if (focused_idx == -1)
+		return;
+
+	i32 key = GetCharPressed();
+	while (key > 0) {
+		if (focus_buf_curs == (sizeof(focus_buf) - 1)) {
+			focus_buf[focus_buf_curs] = 0;
+			break;
+		}
+
+		if ((key >= '0' && key <= '9') || key == '.')
+			focus_buf[focus_buf_curs++] = key;
+
+		key = GetCharPressed();
+	}
+
+	if (IsKeyPressed(KEY_BACKSPACE) && focus_buf_curs > 0)
+		focus_buf[--focus_buf_curs] = 0;
 }
 
 static void
@@ -356,14 +411,14 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		if (CheckCollisionPointRec(mouse.rl, view_r)) {
 			ctx->fsctx.db += GetMouseWheelMove();
 			CLAMP(ctx->fsctx.db, -120, 0);
-		};
+		}
 
 		v2 ui_upper_left   = {.x = 10, .y = 10};
 		v2 ui_bottom_right = {
 			.x = ui_upper_left.x + view_pos.x - 30,
 			.y = (f32)ctx->window_size.h - 10,
 		};
-		draw_settings_ui(ctx, arena, dt, ui_upper_left, ui_bottom_right);
+		draw_settings_ui(ctx, arena, dt, ui_upper_left, ui_bottom_right, mouse);
 		draw_debug_overlay(ctx, arena, dt);
 	EndDrawing();
 
