@@ -124,17 +124,6 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bott
 
 	s8 txt  = s8alloc(&arena, 64);
 
-	if (IsKeyPressed(KEY_ENTER) && focused_idx != -1) {
-		f32 new_val = strtof(focus_buf, NULL);
-		/* TODO: allow zero for certain listings only */
-		if (new_val != 0) {
-			*listings[focused_idx].data = new_val / listings[focused_idx].data_scale;
-			ctx->flags |= UPLOAD_UBO|DO_COMPUTE;
-		}
-		focused_idx = -1;
-		focus_buf[0] = 0;
-	}
-
 	for (i32 i = 0; i < ARRAY_COUNT(listings); i++) {
 		struct listing *l = listings + i;
 		DrawTextEx(ctx->font, l->prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
@@ -157,11 +146,6 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bott
 				*l->data += mouse_scroll / l->data_scale;
 				ctx->flags |= UPLOAD_UBO|DO_COMPUTE;
 			}
-			if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-				focused_idx = i;
-				focus_buf_curs = snprintf(focus_buf, sizeof(focus_buf), "%0.02f",
-				                          *l->data * l->data_scale);
-			}
 		}
 
 		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
@@ -170,6 +154,26 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bott
 		rpos.x += txt_s.x;
 		DrawTextEx(ctx->font, l->suffix, rpos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
 		pos.y += txt_s.y + line_pad;
+	}
+
+	b32 save_focus = IsKeyPressed(KEY_ENTER) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+	if (save_focus && focused_idx != -1) {
+		f32 new_val = strtof(focus_buf, NULL);
+		/* TODO: allow zero for certain listings only */
+		if (new_val != 0) {
+			*listings[focused_idx].data = new_val / listings[focused_idx].data_scale;
+			ctx->flags |= UPLOAD_UBO|DO_COMPUTE;
+		}
+		focused_idx  = -1;
+		focus_buf[0] = 0;
+	}
+
+	if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+		focused_idx = overlap_idx;
+		if (focused_idx != -1) {
+			f32 val = *listings[overlap_idx].data * listings[overlap_idx].data_scale;
+			focus_buf_curs = snprintf(focus_buf, sizeof(focus_buf), "%0.02f", val);
+		}
 	}
 
 	if (overlap_idx != -1) SetMouseCursor(MOUSE_CURSOR_IBEAM);
