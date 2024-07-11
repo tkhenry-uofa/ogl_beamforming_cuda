@@ -145,15 +145,17 @@ main(void)
 	ctx.window_size  = (uv2){.w = 960, .h = 1280};
 	ctx.out_data_dim = (uv4){.x = 256, .y = 1024, .z = 1};
 
-	ctx.bg = (Color){.r = 0x09, .g = 0x09, .b = 0x09, .a = 0xff};
-	ctx.fg = (Color){.r = 0xea, .g = 0xe1, .b = 0xb4, .a = 0xff};
-
 	SetConfigFlags(FLAG_VSYNC_HINT|FLAG_WINDOW_RESIZABLE);
 	InitWindow(ctx.window_size.w, ctx.window_size.h, "OGL Beamformer");
 
 	SetWindowMinSize(480, 640);
 
-	ctx.font = GetFontDefault();
+	ctx.bg = (Color){.r = 0x09, .g = 0x09, .b = 0x09, .a = 0xff};
+	ctx.fg = (Color){.r = 0xea, .g = 0xe1, .b = 0xb4, .a = 0xff};
+
+	ctx.font_size    = 32;
+	ctx.font_spacing = 0;
+	ctx.font         = GetFontDefault();
 
 	init_fragment_shader_ctx(&ctx.fsctx, ctx.out_data_dim);
 

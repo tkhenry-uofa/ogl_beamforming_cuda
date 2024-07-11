@@ -80,9 +80,11 @@ typedef struct {
 	uv2 window_size;
 	u32 flags;
 
-	Font font;
-
+	/* UI Theming */
 	Color bg, fg;
+	Font  font;
+	u32   font_size;
+	u32   font_spacing;
 
 	uv4 out_data_dim;
 	u32 out_texture;

@@ -93,28 +93,147 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 }
 
 static void
+draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, v2 upper_left, v2 bottom_right)
+{
+
+	s8 txt  = s8alloc(&arena, 64);
+
+	//v2 size = {
+	//	.x = bottom_right.x - upper_left.x,
+	//	.y = bottom_right.y - upper_left.y,
+	//};
+	f32 line_pad  = 10;
+	f32 right_pad = 10;
+
+	v2 pos  = upper_left;
+	pos.y  += 30;
+	pos.x  += 10;
+
+	/* NOTE: Sampling Frequency */
+	{
+		char *prefix = "Sampling Rate:";
+		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
+
+		snprintf((char *)txt.data, txt.len, "%0.02f [MHz]",
+		         ctx->params->sampling_frequency/1e6);
+		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
+		                                ctx->font_spacing)};
+		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
+		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
+		           ctx->font_spacing, ctx->fg);
+		pos.y += txt_s.y + line_pad;
+	}
+
+	/* NOTE: Speed of Sound */
+	{
+		char *prefix = "Speed of Sound:";
+		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
+
+		snprintf((char *)txt.data, txt.len, "%0.02f [m/s]", ctx->params->speed_of_sound);
+		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
+		                                ctx->font_spacing)};
+		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
+		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
+		           ctx->font_spacing, ctx->fg);
+
+		pos.y += txt_s.y + line_pad;
+	}
+
+	/* NOTE: Minimum X */
+	{
+		char *prefix = "Min X Point:";
+		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
+
+		snprintf((char *)txt.data, txt.len, "%0.02f [mm]",
+		         ctx->params->output_min_xz.x * 1e3);
+		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
+		                                ctx->font_spacing)};
+		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
+		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
+		           ctx->font_spacing, ctx->fg);
+
+		pos.y += txt_s.y + line_pad;
+	}
+
+	/* NOTE: Maximum X */
+	{
+		char *prefix = "Max X Point:";
+		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
+
+		snprintf((char *)txt.data, txt.len, "%0.02f [mm]",
+		         ctx->params->output_max_xz.x * 1e3);
+		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
+		                                ctx->font_spacing)};
+		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
+		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
+		           ctx->font_spacing, ctx->fg);
+
+		pos.y += txt_s.y + line_pad;
+	}
+
+	/* NOTE: Minimum Z */
+	{
+		char *prefix = "Min Z Point:";
+		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
+
+		snprintf((char *)txt.data, txt.len, "%0.02f [mm]",
+		         ctx->params->output_min_xz.y * 1e3);
+		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
+		                                ctx->font_spacing)};
+		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
+		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
+		           ctx->font_spacing, ctx->fg);
+
+		pos.y += txt_s.y + line_pad;
+	}
+
+	/* NOTE: Maximum Z */
+	{
+		char *prefix = "Max Z Point:";
+		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
+
+		snprintf((char *)txt.data, txt.len, "%0.02f [mm]",
+		         ctx->params->output_max_xz.y * 1e3);
+		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
+		                                ctx->font_spacing)};
+		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
+		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
+		           ctx->font_spacing, ctx->fg);
+
+		pos.y += txt_s.y + line_pad;
+	}
+
+	/* NOTE: Dynamic Range */
+	{
+		char *prefix = "Dynamic Range:";
+		DrawTextEx(ctx->font, prefix, pos.rl, ctx->font_size, ctx->font_spacing, ctx->fg);
+
+		snprintf((char *)txt.data, txt.len, "%0.01f [dB]", ctx->fsctx.db);
+		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
+		                                ctx->font_spacing)};
+		v2 rpos  = {.x = bottom_right.x - right_pad - txt_s.x, .y = pos.y};
+		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
+		           ctx->font_spacing, ctx->fg);
+
+		pos.y += txt_s.y + line_pad;
+	}
+}
+
+static void
 draw_debug_overlay(BeamformerCtx *ctx, Arena arena, f32 dt)
 {
 	DrawFPS(20, 20);
 
 	uv2 ws = ctx->window_size;
-	u32 fontsize  = 32;
-	u32 fontspace = 1;
+	u32 fontsize  = ctx->font_size;
+	u32 fontspace = ctx->font_spacing;
 
 	s8 partial_txt = s8alloc(&arena, 64);
-	s8 db_txt      = s8alloc(&arena, 64);
 	snprintf((char *)partial_txt.data, partial_txt.len, "Partial Transfers: %u", ctx->partial_transfer_count);
-	snprintf((char *)db_txt.data, db_txt.len, "Dynamic Range: %0.01f [db]", ctx->fsctx.db);
 
 	v2 partial_fs = {.rl = MeasureTextEx(ctx->font, (char *)partial_txt.data, fontsize, fontspace)};
-	v2 db_fs      = {.rl = MeasureTextEx(ctx->font, (char *)db_txt.data, fontsize, fontspace)};
 
-	v2 pos   = {.x = 20, .y = ws.h - db_fs.y - partial_fs.y - 20};
-	/* NOTE: Dynamic Range */
-	{
-		DrawTextEx(ctx->font, (char *)db_txt.data, pos.rl,  fontsize, fontspace, ctx->fg);
-		pos.y += db_fs.y;
-	}
+	v2 pos   = {.x = 20, .y = ws.h - partial_fs.y - 20};
 	/* NOTE: Partial Tranfers */
 	{
 		DrawTextEx(ctx->font, (char *)partial_txt.data, pos.rl,  fontsize, fontspace, ctx->fg);
@@ -198,10 +317,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		ctx->flags &= ~DO_COMPUTE;
 	}
 
-	/* NOTE: check mouse wheel for adjusting dynamic range of image */
-	ctx->fsctx.db += GetMouseWheelMove();
-	CLAMP(ctx->fsctx.db, -120, 0);
-
 	/* NOTE: draw output image texture using render fragment shader */
 	BeginTextureMode(ctx->fsctx.output);
 		ClearBackground(ctx->bg);
@@ -226,8 +341,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		};
 
 		f32 aspect_ratio = output_dim.x / output_dim.y;
-		/* NOTE: start this on far right and add space for scale-bar text */
-		v2 view_size, view_pos;
 
 		v2 line_step_mm = {.x = 3, .y = 5};
 		uv2 line_count  = {
@@ -235,25 +348,25 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			.y = output_dim.y * 1e3/line_step_mm.y + 1,
 		};
 
+		s8 txt = s8alloc(&arena, 64);
+		snprintf((char *)txt.data, txt.len, "%+0.01f mm", -88.8f);
+		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data,
+		                                ctx->font_size, ctx->font_spacing)};
+
+		/* NOTE: start this on far right and add space for scale-bar text */
+		f32 pad = txt_s.x + 80;
+
+		v2 view_size = (v2){
+			.x = ((f32)ctx->window_size.h - pad) * aspect_ratio,
+			.y = ((f32)ctx->window_size.h - pad),
+		};
+		v2 view_pos = (v2){
+			.x = ((f32)ctx->window_size.w - view_size.x) - pad + 40,
+			.y = txt_s.y,
+		};
+
 		/* NOTE: Horizontal Scale Bar */
 		{
-			Arena tmp = arena;
-
-			s8 txt    = s8alloc(&tmp, 64);
-			snprintf((char *)txt.data, txt.len, "%+0.01f mm", -88.8f);
-			v2 txt_s  = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, 32, 2)};
-
-			f32 pad = txt_s.x + 80;
-			view_size = (v2){
-				.x = ((f32)ctx->window_size.h - pad) * aspect_ratio,
-				.y = ((f32)ctx->window_size.h - pad),
-			};
-
-			view_pos = (v2){
-				.x = ((f32)ctx->window_size.w - view_size.x) - pad + 40,
-				.y = txt_s.y,
-			};
-
 			f32 x_inc    = view_size.x / (line_count.x - 1);
 			v2 start_pos = {
 				.x = view_pos.x,
@@ -273,7 +386,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			for (u32 i = 0 ; i < line_count.x; i++) {
 				DrawLineEx(start_pos.rl, end_pos.rl, 3, ctx->fg);
 				snprintf((char *)txt.data, txt.len, "%+0.01f mm", x_mm);
-				DrawTextPro(ctx->font, (char *)txt.data, txt_pos.rl, (Vector2){0}, 90, 32, 2, ctx->fg);
+				DrawTextPro(ctx->font, (char *)txt.data, txt_pos.rl, (Vector2){0},
+				            90, ctx->font_size, ctx->font_spacing, ctx->fg);
 				start_pos.x += x_inc;
 				end_pos.x   += x_inc;
 				txt_pos.x   += x_inc;
@@ -283,12 +397,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 		/* NOTE: Vertical Scale Bar */
 		{
-			Arena tmp = arena;
-
-			s8 txt      = s8alloc(&tmp, 64);
-			snprintf((char *)txt.data, txt.len, "%0.01f mm", 0.0f);
-			v2 txt_s    = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, 32, 2)};
-
 			f32 y_inc    = view_size.y / (line_count.y - 1);
 			v2 start_pos = {
 				.x = view_pos.x + view_size.x,
@@ -308,7 +416,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			for (u32 i = 0 ; i < line_count.y; i++) {
 				DrawLineEx(start_pos.rl, end_pos.rl, 3, ctx->fg);
 				snprintf((char *)txt.data, txt.len, "%0.01f mm", y_mm);
-				DrawTextEx(ctx->font, (char *)txt.data, txt_pos.rl, 32, 2, ctx->fg);
+				DrawTextEx(ctx->font, (char *)txt.data, txt_pos.rl,
+				           ctx->font_size, ctx->font_spacing, ctx->fg);
 				start_pos.y += y_inc;
 				end_pos.y   += y_inc;
 				txt_pos.y   += y_inc;
@@ -321,6 +430,19 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
 		DrawTextureNPatch(*output, tex_np, view_r, (Vector2){0}, 0, WHITE);
 
+		/* NOTE: check mouse wheel for adjusting dynamic range of image */
+		v2 mouse = { .rl = GetMousePosition() };
+		if (CheckCollisionPointRec(mouse.rl, view_r)) {
+			ctx->fsctx.db += GetMouseWheelMove();
+			CLAMP(ctx->fsctx.db, -120, 0);
+		};
+
+		v2 ui_upper_left   = {.x = 10, .y = 10};
+		v2 ui_bottom_right = {
+			.x = ui_upper_left.x + view_pos.x - 30,
+			.y = (f32)ctx->window_size.h - 10,
+		};
+		draw_settings_ui(ctx, arena, dt, ui_upper_left, ui_bottom_right);
 		draw_debug_overlay(ctx, arena, dt);
 	EndDrawing();
 
