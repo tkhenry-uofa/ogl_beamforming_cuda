@@ -64,9 +64,9 @@ typedef struct {
 	i32 mip_view_tex_id;
 	i32 mips_level_id;
 
-	u32 lpf_ssbo;
-	u32 lpf_order;
-	i32 lpf_order_id;
+	//u32 lpf_ssbo;
+	//u32 lpf_order;
+	//i32 lpf_order_id;
 } ComputeShaderCtx;
 
 typedef struct {

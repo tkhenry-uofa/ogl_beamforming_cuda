@@ -17,6 +17,7 @@ layout(std430, binding = 3) readonly restrict buffer buffer_3 {
 layout(std140, binding = 0) uniform parameters {
 	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
+	vec4  lpf_coefficients[16];   /* Low Pass Filter Cofficients */
 	uvec4 rf_data_dim;            /* Samples * Channels * Acquisitions; last element ignored */
 	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
 	vec2  output_min_xz;          /* [m] Top left corner of output region */
@@ -25,6 +26,7 @@ layout(std140, binding = 0) uniform parameters {
 	vec2  xdc_max_xy;             /* [m] Max center of transducer elements */
 	uint  channel_data_stride;    /* Data points between channels (samples * acq + padding) */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
+	uint  lpf_order;              /* Order of Low Pass Filter */
 	float speed_of_sound;         /* [m/s] */
 	float sampling_frequency;     /* [Hz]  */
 	float center_frequency;       /* [Hz]  */

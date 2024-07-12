@@ -123,7 +123,7 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		glDeleteShader(shader_id);
 	}
 
-	csctx->lpf_order_id    = glGetUniformLocation(csctx->programs[CS_LPF],     "u_lpf_order");
+	//csctx->lpf_order_id    = glGetUniformLocation(csctx->programs[CS_LPF],     "u_lpf_order");
 	csctx->out_data_tex_id = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_out_data_tex");
 	csctx->mip_view_tex_id = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_view_tex");
 	csctx->mips_level_id   = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_map");

@@ -31,6 +31,9 @@ alloc_output_image(BeamformerCtx *ctx)
 static void
 upload_filter_coefficients(BeamformerCtx *ctx, Arena a)
 {
+	ctx->flags &= ~UPLOAD_FILTER;
+	return;
+#if 0
 	f32 lpf_coeff[] = {
 		0.001504252781, 0.006636276841, 0.01834679954,  0.0386288017,
 		0.06680636108,  0.09852545708,  0.1264867932,   0.1429549307,
@@ -41,8 +44,7 @@ upload_filter_coefficients(BeamformerCtx *ctx, Arena a)
 	ctx->csctx.lpf_order = lpf_coeff_count - 1;
 	rlUnloadShaderBuffer(ctx->csctx.lpf_ssbo);
 	ctx->csctx.lpf_ssbo  = rlLoadShaderBuffer(lpf_coeff_count * sizeof(f32), lpf_coeff, GL_STATIC_DRAW);
-
-	ctx->flags &= ~UPLOAD_FILTER;
+#endif
 }
 
 static void
@@ -102,8 +104,10 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 	case CS_LPF:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
+		#if 0
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, csctx->lpf_ssbo);
 		glUniform1i(csctx->lpf_order_id, csctx->lpf_order);
+		#endif
 		glDispatchCompute(ORONE(csctx->rf_data_dim.x / 32),
 		                  ORONE(csctx->rf_data_dim.y / 32),
 		                  ORONE(csctx->rf_data_dim.z));
