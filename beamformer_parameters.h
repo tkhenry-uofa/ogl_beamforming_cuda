@@ -15,6 +15,7 @@ typedef struct {
 	u32 channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	f32 speed_of_sound;         /* [m/s] */
 	f32 sampling_frequency;     /* [Hz]  */
+	f32 center_frequency;       /* [Hz]  */
 	f32 focal_depth;            /* [m]   */
 	f32 _pad[3];
 } BeamformerParameters;

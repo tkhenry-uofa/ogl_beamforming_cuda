@@ -15,9 +15,10 @@
 
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof(*a))
 #define ABS(x)         ((x) < 0 ? (-x) : (x))
-#define MAX(a, b)      ((a) > (b) ? (a) : (b))
 #define CLAMP(x, a, b) ((x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x))
 #define ISPOWEROF2(a)  (((a) & ((a) - 1)) == 0)
+#define MAX(a, b)      ((a) > (b) ? (a) : (b))
+#define ORONE(x)       ((x)? (x) : 1)
 
 #define MEGABYTE (1024ULL * 1024ULL)
 #define GIGABYTE (1024ULL * 1024ULL * 1024ULL)

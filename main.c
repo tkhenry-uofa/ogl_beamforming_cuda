@@ -2,8 +2,9 @@
 #include "beamformer.h"
 
 static char *compute_shader_paths[CS_LAST] = {
-	[CS_MIN_MAX]  = "shaders/min_max.glsl",
 	[CS_HADAMARD] = "shaders/hadamard.glsl",
+	[CS_LPF]      = "shaders/lpf.glsl",
+	[CS_MIN_MAX]  = "shaders/min_max.glsl",
 	[CS_UFORCES]  = "shaders/uforces.glsl",
 };
 
@@ -122,6 +123,7 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		glDeleteShader(shader_id);
 	}
 
+	csctx->lpf_order_id    = glGetUniformLocation(csctx->programs[CS_LPF],     "u_lpf_order");
 	csctx->out_data_tex_id = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_out_data_tex");
 	csctx->mip_view_tex_id = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_view_tex");
 	csctx->mips_level_id   = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_map");
@@ -172,7 +174,7 @@ main(void)
 	glBindBuffer(GL_UNIFORM_BUFFER, ctx.csctx.shared_ubo);
 	glBufferData(GL_UNIFORM_BUFFER, sizeof(BeamformerParameters), 0, GL_STATIC_DRAW);
 
-	ctx.flags |= RELOAD_SHADERS;
+	ctx.flags |= RELOAD_SHADERS|ALLOC_SSBOS|ALLOC_OUT_TEX|UPLOAD_FILTER;
 
 	while(!WindowShouldClose()) {
 		do_debug();

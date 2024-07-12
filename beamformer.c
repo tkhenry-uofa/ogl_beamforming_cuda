@@ -2,33 +2,13 @@
 #include "beamformer.h"
 
 static void
-alloc_shader_storage(BeamformerCtx *ctx, Arena a)
+alloc_output_image(BeamformerCtx *ctx)
 {
 	BeamformerParameters *bp = &ctx->params->raw;
-	uv4 rf_data_dim          = bp->rf_data_dim;
-	ctx->csctx.rf_data_dim   = rf_data_dim;
-	size rf_raw_size         = bp->channel_data_stride * rf_data_dim.y * rf_data_dim.z * sizeof(i16);
-	size rf_decoded_size     = rf_data_dim.x * rf_data_dim.y * rf_data_dim.z * sizeof(f32);
+	ctx->out_data_dim.x = ORONE(bp->output_points.x);
+	ctx->out_data_dim.y = ORONE(bp->output_points.y);
+	ctx->out_data_dim.z = ORONE(bp->output_points.z);
 
-	glDeleteBuffers(ARRAY_COUNT(ctx->csctx.rf_data_ssbos), ctx->csctx.rf_data_ssbos);
-	glGenBuffers(ARRAY_COUNT(ctx->csctx.rf_data_ssbos), ctx->csctx.rf_data_ssbos);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbos[0]);
-	glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_raw_size, 0,
-	                GL_DYNAMIC_STORAGE_BIT|GL_MAP_WRITE_BIT);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbos[1]);
-	glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_decoded_size, 0, GL_DYNAMIC_STORAGE_BIT);
-
-	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
-	ctx->csctx.hadamard_dim = (uv2){ .x = rf_data_dim.z, .y = rf_data_dim.z };
-	size hadamard_elements  = ctx->csctx.hadamard_dim.x * ctx->csctx.hadamard_dim.y;
-	i32  *hadamard          = alloc(&a, i32, hadamard_elements);
-	fill_hadamard(hadamard, ctx->csctx.hadamard_dim.x);
-
-	rlUnloadShaderBuffer(ctx->csctx.hadamard_ssbo);
-	ctx->csctx.hadamard_ssbo = rlLoadShaderBuffer(hadamard_elements * sizeof(i32), hadamard,
-	                                              GL_STATIC_DRAW);
-
-	ctx->out_data_dim = bp->output_points;
 	/* NOTE: allocate storage for beamformed output data;
 	 * this is shared between compute and fragment shaders */
 	uv4 odim    = ctx->out_data_dim;
@@ -44,6 +24,59 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 
 	UnloadRenderTexture(ctx->fsctx.output);
 	ctx->fsctx.output = LoadRenderTexture(odim.x, odim.y);
+
+	ctx->flags &= ~ALLOC_OUT_TEX;
+}
+
+static void
+upload_filter_coefficients(BeamformerCtx *ctx, Arena a)
+{
+	f32 lpf_coeff[] = {
+		0.001504252781, 0.006636276841, 0.01834679954,  0.0386288017,
+		0.06680636108,  0.09852545708,  0.1264867932,   0.1429549307,
+		0.1429549307,   0.1264867932,   0.09852545708,  0.06680636108,
+		0.0386288017,   0.01834679954,  0.006636276841, 0.001504252781,
+	};
+	u32 lpf_coeff_count  = ARRAY_COUNT(lpf_coeff);
+	ctx->csctx.lpf_order = lpf_coeff_count - 1;
+	rlUnloadShaderBuffer(ctx->csctx.lpf_ssbo);
+	ctx->csctx.lpf_ssbo  = rlLoadShaderBuffer(lpf_coeff_count * sizeof(f32), lpf_coeff, GL_STATIC_DRAW);
+
+	ctx->flags &= ~UPLOAD_FILTER;
+}
+
+static void
+alloc_shader_storage(BeamformerCtx *ctx, Arena a)
+{
+	BeamformerParameters *bp = &ctx->params->raw;
+	uv4 rf_data_dim          = bp->rf_data_dim;
+	size rf_raw_size         = bp->channel_data_stride * rf_data_dim.y * rf_data_dim.z * sizeof(i16);
+	size rf_decoded_size     = rf_data_dim.x * rf_data_dim.y * rf_data_dim.z * sizeof(f32) * 2;
+	ctx->csctx.rf_data_dim   = rf_data_dim;
+
+	glDeleteBuffers(ARRAY_COUNT(ctx->csctx.rf_data_ssbos), ctx->csctx.rf_data_ssbos);
+	glDeleteBuffers(1, &ctx->csctx.raw_data_ssbo);
+	glGenBuffers(1, &ctx->csctx.raw_data_ssbo);
+	glGenBuffers(ARRAY_COUNT(ctx->csctx.rf_data_ssbos), ctx->csctx.rf_data_ssbos);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.raw_data_ssbo);
+	glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_raw_size, 0,
+	                GL_DYNAMIC_STORAGE_BIT|GL_MAP_WRITE_BIT);
+
+	for (u32 i = 0; i < ARRAY_COUNT(ctx->csctx.rf_data_ssbos); i++) {
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbos[i]);
+		glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_decoded_size, 0, GL_DYNAMIC_STORAGE_BIT);
+	}
+
+	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
+	ctx->csctx.hadamard_dim = (uv2){.x = rf_data_dim.z, .y = rf_data_dim.z};
+	size hadamard_elements  = rf_data_dim.z * rf_data_dim.z;
+	i32  *hadamard          = alloc(&a, i32, hadamard_elements);
+	fill_hadamard(hadamard, rf_data_dim.z);
+
+	rlUnloadShaderBuffer(ctx->csctx.hadamard_ssbo);
+	ctx->csctx.hadamard_ssbo = rlLoadShaderBuffer(hadamard_elements * sizeof(i32), hadamard,
+	                                              GL_STATIC_DRAW);
+	ctx->flags &= ~ALLOC_SSBOS;
 }
 
 static void
@@ -52,22 +85,34 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 	ComputeShaderCtx *csctx = &ctx->csctx;
 	glUseProgram(csctx->programs[shader]);
 
-	glBindImageTexture(ctx->out_texture_unit, ctx->out_texture, 0, GL_FALSE, 0,
-	                   GL_WRITE_ONLY, GL_RG32F);
-	glUniform1i(csctx->out_data_tex_id, ctx->out_texture_unit);
-
 	glBindBufferBase(GL_UNIFORM_BUFFER, 0, csctx->shared_ubo);
 
-	u32 rf_ssbo_idx      = 0;
-	u32 decoded_ssbo_idx = 1;
+	u32 output_ssbo_idx = !csctx->last_active_ssbo_index;
+	u32 input_ssbo_idx  = csctx->last_active_ssbo_index;
 	switch (shader) {
 	case CS_HADAMARD:
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[rf_ssbo_idx]);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[decoded_ssbo_idx]);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, csctx->hadamard_ssbo);
-		glDispatchCompute(csctx->rf_data_dim.x / 32, csctx->rf_data_dim.y / 32, csctx->rf_data_dim.z);
+		glDispatchCompute(ORONE(csctx->rf_data_dim.x / 32),
+		                  ORONE(csctx->rf_data_dim.y / 32),
+		                  ORONE(csctx->rf_data_dim.z));
+		csctx->last_active_ssbo_index = !csctx->last_active_ssbo_index;
+		break;
+	case CS_LPF:
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, csctx->lpf_ssbo);
+		glUniform1i(csctx->lpf_order_id, csctx->lpf_order);
+		glDispatchCompute(ORONE(csctx->rf_data_dim.x / 32),
+		                  ORONE(csctx->rf_data_dim.y / 32),
+		                  ORONE(csctx->rf_data_dim.z));
+		csctx->last_active_ssbo_index = !csctx->last_active_ssbo_index;
 		break;
 	case CS_MIN_MAX:
+		glBindImageTexture(ctx->out_texture_unit, ctx->out_texture, 0, GL_FALSE, 0,
+		                   GL_WRITE_ONLY, GL_RG32F);
+		glUniform1i(csctx->out_data_tex_id, ctx->out_texture_unit);
 		for (u32 i = 1; i < ctx->out_texture_mips; i++) {
 			u32 otu = ctx->out_texture_unit;
 			glBindImageTexture(otu + 1, ctx->out_texture, i - 1,
@@ -78,7 +123,6 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 			glUniform1i(csctx->mip_view_tex_id, otu + 2);
 			glUniform1i(csctx->mips_level_id, i);
 
-			#define ORONE(x) ((x)? (x) : 1)
 			u32 width  = ctx->out_data_dim.x >> i;
 			u32 height = ctx->out_data_dim.y >> i;
 			u32 depth  = ctx->out_data_dim.z >> i;
@@ -87,8 +131,15 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		}
 		break;
 	case CS_UFORCES:
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[decoded_ssbo_idx]);
-		glDispatchCompute(ctx->out_data_dim.x / 32, ctx->out_data_dim.y / 32, ctx->out_data_dim.z);
+		glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
+		glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
+		glBindImageTexture(ctx->out_texture_unit, ctx->out_texture, 0, GL_FALSE, 0,
+		                   GL_WRITE_ONLY, GL_RG32F);
+		glUniform1i(csctx->out_data_tex_id, ctx->out_texture_unit);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
+		glDispatchCompute(ORONE(ctx->out_data_dim.x / 32),
+		                  ORONE(ctx->out_data_dim.y / 32),
+		                  ORONE(ctx->out_data_dim.z));
 		break;
 	default: ASSERT(0);
 	}
@@ -149,17 +200,19 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 		f32  data_scale;
 		b32  editable;
 	} listings[] = {
-		{ "Sampling Rate:",  " [MHz]", &bp->sampling_frequency, 1e-6, 0 },
-		{ "Speed of Sound:", " [m/s]", &bp->speed_of_sound,     1,    1 },
-		{ "Min X Point:",    " [mm]",  &bp->output_min_xz.x,    1e3,  1 },
-		{ "Max X Point:",    " [mm]",  &bp->output_max_xz.x,    1e3,  1 },
-		{ "Min Z Point:",    " [mm]",  &bp->output_min_xz.y,    1e3,  1 },
-		{ "Max Z Point:",    " [mm]",  &bp->output_max_xz.y,    1e3,  1 },
-		{ "Dynamic Range:",  " [dB]",  &ctx->fsctx.db,          1,    1 },
+		{ "Sampling Rate:",    " [MHz]", &bp->sampling_frequency, 1e-6, 0 },
+		{ "Center Frequency:", " [MHz]", &bp->center_frequency,   1e-6, 1 },
+		{ "Speed of Sound:",   " [m/s]", &bp->speed_of_sound,     1,    1 },
+		{ "Min X Point:",      " [mm]",  &bp->output_min_xz.x,    1e3,  1 },
+		{ "Max X Point:",      " [mm]",  &bp->output_max_xz.x,    1e3,  1 },
+		{ "Min Z Point:",      " [mm]",  &bp->output_min_xz.y,    1e3,  1 },
+		{ "Max Z Point:",      " [mm]",  &bp->output_max_xz.y,    1e3,  1 },
+		{ "Dynamic Range:",    " [dB]",  &ctx->fsctx.db,          1,    1 },
 	};
 
 	struct { f32 min, max; } limits[] = {
 		{0},
+		{0, 100e6},
 		{0, 1e6},
 		{-1e3,                       bp->output_max_xz.x - 1e-6},
 		{bp->output_min_xz.x + 1e-6, 1e3},
@@ -351,12 +404,12 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
-		if (!uv4_equal(ctx->csctx.rf_data_dim, bp->rf_data_dim) ||
-		    !uv4_equal(ctx->out_data_dim, bp->output_points)) {
+		if (!uv4_equal(ctx->csctx.rf_data_dim, bp->rf_data_dim) || ctx->flags & ALLOC_SSBOS)
 			alloc_shader_storage(ctx, arena);
-		}
+		if (!uv4_equal(ctx->out_data_dim, bp->output_points) || ctx->flags & ALLOC_OUT_TEX)
+			alloc_output_image(ctx);
 
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbos[0]);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.raw_data_ssbo);
 		void *rf_data_buf = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 		ASSERT(rf_data_buf);
 		uv4  rf_data_dim  = ctx->csctx.rf_data_dim;
@@ -368,6 +421,9 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		else                     ctx->partial_transfer_count++;
 	}
 
+	if (ctx->flags & UPLOAD_FILTER)
+		upload_filter_coefficients(ctx, arena);
+
 	if (ctx->flags & DO_COMPUTE) {
 		if (ctx->params->upload) {
 			glBindBuffer(GL_UNIFORM_BUFFER, ctx->csctx.shared_ubo);
@@ -378,6 +434,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			ctx->params->upload = 0;
 		}
 		do_compute_shader(ctx, CS_HADAMARD);
+		do_compute_shader(ctx, CS_LPF);
 		do_compute_shader(ctx, CS_UFORCES);
 		do_compute_shader(ctx, CS_MIN_MAX);
 		ctx->flags &= ~DO_COMPUTE;

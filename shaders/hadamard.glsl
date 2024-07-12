@@ -7,7 +7,7 @@ layout(std430, binding = 1) readonly restrict buffer buffer_1 {
 };
 
 layout(std430, binding = 2) writeonly restrict buffer buffer_2 {
-	float out_data[];
+	vec2 out_data[];
 };
 
 layout(std430, binding = 3) readonly restrict buffer buffer_3 {
@@ -27,6 +27,7 @@ layout(std140, binding = 0) uniform parameters {
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	float speed_of_sound;         /* [m/s] */
 	float sampling_frequency;     /* [Hz]  */
+	float center_frequency;       /* [Hz]  */
 	float focal_depth;            /* [m]   */
 };
 
@@ -74,5 +75,7 @@ void main()
 		ridx += ridx_delta;
 	}
 
-	out_data[out_off + out_stride * acq] = float(sum);
+	float arg = radians(360) * center_frequency * time_sample / sampling_frequency;
+	out_data[out_off + out_stride * acq].x = float(sum) * cos(arg);
+	out_data[out_off + out_stride * acq].y = float(sum) * sin(arg);
 }

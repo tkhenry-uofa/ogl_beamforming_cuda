@@ -33,6 +33,7 @@ enum compute_shaders {
 //	CS_FORCES,
 	CS_HADAMARD,
 //	CS_HERCULES,
+	CS_LPF,
 	CS_MIN_MAX,
 	CS_UFORCES,
 	CS_LAST
@@ -40,14 +41,19 @@ enum compute_shaders {
 
 enum program_flags {
 	RELOAD_SHADERS = 1 << 0,
-	DO_COMPUTE     = 1 << 1,
+	ALLOC_SSBOS    = 1 << 1,
+	ALLOC_OUT_TEX  = 1 << 2,
+	UPLOAD_FILTER  = 1 << 3,
+	DO_COMPUTE     = 1 << 30,
 };
 
 typedef struct {
 	u32 programs[CS_LAST];
 
-	/* NOTE: One SSBO for raw data and one for decoded data */
+	/* NOTE: One SSBO for raw data and two for decoded data (swapped for chained stages)*/
+	u32 raw_data_ssbo;
 	u32 rf_data_ssbos[2];
+	u32 last_active_ssbo_index;
 	u32 hadamard_ssbo;
 	uv2 hadamard_dim;
 
@@ -57,6 +63,10 @@ typedef struct {
 	i32 out_data_tex_id;
 	i32 mip_view_tex_id;
 	i32 mips_level_id;
+
+	u32 lpf_ssbo;
+	u32 lpf_order;
+	i32 lpf_order_id;
 } ComputeShaderCtx;
 
 typedef struct {
