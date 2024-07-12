@@ -165,7 +165,7 @@ main(void)
 	ASSERT(ctx.data_pipe.file != OS_INVALID_FILE);
 	ASSERT(ctx.params);
 
-	ctx.params->output_points = ctx.out_data_dim;
+	ctx.params->raw.output_points = ctx.out_data_dim;
 
 	/* NOTE: allocate space for Uniform Buffer Object but don't send anything yet */
 	glGenBuffers(1, &ctx.csctx.shared_ubo);

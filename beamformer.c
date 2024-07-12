@@ -4,10 +4,11 @@
 static void
 alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 {
-	uv4 rf_data_dim        = ctx->params->rf_data_dim;
-	ctx->csctx.rf_data_dim = rf_data_dim;
-	size rf_raw_size       = ctx->params->channel_data_stride * rf_data_dim.y * rf_data_dim.z * sizeof(i16);
-	size rf_decoded_size   = rf_data_dim.x * rf_data_dim.y * rf_data_dim.z * sizeof(f32);
+	BeamformerParameters *bp = &ctx->params->raw;
+	uv4 rf_data_dim          = bp->rf_data_dim;
+	ctx->csctx.rf_data_dim   = rf_data_dim;
+	size rf_raw_size         = bp->channel_data_stride * rf_data_dim.y * rf_data_dim.z * sizeof(i16);
+	size rf_decoded_size     = rf_data_dim.x * rf_data_dim.y * rf_data_dim.z * sizeof(f32);
 
 	glDeleteBuffers(ARRAY_COUNT(ctx->csctx.rf_data_ssbos), ctx->csctx.rf_data_ssbos);
 	glGenBuffers(ARRAY_COUNT(ctx->csctx.rf_data_ssbos), ctx->csctx.rf_data_ssbos);
@@ -27,6 +28,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	ctx->csctx.hadamard_ssbo = rlLoadShaderBuffer(hadamard_elements * sizeof(i32), hadamard,
 	                                              GL_STATIC_DRAW);
 
+	ctx->out_data_dim = bp->output_points;
 	/* NOTE: allocate storage for beamformed output data;
 	 * this is shared between compute and fragment shaders */
 	uv4 odim    = ctx->out_data_dim;
@@ -125,7 +127,7 @@ move_towards_v4(v4 current, v4 target, v4 delta)
 }
 
 static v4
-fmsub_v4(v4 a, v4 b, v4 scale)
+scaled_sub_v4(v4 a, v4 b, v4 scale)
 {
 	return (v4){
 		.x = scale.x * (a.x - b.x),
@@ -138,6 +140,8 @@ fmsub_v4(v4 a, v4 b, v4 scale)
 static void
 draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 {
+	BeamformerParameters *bp = &ctx->params->raw;
+
 	struct listing {
 		char *prefix;
 		char *suffix;
@@ -145,22 +149,22 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 		f32  data_scale;
 		b32  editable;
 	} listings[] = {
-		{ "Sampling Rate:",  " [MHz]", &ctx->params->sampling_frequency, 1e-6, 0 },
-		{ "Speed of Sound:", " [m/s]", &ctx->params->speed_of_sound,     1,    1 },
-		{ "Min X Point:",    " [mm]",  &ctx->params->output_min_xz.x,    1e3,  1 },
-		{ "Max X Point:",    " [mm]",  &ctx->params->output_max_xz.x,    1e3,  1 },
-		{ "Min Z Point:",    " [mm]",  &ctx->params->output_min_xz.y,    1e3,  1 },
-		{ "Max Z Point:",    " [mm]",  &ctx->params->output_max_xz.y,    1e3,  1 },
-		{ "Dynamic Range:",  " [dB]",  &ctx->fsctx.db,                   1,    1 },
+		{ "Sampling Rate:",  " [MHz]", &bp->sampling_frequency, 1e-6, 0 },
+		{ "Speed of Sound:", " [m/s]", &bp->speed_of_sound,     1,    1 },
+		{ "Min X Point:",    " [mm]",  &bp->output_min_xz.x,    1e3,  1 },
+		{ "Max X Point:",    " [mm]",  &bp->output_max_xz.x,    1e3,  1 },
+		{ "Min Z Point:",    " [mm]",  &bp->output_min_xz.y,    1e3,  1 },
+		{ "Max Z Point:",    " [mm]",  &bp->output_max_xz.y,    1e3,  1 },
+		{ "Dynamic Range:",  " [dB]",  &ctx->fsctx.db,          1,    1 },
 	};
 
 	struct { f32 min, max; } limits[] = {
 		{0},
-		{0,                                   1e6},
-		{-1e3,                                ctx->params->output_max_xz.x - 1e-6},
-		{ctx->params->output_min_xz.x + 1e-6, 1e3},
-		{0,                                   ctx->params->output_max_xz.y - 1e-6},
-		{ctx->params->output_min_xz.y + 1e-6, 1e3},
+		{0, 1e6},
+		{-1e3,                       bp->output_max_xz.x - 1e-6},
+		{bp->output_min_xz.x + 1e-6, 1e3},
+		{0,                          bp->output_max_xz.y - 1e-6},
+		{bp->output_min_xz.y + 1e-6, 1e3},
 		{-120, 0},
 	};
 
@@ -168,7 +172,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 	static v4 colours[ARRAY_COUNT(listings)];
 	f32 scale = 6;
 	v4 scaled_dt = (v4){.x = scale * dt, .y = scale * dt, .z = scale * dt, .w = scale * dt};
-	v4 delta = fmsub_v4(ctx->fg, ctx->hovered_colour, scaled_dt);
+	v4 delta = scaled_sub_v4(ctx->fg, ctx->hovered_colour, scaled_dt);
 	if (init) {
 		for (i32 i = 0; i < ARRAY_COUNT(colours); i++)
 			colours[i] = ctx->fg;
@@ -210,7 +214,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 			if (mouse_scroll) {
 				*l->data += mouse_scroll / l->data_scale;
 				CLAMP(*l->data, limits[i].min, limits[i].max);
-				ctx->flags |= UPLOAD_UBO|DO_COMPUTE;
+				ctx->flags |= DO_COMPUTE;
+				ctx->params->upload = 1;
 			}
 		}
 
@@ -220,10 +225,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 		else
 			colours[i] = move_towards_v4(colours[i], ctx->fg, delta);
 
-		if (i == focused_idx)
-			tcol = colour_from_normalized(ctx->focused_colour);
-		else
-			tcol = colour_from_normalized(colours[i]);
+		if (i == focused_idx) tcol = colour_from_normalized(ctx->focused_colour);
+		else                  tcol = colour_from_normalized(colours[i]);
 
 		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
 		           ctx->font_spacing, tcol);
@@ -242,7 +245,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 			*listings[focused_idx].data = new_val / listings[focused_idx].data_scale;
 			CLAMP(*listings[focused_idx].data, limits[focused_idx].min,
 			      limits[focused_idx].max);
-			ctx->flags |= UPLOAD_UBO|DO_COMPUTE;
+			ctx->flags |= DO_COMPUTE;
+			ctx->params->upload = 1;
 		}
 		focused_idx  = -1;
 		focus_buf[0] = 0;
@@ -344,10 +348,13 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		ctx->window_size.w = GetScreenWidth();
 	}
 
+	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
-		if (!uv4_equal(ctx->csctx.rf_data_dim, ctx->params->rf_data_dim))
+		if (!uv4_equal(ctx->csctx.rf_data_dim, bp->rf_data_dim) ||
+		    !uv4_equal(ctx->out_data_dim, bp->output_points)) {
 			alloc_shader_storage(ctx, arena);
+		}
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbos[0]);
 		void *rf_data_buf = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
@@ -356,21 +363,19 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		size rf_raw_size  = rf_data_dim.x * rf_data_dim.y * rf_data_dim.z * sizeof(i16);
 		size rlen         = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
 		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-		if (rlen == rf_raw_size) {
-			ctx->flags |= DO_COMPUTE;
-		} else {
-			ctx->partial_transfer_count++;
-		}
+
+		if (rlen == rf_raw_size) ctx->flags |= DO_COMPUTE;
+		else                     ctx->partial_transfer_count++;
 	}
 
 	if (ctx->flags & DO_COMPUTE) {
-		if (ctx->flags & UPLOAD_UBO) {
+		if (ctx->params->upload) {
 			glBindBuffer(GL_UNIFORM_BUFFER, ctx->csctx.shared_ubo);
 			void *ubo = glMapBuffer(GL_UNIFORM_BUFFER, GL_WRITE_ONLY);
-			mem_copy((s8){.data = (u8 *)ctx->params, .len = sizeof(BeamformerParameters)},
-			         (s8){.data = (u8 *)ubo,         .len = sizeof(BeamformerParameters)});
+			mem_copy((s8){.data = (u8 *)bp,  .len = sizeof(*bp)},
+			         (s8){.data = (u8 *)ubo, .len = sizeof(*bp)});
 			glUnmapBuffer(GL_UNIFORM_BUFFER);
-			ctx->flags &= ~UPLOAD_UBO;
+			ctx->params->upload = 0;
 		}
 		do_compute_shader(ctx, CS_HADAMARD);
 		do_compute_shader(ctx, CS_UFORCES);
@@ -397,8 +402,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		Texture *output   = &ctx->fsctx.output.texture;
 
 		v2 output_dim = {
-			.x = ctx->params->output_max_xz.x - ctx->params->output_min_xz.x,
-			.y = ctx->params->output_max_xz.y - ctx->params->output_min_xz.y,
+			.x = bp->output_max_xz.x - bp->output_min_xz.x,
+			.y = bp->output_max_xz.y - bp->output_min_xz.y,
 		};
 
 		v2 line_step_mm = {.x = 3, .y = 5};
@@ -442,7 +447,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			v2 start_pos  = vr.pos;
 			start_pos.y  += vr.size.h;
 
-			f32 x_mm     = ctx->params->output_min_xz.x * 1e3;
+			f32 x_mm     = bp->output_min_xz.x * 1e3;
 			f32 x_mm_inc = x_inc * output_dim.x * 1e3 / vr.size.w;
 
 			v2 end_pos  = start_pos;
@@ -471,7 +476,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			v2 start_pos  = vr.pos;
 			start_pos.x  += vr.size.w;
 
-			f32 y_mm     = ctx->params->output_min_xz.y * 1e3;
+			f32 y_mm     = bp->output_min_xz.y * 1e3;
 			f32 y_mm_inc = y_inc * output_dim.y * 1e3 / vr.size.h;
 
 			v2 end_pos  = start_pos;

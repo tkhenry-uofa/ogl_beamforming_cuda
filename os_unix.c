@@ -102,20 +102,20 @@ os_read_pipe_data(os_pipe p, void *buf, size len)
 	return total_read;
 }
 
-static BeamformerParameters *
+static BeamformerParametersFull *
 os_open_shared_memory_area(char *name)
 {
 	i32 fd = shm_open(name, O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
 	if (fd == -1)
 		return NULL;
 
-	if (ftruncate(fd, sizeof(BeamformerParameters)) == -1) {
+	if (ftruncate(fd, sizeof(BeamformerParametersFull)) == -1) {
 		close(fd);
 		return NULL;
 	}
 
-	BeamformerParameters *new;
-	new = mmap(NULL, sizeof(BeamformerParameters), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	BeamformerParametersFull *new;
+	new = mmap(NULL, sizeof(*new), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 	close(fd);
 
 	if (new == MAP_FAILED)

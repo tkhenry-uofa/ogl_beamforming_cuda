@@ -117,16 +117,16 @@ os_read_pipe_data(os_pipe p, void *buf, size len)
 	return total_read;
 }
 
-static BeamformerParameters *
+static BeamformerParametersFull *
 os_open_shared_memory_area(char *name)
 {
 	HANDLE h = CreateFileMappingA(INVALID_HANDLE_VALUE, 0, PAGE_READWRITE, 0,
-	                              sizeof(BeamformerParameters), name);
+	                              sizeof(BeamformerParametersFull), name);
 	if (h == INVALID_HANDLE_VALUE)
 		return NULL;
 
-	BeamformerParameters *new;
-	new = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(BeamformerParameters));
+	BeamformerParametersFull *new;
+	new = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(*new));
 
 	return new;
 }

@@ -41,7 +41,6 @@ enum compute_shaders {
 enum program_flags {
 	RELOAD_SHADERS = 1 << 0,
 	DO_COMPUTE     = 1 << 1,
-	UPLOAD_UBO     = 1 << 2,
 };
 
 typedef struct {
@@ -69,6 +68,10 @@ typedef struct {
 } FragmentShaderCtx;
 
 #include "beamformer_parameters.h"
+typedef struct {
+	BeamformerParameters raw;
+	b32 upload;
+} BeamformerParametersFull;
 
 #if defined(__unix__)
 	#define GL_GLEXT_PROTOTYPES 1
@@ -104,7 +107,7 @@ typedef struct {
 	os_pipe data_pipe;
 	u32     partial_transfer_count;
 
-	BeamformerParameters *params;
+	BeamformerParametersFull *params;
 } BeamformerCtx;
 
 #endif /*_BEAMFORMER_H_ */
