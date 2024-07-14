@@ -35,8 +35,8 @@ layout(std140, binding = 0) uniform parameters {
 
 void main()
 {
-	/* NOTE: each invocation takes a time sample (row) and a receive channel (column).
-	 * It first maps the the column to the correct column in the rf data then
+	/* NOTE: each invocation takes a time sample and a receive channel.
+	 * It first maps the column to the correct column in the rf data then
 	 * does the dot product with the equivalent row of the hadamard matrix.
 	 * The result is stored to the equivalent row, column index of the output.
 	 */
@@ -48,16 +48,16 @@ void main()
 	uint hoff = rf_data_dim.z * acq;
 
 	/* NOTE: offsets for storing the results in the output data */
-	uint out_stride = rf_data_dim.x * rf_data_dim.y;
-	uint out_off    = rf_data_dim.x * channel + time_sample;
+	uint out_off = rf_data_dim.x * rf_data_dim.y * acq + rf_data_dim.x * channel + time_sample;
 
 	uint ch_base_idx = (channel + channel_offset) / 4;
 	uint ch_sub_idx  = (channel + channel_offset) - ch_base_idx * 4;
 	uint rf_channel  = channel_mapping[ch_base_idx][ch_sub_idx];
 
-	/* NOTE: offsets to get the time sample and row in rf data */
-	uint rf_stride = channel_data_stride * rf_data_dim.y;
-	uint rf_off    = channel_data_stride * rf_channel + time_sample;
+	/* NOTE: stride is the number of samples between acquistions; off is the
+	 * index of the first acquisition for this channel and time sample  */
+	uint rf_stride = rf_data_dim.x;
+	uint rf_off    = channel_data_stride * rf_channel + rf_data_dim.x * acq + time_sample;
 
 	/* NOTE: rf_data index and stride considering the data is i16 not i32 */
 	uint ridx       = rf_off / 2;
@@ -78,6 +78,6 @@ void main()
 	}
 
 	float arg = radians(360) * center_frequency * time_sample / sampling_frequency;
-	out_data[out_off + out_stride * acq].x = float(sum) * cos(arg);
-	out_data[out_off + out_stride * acq].y = float(sum) * sin(arg);
+	out_data[out_off].x = float(sum) * cos(arg);
+	out_data[out_off].y = float(sum) * sin(arg);
 }
