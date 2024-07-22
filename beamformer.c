@@ -502,14 +502,18 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
 		DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
 
+		/* NOTE: check mouse wheel for adjusting dynamic range of image */
+		v2 mouse = { .rl = GetMousePosition() };
+		if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
+			ctx->fsctx.db += GetMouseWheelMove();
+			CLAMP(ctx->fsctx.db, -120, 0);
+		}
+
 		/* NOTE: Horizontal Scale Bar */
 		{
 			f32 x_inc     = vr.size.w / (line_count.x - 1);
 			v2 start_pos  = vr.pos;
 			start_pos.y  += vr.size.h;
-
-			f32 x_mm     = bp->output_min_xz.x * 1e3;
-			f32 x_mm_inc = x_inc * output_dim.x * 1e3 / vr.size.w;
 
 			v2 end_pos  = start_pos;
 			end_pos.y  += tick_len;
@@ -518,12 +522,37 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			txt_pos.y  += 10;
 			txt_pos.x  += txt_s.y/2;
 
+			Rect tick_rect   = {.pos = start_pos, .size = vr.size};
+			tick_rect.size.h = 10 + tick_len + txt_s.x;
+
+			static v4 txt_colour = (v4){.a = 1.0};
+			f32 scale    = 6;
+			v4 scaled_dt = (v4){.x = scale * dt, .y = scale * dt, .z = scale * dt, .w = scale * dt};
+			v4 delta     = scaled_sub_v4(ctx->fg, ctx->hovered_colour, scaled_dt);
+
+			if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
+				txt_colour = move_towards_v4(txt_colour, ctx->hovered_colour, delta);
+				f32 size_delta = GetMouseWheelMove() * 0.5e-3;
+				/* TODO: smooth scroll this? */
+				bp->output_min_xz.x -= size_delta;
+				bp->output_max_xz.x += size_delta;
+				if (size_delta) {
+					ctx->flags |= DO_COMPUTE;
+					ctx->params->upload = 1;
+				}
+			} else {
+				txt_colour = move_towards_v4(txt_colour, ctx->fg, delta);
+			}
+
+			f32 x_mm     = bp->output_min_xz.x * 1e3;
+			f32 x_mm_inc = x_inc * output_dim.x * 1e3 / vr.size.w;
+
 			for (u32 i = 0 ; i < line_count.x; i++) {
 				DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(ctx->fg));
 				snprintf((char *)txt.data, txt.len, "%+0.01f mm", x_mm);
 				DrawTextPro(ctx->font, (char *)txt.data, txt_pos.rl, (Vector2){0},
 				            90, ctx->font_size, ctx->font_spacing,
-				            colour_from_normalized(ctx->fg));
+				            colour_from_normalized(txt_colour));
 				start_pos.x += x_inc;
 				end_pos.x   += x_inc;
 				txt_pos.x   += x_inc;
@@ -537,9 +566,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			v2 start_pos  = vr.pos;
 			start_pos.x  += vr.size.w;
 
-			f32 y_mm     = bp->output_min_xz.y * 1e3;
-			f32 y_mm_inc = y_inc * output_dim.y * 1e3 / vr.size.h;
-
 			v2 end_pos  = start_pos;
 			end_pos.x  += tick_len;
 
@@ -547,12 +573,36 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			txt_pos.x  += 10;
 			txt_pos.y  -= txt_s.y/2;
 
+			Rect tick_rect   = {.pos = start_pos, .size = vr.size};
+			tick_rect.size.w = 10 + tick_len + txt_s.x;
+
+			static v4 txt_colour = (v4){.a = 1.0};
+			f32 scale    = 6;
+			v4 scaled_dt = (v4){.x = scale * dt, .y = scale * dt, .z = scale * dt, .w = scale * dt};
+			v4 delta     = scaled_sub_v4(ctx->fg, ctx->hovered_colour, scaled_dt);
+
+			if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
+				txt_colour = move_towards_v4(txt_colour, ctx->hovered_colour, delta);
+				f32 size_delta = GetMouseWheelMove() * 0.5e-3;
+				/* TODO: smooth scroll this? */
+				bp->output_max_xz.y += size_delta;
+				if (size_delta) {
+					ctx->flags |= DO_COMPUTE;
+					ctx->params->upload = 1;
+				}
+			} else {
+				txt_colour = move_towards_v4(txt_colour, ctx->fg, delta);
+			}
+
+			f32 y_mm     = bp->output_min_xz.y * 1e3;
+			f32 y_mm_inc = y_inc * output_dim.y * 1e3 / vr.size.h;
+
 			for (u32 i = 0 ; i < line_count.y; i++) {
 				DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(ctx->fg));
 				snprintf((char *)txt.data, txt.len, "%0.01f mm", y_mm);
 				DrawTextEx(ctx->font, (char *)txt.data, txt_pos.rl,
 				           ctx->font_size, ctx->font_spacing,
-				           colour_from_normalized(ctx->fg));
+				           colour_from_normalized(txt_colour));
 				start_pos.y += y_inc;
 				end_pos.y   += y_inc;
 				txt_pos.y   += y_inc;
@@ -565,13 +615,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			ctx->window_size.w = desired_width;
 			SetWindowSize(ctx->window_size.w, ctx->window_size.h);
 			SetWindowMinSize(desired_width, 720);
-		}
-
-		/* NOTE: check mouse wheel for adjusting dynamic range of image */
-		v2 mouse = { .rl = GetMousePosition() };
-		if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
-			ctx->fsctx.db += GetMouseWheelMove();
-			CLAMP(ctx->fsctx.db, -120, 0);
 		}
 
 		draw_settings_ui(ctx, arena, dt, lr, mouse);
