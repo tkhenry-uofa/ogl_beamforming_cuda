@@ -152,7 +152,7 @@ main(void)
 
 	ctx.font_size    = 32;
 	ctx.font_spacing = 0;
-	ctx.font         = GetFontDefault();
+	ctx.font         = LoadFontEx("assets/IBMPlexSans-Bold.ttf", ctx.font_size, 0, 0);
 
 	init_fragment_shader_ctx(&ctx.fsctx, ctx.out_data_dim);
 
