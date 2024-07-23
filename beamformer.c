@@ -182,13 +182,13 @@ move_towards_v4(v4 current, v4 target, v4 delta)
 }
 
 static v4
-scaled_sub_v4(v4 a, v4 b, v4 scale)
+scaled_sub_v4(v4 a, v4 b, f32 scale)
 {
 	return (v4){
-		.x = scale.x * (a.x - b.x),
-		.y = scale.y * (a.y - b.y),
-		.z = scale.z * (a.z - b.z),
-		.w = scale.w * (a.w - b.w),
+		.x = scale * (a.x - b.x),
+		.y = scale * (a.y - b.y),
+		.z = scale * (a.z - b.z),
+		.w = scale * (a.w - b.w),
 	};
 }
 
@@ -232,11 +232,6 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 		{-120, 0},
 	};
 
-
-	f32 scale = 6;
-	v4 scaled_dt = (v4){.x = scale * dt, .y = scale * dt, .z = scale * dt, .w = scale * dt};
-	v4 delta = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scaled_dt);
-
 	static char focus_buf[64];
 	static i32 focus_buf_curs = 0;
 	static i32 focused_idx    = -1;
@@ -249,6 +244,9 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 	pos.x  += 10;
 
 	s8 txt  = s8alloc(&arena, 64);
+
+	f32 scale = 6;
+	v4 delta  = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scale * dt);
 
 	for (i32 i = 0; i < ARRAY_COUNT(listings); i++) {
 		struct listing *l = listings + i;
@@ -277,7 +275,9 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 			}
 		}
 
-		if (i == overlap_idx)
+		if (i == focused_idx)
+			colours[i] = move_towards_v4(colours[i], FOCUSED_COLOUR, delta);
+		else if (i == overlap_idx)
 			colours[i] = move_towards_v4(colours[i], HOVERED_COLOUR, delta);
 		else
 			colours[i] = move_towards_v4(colours[i], FG_COLOUR, delta);
@@ -522,10 +522,9 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			Rect tick_rect   = {.pos = start_pos, .size = vr.size};
 			tick_rect.size.h = 10 + tick_len + txt_s.x;
 
-			static v4 txt_colour = (v4){.a = 1.0};
-			f32 scale    = 6;
-			v4 scaled_dt = (v4){.x = scale * dt, .y = scale * dt, .z = scale * dt, .w = scale * dt};
-			v4 delta     = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scaled_dt);
+			static v4 txt_colour = FG_COLOUR;
+			f32 scale = 6;
+			v4 delta  = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scale * dt);
 
 			if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
 				txt_colour = move_towards_v4(txt_colour, HOVERED_COLOUR, delta);
@@ -573,10 +572,9 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			Rect tick_rect   = {.pos = start_pos, .size = vr.size};
 			tick_rect.size.w = 10 + tick_len + txt_s.x;
 
-			static v4 txt_colour = (v4){.a = 1.0};
-			f32 scale    = 6;
-			v4 scaled_dt = (v4){.x = scale * dt, .y = scale * dt, .z = scale * dt, .w = scale * dt};
-			v4 delta     = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scaled_dt);
+			static v4 txt_colour = FG_COLOUR;
+			f32 scale = 6;
+			v4 delta  = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scale * dt);
 
 			if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
 				txt_colour = move_towards_v4(txt_colour, HOVERED_COLOUR, delta);
