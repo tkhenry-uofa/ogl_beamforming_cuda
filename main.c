@@ -150,11 +150,6 @@ main(void)
 	SetConfigFlags(FLAG_VSYNC_HINT|FLAG_WINDOW_RESIZABLE);
 	InitWindow(ctx.window_size.w, ctx.window_size.h, "OGL Beamformer");
 
-	ctx.bg             = (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0};
-	ctx.fg             = (v4){.r = 0.92, .g = 0.88, .b = 0.78, .a = 1.0};
-	ctx.focused_colour = (v4){.r = 0.86, .g = 0.28, .b = 0.21, .a = 1.0};
-	ctx.hovered_colour = (v4){.r = 0.11, .g = 0.50, .b = 0.59, .a = 1.0};
-
 	ctx.font_size    = 32;
 	ctx.font_spacing = 0;
 	ctx.font         = GetFontDefault();

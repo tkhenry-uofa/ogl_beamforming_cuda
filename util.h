@@ -13,6 +13,8 @@
 	#define DEBUG_EXPORT static
 #endif
 
+#define static_assert _Static_assert
+
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof(*a))
 #define ABS(x)         ((x) < 0 ? (-x) : (x))
 #define CLAMP(x, a, b) ((x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x))

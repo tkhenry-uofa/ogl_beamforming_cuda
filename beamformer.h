@@ -10,6 +10,11 @@
 
 #include "util.h"
 
+#define BG_COLOUR      (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
+#define FG_COLOUR      (v4){.r = 0.92, .g = 0.88, .b = 0.78, .a = 1.0}
+#define FOCUSED_COLOUR (v4){.r = 0.86, .g = 0.28, .b = 0.21, .a = 1.0}
+#define HOVERED_COLOUR (v4){.r = 0.11, .g = 0.50, .b = 0.59, .a = 1.0}
+
 typedef union {
 	struct { f32 x, y; };
 	struct { f32 w, h; };
@@ -100,8 +105,6 @@ typedef struct {
 	u32 flags;
 
 	/* UI Theming */
-	v4 bg, fg;
-	v4 focused_colour, hovered_colour;
 	Font  font;
 	u32   font_size;
 	u32   font_spacing;
