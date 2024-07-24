@@ -18,13 +18,13 @@ layout(std140, binding = 0) uniform parameters {
 	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
 	vec4  lpf_coefficients[16];   /* Low Pass Filter Cofficients */
-	uvec4 rf_data_dim;            /* Samples * Channels * Acquisitions; last element ignored */
+	uvec4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
 	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
+	uvec2 rf_raw_dim;             /* Raw Data Dimensions */
 	vec2  output_min_xz;          /* [m] Top left corner of output region */
 	vec2  output_max_xz;          /* [m] Bottom right corner of output region */
 	vec2  xdc_min_xy;             /* [m] Min center of transducer elements */
 	vec2  xdc_max_xy;             /* [m] Max center of transducer elements */
-	uint  channel_data_stride;    /* Data points between channels (samples * acq + padding) */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	uint  lpf_order;              /* Order of Low Pass Filter */
 	float speed_of_sound;         /* [m/s] */
@@ -45,10 +45,10 @@ void main()
 	uint acq         = gl_GlobalInvocationID.z;
 
 	/* NOTE: offset to get the correct column in hadamard matrix */
-	uint hoff = rf_data_dim.z * acq;
+	uint hoff = dec_data_dim.z * acq;
 
 	/* NOTE: offsets for storing the results in the output data */
-	uint out_off = rf_data_dim.x * rf_data_dim.y * acq + rf_data_dim.x * channel + time_sample;
+	uint out_off = dec_data_dim.x * dec_data_dim.y * acq + dec_data_dim.x * channel + time_sample;
 
 	uint ch_base_idx = (channel + channel_offset) / 4;
 	uint ch_sub_idx  = (channel + channel_offset) - ch_base_idx * 4;
@@ -56,8 +56,8 @@ void main()
 
 	/* NOTE: stride is the number of samples between acquistions; off is the
 	 * index of the first acquisition for this channel and time sample  */
-	uint rf_stride = rf_data_dim.x;
-	uint rf_off    = channel_data_stride * rf_channel + rf_data_dim.x * acq + time_sample;
+	uint rf_stride = dec_data_dim.x;
+	uint rf_off    = rf_raw_dim.x * rf_channel + dec_data_dim.x * acq + time_sample;
 
 	/* NOTE: rf_data index and stride considering the data is i16 not i32 */
 	uint ridx       = rf_off / 2;
@@ -71,7 +71,7 @@ void main()
 
 	/* NOTE: Compute N-D dot product */
 	int sum = 0;
-	for (int i = 0; i < rf_data_dim.z; i++) {
+	for (int i = 0; i < dec_data_dim.z; i++) {
 		int data = (rf_data[ridx] << lfs) >> 16;
 		sum  += hadamard[hoff + i] * data;
 		ridx += ridx_delta;

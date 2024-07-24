@@ -51,10 +51,12 @@ static void
 alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 {
 	BeamformerParameters *bp = &ctx->params->raw;
-	uv4 rf_data_dim          = bp->rf_data_dim;
-	size rf_raw_size         = bp->channel_data_stride * rf_data_dim.y * rf_data_dim.z * sizeof(i16);
-	size rf_decoded_size     = rf_data_dim.x * rf_data_dim.y * rf_data_dim.z * sizeof(f32) * 2;
-	ctx->csctx.rf_data_dim   = rf_data_dim;
+	uv4 dec_data_dim         = bp->dec_data_dim;
+	uv2 rf_raw_dim           = bp->rf_raw_dim;
+	size rf_raw_size         = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
+	size rf_decoded_size     = dec_data_dim.x * dec_data_dim.y * dec_data_dim.z * sizeof(f32) * 2;
+	ctx->csctx.rf_raw_dim    = rf_raw_dim;
+	ctx->csctx.dec_data_dim  = dec_data_dim;
 
 	glDeleteBuffers(ARRAY_COUNT(ctx->csctx.rf_data_ssbos), ctx->csctx.rf_data_ssbos);
 	glDeleteBuffers(1, &ctx->csctx.raw_data_ssbo);
@@ -70,10 +72,10 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	}
 
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
-	ctx->csctx.hadamard_dim = (uv2){.x = rf_data_dim.z, .y = rf_data_dim.z};
-	size hadamard_elements  = rf_data_dim.z * rf_data_dim.z;
+	ctx->csctx.hadamard_dim = (uv2){.x = dec_data_dim.z, .y = dec_data_dim.z};
+	size hadamard_elements  = dec_data_dim.z * dec_data_dim.z;
 	i32  *hadamard          = alloc(&a, i32, hadamard_elements);
-	fill_hadamard(hadamard, rf_data_dim.z);
+	fill_hadamard(hadamard, dec_data_dim.z);
 
 	rlUnloadShaderBuffer(ctx->csctx.hadamard_ssbo);
 	ctx->csctx.hadamard_ssbo = rlLoadShaderBuffer(hadamard_elements * sizeof(i32), hadamard,
@@ -96,9 +98,9 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, csctx->hadamard_ssbo);
-		glDispatchCompute(ORONE(csctx->rf_data_dim.x / 32),
-		                  ORONE(csctx->rf_data_dim.y / 32),
-		                  ORONE(csctx->rf_data_dim.z));
+		glDispatchCompute(ORONE(csctx->dec_data_dim.x / 32),
+		                  ORONE(csctx->dec_data_dim.y / 32),
+		                  ORONE(csctx->dec_data_dim.z));
 		csctx->last_active_ssbo_index = !csctx->last_active_ssbo_index;
 		break;
 	case CS_LPF:
@@ -108,9 +110,9 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, csctx->lpf_ssbo);
 		glUniform1i(csctx->lpf_order_id, csctx->lpf_order);
 		#endif
-		glDispatchCompute(ORONE(csctx->rf_data_dim.x / 32),
-		                  ORONE(csctx->rf_data_dim.y / 32),
-		                  ORONE(csctx->rf_data_dim.z));
+		glDispatchCompute(ORONE(csctx->dec_data_dim.x / 32),
+		                  ORONE(csctx->dec_data_dim.y / 32),
+		                  ORONE(csctx->dec_data_dim.z));
 		csctx->last_active_ssbo_index = !csctx->last_active_ssbo_index;
 		break;
 	case CS_MIN_MAX:
@@ -405,7 +407,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
-		if (!uv4_equal(ctx->csctx.rf_data_dim, bp->rf_data_dim) || ctx->flags & ALLOC_SSBOS)
+		if (!uv4_equal(ctx->csctx.dec_data_dim, bp->dec_data_dim) || ctx->flags & ALLOC_SSBOS)
 			alloc_shader_storage(ctx, arena);
 		if (!uv4_equal(ctx->out_data_dim, bp->output_points) || ctx->flags & ALLOC_OUT_TEX)
 			alloc_output_image(ctx);
@@ -413,8 +415,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.raw_data_ssbo);
 		void *rf_data_buf = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 		ASSERT(rf_data_buf);
-		uv4  rf_data_dim  = ctx->csctx.rf_data_dim;
-		size rf_raw_size  = rf_data_dim.x * rf_data_dim.y * rf_data_dim.z * sizeof(i16);
+		uv2  rf_raw_dim   = ctx->csctx.rf_raw_dim;
+		size rf_raw_size  = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
 		size rlen         = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
 		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 

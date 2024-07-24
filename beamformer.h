@@ -64,7 +64,8 @@ typedef struct {
 
 	u32 shared_ubo;
 
-	uv4 rf_data_dim;
+	uv4 dec_data_dim;
+	uv2 rf_raw_dim;
 	i32 out_data_tex_id;
 	i32 mip_view_tex_id;
 	i32 mips_level_id;

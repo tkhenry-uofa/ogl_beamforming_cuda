@@ -124,7 +124,7 @@ check_shared_memory(char *name)
 }
 
 void
-send_data(char *pipe_name, char *shm_name, i16 *data, uv4 data_dim)
+send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim)
 {
 	if (g_pipe.file == OS_INVALID_FILE) {
 		g_pipe = os_open_named_pipe(pipe_name);
@@ -136,9 +136,9 @@ send_data(char *pipe_name, char *shm_name, i16 *data, uv4 data_dim)
 
 	check_shared_memory(shm_name);
 	/* TODO: this probably needs a mutex around it if we want to change it here */
-	g_bp->raw.rf_data_dim = data_dim;
-	size data_size        = data_dim.x * data_dim.y * data_dim.z * sizeof(i16);
-	size written          = os_write_to_pipe(g_pipe, data, data_size);
+	g_bp->raw.rf_raw_dim = data_dim;
+	size data_size       = data_dim.x * data_dim.y * sizeof(i16);
+	size written         = os_write_to_pipe(g_pipe, data, data_size);
 	if (written != data_size)
 		mexWarnMsgIdAndTxt("ogl_beamformer:write_error",
 		                   "failed to write full data to pipe: wrote: %ld", written);
