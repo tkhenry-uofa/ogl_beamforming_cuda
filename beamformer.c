@@ -468,8 +468,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 		v2 line_step_mm = {.x = 3, .y = 5};
 		uv2 line_count  = {
-			.x = output_dim.x * 1e3/line_step_mm.x + 1,
-			.y = output_dim.y * 1e3/line_step_mm.y + 1,
+			.x = ABS(output_dim.x) * 1e3/line_step_mm.x + 1,
+			.y = ABS(output_dim.y) * 1e3/line_step_mm.y + 1,
 		};
 
 		s8 txt = s8alloc(&arena, 64);
