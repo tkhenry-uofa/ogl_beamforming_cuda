@@ -93,9 +93,15 @@ typedef struct {
 	#include <GL/glcorearb.h>
 	#include <GL/glext.h>
 	#include "os_unix.c"
+
+	#define OS_PIPE_NAME "/tmp/beamformer_data_fifo"
+	#define OS_SMEM_NAME "/ogl_beamformer_parameters"
 #elif defined(_WIN32)
 	#include <glad.h>
 	#include "os_win32.c"
+
+	#define OS_PIPE_NAME "\\\\.\\pipe\\beamformer_data_fifo"
+	#define OS_SMEM_NAME "Local\\ogl_beamformer_parameters"
 #else
 	#error Unsupported Platform!
 #endif

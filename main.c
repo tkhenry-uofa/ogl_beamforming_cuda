@@ -156,8 +156,8 @@ main(void)
 
 	init_fragment_shader_ctx(&ctx.fsctx, ctx.out_data_dim);
 
-	ctx.data_pipe = os_open_named_pipe("/tmp/beamformer_data_fifo");
-	ctx.params    = os_open_shared_memory_area("/ogl_beamformer_parameters");
+	ctx.data_pipe = os_open_named_pipe(OS_PIPE_NAME);
+	ctx.params    = os_open_shared_memory_area(OS_SMEM_NAME);
 	/* TODO: properly handle this? */
 	ASSERT(ctx.data_pipe.file != OS_INVALID_FILE);
 	ASSERT(ctx.params);
@@ -184,7 +184,7 @@ main(void)
 
 	/* NOTE: make sure this will get cleaned up after external
 	 * programs release their references */
-	os_remove_shared_memory("/ogl_beamformer_parameters");
+	os_remove_shared_memory(OS_SMEM_NAME);
 
 	/* NOTE: garbage code needed for Linux */
 	os_close_named_pipe(ctx.data_pipe);
