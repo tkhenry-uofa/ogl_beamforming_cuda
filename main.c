@@ -169,6 +169,8 @@ main(void)
 	glBindBuffer(GL_UNIFORM_BUFFER, ctx.csctx.shared_ubo);
 	glBufferData(GL_UNIFORM_BUFFER, sizeof(BeamformerParameters), 0, GL_STATIC_DRAW);
 
+	glGenQueries(CS_LAST, ctx.csctx.timer_ids);
+
 	ctx.flags |= RELOAD_SHADERS|ALLOC_SSBOS|ALLOC_OUT_TEX|UPLOAD_FILTER;
 
 	while(!WindowShouldClose()) {

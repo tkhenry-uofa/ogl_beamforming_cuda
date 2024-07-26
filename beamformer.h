@@ -54,8 +54,33 @@ enum program_flags {
 	DO_COMPUTE     = 1 << 30,
 };
 
+#include "beamformer_parameters.h"
+typedef struct {
+	BeamformerParameters raw;
+	b32 upload;
+} BeamformerParametersFull;
+
+#if defined(__unix__)
+	#include "os_unix.c"
+
+	#define OS_PIPE_NAME "/tmp/beamformer_data_fifo"
+	#define OS_SMEM_NAME "/ogl_beamformer_parameters"
+#elif defined(_WIN32)
+	#include "os_win32.c"
+
+	#define OS_PIPE_NAME "\\\\.\\pipe\\beamformer_data_fifo"
+	#define OS_SMEM_NAME "Local\\ogl_beamformer_parameters"
+#else
+	#error Unsupported Platform!
+#endif
+
 typedef struct {
 	u32 programs[CS_LAST];
+
+	u32    timer_ids[CS_LAST];
+	i32    timer_idx;
+	GLsync timer_fence;
+	f32    last_frame_time[CS_LAST];
 
 	/* NOTE: One SSBO for raw data and two for decoded data (swapped for chained stages)*/
 	u32 raw_data_ssbo;
@@ -84,26 +109,6 @@ typedef struct {
 	i32             db_cutoff_id;
 	f32             db;
 } FragmentShaderCtx;
-
-#include "beamformer_parameters.h"
-typedef struct {
-	BeamformerParameters raw;
-	b32 upload;
-} BeamformerParametersFull;
-
-#if defined(__unix__)
-	#include "os_unix.c"
-
-	#define OS_PIPE_NAME "/tmp/beamformer_data_fifo"
-	#define OS_SMEM_NAME "/ogl_beamformer_parameters"
-#elif defined(_WIN32)
-	#include "os_win32.c"
-
-	#define OS_PIPE_NAME "\\\\.\\pipe\\beamformer_data_fifo"
-	#define OS_SMEM_NAME "Local\\ogl_beamformer_parameters"
-#else
-	#error Unsupported Platform!
-#endif
 
 typedef struct {
 	uv2 window_size;

@@ -87,6 +87,9 @@ static void
 do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
+
+	glBeginQuery(GL_TIME_ELAPSED, csctx->timer_ids[shader]);
+
 	glUseProgram(csctx->programs[shader]);
 
 	glBindBufferBase(GL_UNIFORM_BUFFER, 0, csctx->shared_ubo);
@@ -149,6 +152,8 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		break;
 	default: ASSERT(0);
 	}
+
+	glEndQuery(GL_TIME_ELAPSED);
 }
 
 static Color
@@ -243,7 +248,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 
 	v2 pos  = r.pos;
 	pos.y  += 50;
-	pos.x  += 10;
+	pos.x  += 20;
 
 	s8 txt  = s8alloc(&arena, 64);
 
@@ -342,7 +347,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 }
 
 static void
-draw_debug_overlay(BeamformerCtx *ctx, Arena arena, f32 dt)
+draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r, f32 dt)
 {
 	DrawFPS(20, 20);
 
@@ -350,17 +355,29 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, f32 dt)
 	u32 fontsize  = ctx->font_size;
 	u32 fontspace = ctx->font_spacing;
 
-	s8 partial_txt = s8alloc(&arena, 64);
-	snprintf((char *)partial_txt.data, partial_txt.len, "Partial Transfers: %u", ctx->partial_transfer_count);
+	static char *labels[CS_LAST] = {
+		[CS_HADAMARD] = "Decoding:",
+		[CS_LPF]      = "LPF:",
+		[CS_MIN_MAX]  = "Min/Max:",
+		[CS_UFORCES]  = "UFORCES:",
+	};
 
-	v2 partial_fs = {.rl = MeasureTextEx(ctx->font, (char *)partial_txt.data, fontsize, fontspace)};
+	ComputeShaderCtx *cs = &ctx->csctx;
 
-	v2 pos   = {.x = 20, .y = ws.h - partial_fs.y - 20};
-	/* NOTE: Partial Tranfers */
-	{
-		DrawTextEx(ctx->font, (char *)partial_txt.data, pos.rl,  fontsize, fontspace,
+	s8 txt_buf = s8alloc(&arena, 64);
+	v2 pos = {.x = 20, .y = ws.h - 10};
+	for (u32 i = 0; i < CS_LAST; i++) {
+		v2 txt_fs  = {.rl = MeasureTextEx(ctx->font, labels[i], fontsize, fontspace)};
+		pos.y     -= txt_fs.y;
+
+		DrawTextEx(ctx->font, labels[i], pos.rl, fontsize, fontspace,
 		           colour_from_normalized(FG_COLOUR));
-		pos.y += partial_fs.y;
+
+		snprintf((char *)txt_buf.data, txt_buf.len, "%0.02e [s]", cs->last_frame_time[i]);
+		txt_fs.rl = MeasureTextEx(ctx->font, (char *)txt_buf.data, fontsize, fontspace);
+		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
+		DrawTextEx(ctx->font, (char *)txt_buf.data, rpos.rl, fontsize, fontspace,
+		           colour_from_normalized(FG_COLOUR));
 	}
 
 	{
@@ -404,6 +421,19 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		ctx->window_size.w = GetScreenWidth();
 	}
 
+	/* NOTE: Store the compute time for the last frame. */
+	{
+		i32 timer_status, _unused;
+		glGetSynciv(ctx->csctx.timer_fence, GL_SYNC_STATUS, 4, &_unused, &timer_status);
+		if (timer_status == GL_SIGNALED) {
+			for (u32 i = 0; i < ARRAY_COUNT(ctx->csctx.timer_ids); i++) {
+				u64 ns = 0;
+				glGetQueryObjectui64v(ctx->csctx.timer_ids[i], GL_QUERY_RESULT, &ns);
+				ctx->csctx.last_frame_time[i] = (f32)ns / 1e9;
+			}
+		}
+	}
+
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
@@ -441,6 +471,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		do_compute_shader(ctx, CS_UFORCES);
 		do_compute_shader(ctx, CS_MIN_MAX);
 		ctx->flags &= ~DO_COMPUTE;
+		glDeleteSync(ctx->csctx.timer_fence);
+		ctx->csctx.timer_fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 	}
 
 	/* NOTE: draw output image texture using render fragment shader */
@@ -615,7 +647,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		}
 
 		draw_settings_ui(ctx, arena, dt, lr, mouse);
-		draw_debug_overlay(ctx, arena, dt);
+		draw_debug_overlay(ctx, arena, lr, dt);
 	EndDrawing();
 
 	if (IsKeyPressed(KEY_R))
