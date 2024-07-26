@@ -19,5 +19,6 @@ typedef struct {
 	f32 sampling_frequency;     /* [Hz]  */
 	f32 center_frequency;       /* [Hz]  */
 	f32 focal_depth;            /* [m]   */
-	f32 _pad[3];
+	f32 time_offset;            /* pulse length correction time [s]   */
+	f32 _pad[2];
 } BeamformerParameters;

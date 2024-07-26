@@ -23,6 +23,7 @@ layout(std140, binding = 0) uniform parameters {
 	float sampling_frequency;     /* [Hz]  */
 	float center_frequency;       /* [Hz]  */
 	float focal_depth;            /* [m]   */
+	float time_offset;            /* pulse length correction time [s]   */
 };
 
 layout(rg32f, location = 1) uniform image3D   u_out_data_tex;
@@ -91,7 +92,7 @@ void main()
 		vec2 rdist = vec2(x, image_point.z);
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float dist = transmit_dist + length(rdist);
-			float time = dist / speed_of_sound;
+			float time = dist / speed_of_sound + time_offset;
 
 			/* NOTE: do cubic interp between adjacent time samples */
 			vec2 p   = cubic(ridx, time * sampling_frequency);
