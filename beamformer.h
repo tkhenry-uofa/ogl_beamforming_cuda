@@ -4,6 +4,8 @@
 
 #include <immintrin.h>
 
+#include <glad.h>
+
 #define GRAPHICS_API_OPENGL_43
 #include <raylib.h>
 #include <rlgl.h>
@@ -90,15 +92,11 @@ typedef struct {
 } BeamformerParametersFull;
 
 #if defined(__unix__)
-	#define GL_GLEXT_PROTOTYPES 1
-	#include <GL/glcorearb.h>
-	#include <GL/glext.h>
 	#include "os_unix.c"
 
 	#define OS_PIPE_NAME "/tmp/beamformer_data_fifo"
 	#define OS_SMEM_NAME "/ogl_beamformer_parameters"
 #elif defined(_WIN32)
-	#include <glad.h>
 	#include "os_win32.c"
 
 	#define OS_PIPE_NAME "\\\\.\\pipe\\beamformer_data_fifo"

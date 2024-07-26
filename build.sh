@@ -1,10 +1,9 @@
 #!/bin/sh
-cflags="-march=native -ggdb -O0 -Wall"
+cflags="-march=native -ggdb -O0 -Wall -I./external/include"
 ldflags="-lraylib"
 
 case "$1" in
 "win32")
-	cflags="$cflags -I./external/include"
 	ldflags="$ldflags -lgdi32 -lwinmm -L./external"
 	cc $cflags -o ogl main.c $ldflags
 	;;
