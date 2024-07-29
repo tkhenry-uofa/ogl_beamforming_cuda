@@ -625,100 +625,59 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			CLAMP(ctx->fsctx.db, -120, 0);
 		}
 
-		/* NOTE: Horizontal Scale Bar */
-		{
-			f32 x_inc     = vr.size.w / (line_count.x - 1);
-			v2 start_pos  = vr.pos;
-			start_pos.y  += vr.size.h;
+		static f32 txt_colour_t[2];
+		for (u32 i = 0; i < 2; i++) {
+			f32 inc          = vr.size.E[i] / (line_count.E[i] - 1);
+			v2 start_pos     = vr.pos;
+			start_pos.E[!i] += vr.size.E[!i];
 
-			v2 end_pos  = start_pos;
-			end_pos.y  += tick_len;
+			v2 end_pos       = start_pos;
+			end_pos.E[!i]   += tick_len;
 
+			/* NOTE: Center the Text with the Tick center */
+			f32 txt_pos_scale[2] = {1, -1};
 			v2 txt_pos  = end_pos;
-			txt_pos.y  += 10;
-			txt_pos.x  += txt_s.y/2;
+			txt_pos.E[i]  += txt_pos_scale[i] * txt_s.y/2;
+			txt_pos.E[!i] += 10;
 
-			Rect tick_rect   = {.pos = start_pos, .size = vr.size};
-			tick_rect.size.h = 10 + tick_len + txt_s.x;
+			Rect tick_rect       = {.pos = start_pos, .size = vr.size};
+			tick_rect.size.E[!i] = 10 + tick_len + txt_s.x;
 
-			static f32 txt_colour_t;
 			if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
-				f32 size_delta = GetMouseWheelMove() * 0.5e-3;
+				f32 scale[2]   = {0.5e-3, 1e-3};
+				f32 size_delta = GetMouseWheelMove() * scale[i];
 				/* TODO: smooth scroll this? */
-				bp->output_min_xz.E[0] -= size_delta;
-				bp->output_max_xz.E[0] += size_delta;
+				if (i == 0)
+					bp->output_min_xz.E[i] -= size_delta;
+				bp->output_max_xz.E[i] += size_delta;
 				if (size_delta) {
 					ctx->flags |= DO_COMPUTE;
 					ctx->params->upload = 1;
 				}
-				txt_colour_t += TEXT_HOVER_SPEED * ctx->dt;
-			} else {
-				txt_colour_t -= TEXT_HOVER_SPEED * ctx->dt;
-			}
-			CLAMP01(txt_colour_t);
 
-			f32 x_mm     = bp->output_min_xz.E[0] * 1e3;
-			f32 x_mm_inc = x_inc * output_dim.E[0] * 1e3 / vr.size.w;
+				txt_colour_t[i] += TEXT_HOVER_SPEED * ctx->dt;
+			} else {
+				txt_colour_t[i] -= TEXT_HOVER_SPEED * ctx->dt;
+			}
+			CLAMP01(txt_colour_t[i]);
+
+			f32 mm     = bp->output_min_xz.E[i] * 1e3;
+			f32 mm_inc = inc * output_dim.E[i] * 1e3 / vr.size.E[i];
 
 			Color txt_colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR,
-			                                                  txt_colour_t));
-			for (u32 i = 0 ; i < line_count.E[0]; i++) {
+			                                                  txt_colour_t[i]));
+
+			char *fmt[2] = {"%+0.01f mm", "%0.01f mm"};
+			f32 rot[2] = {90, 0};
+			for (u32 j = 0; j < line_count.E[i]; j++) {
 				DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(FG_COLOUR));
-				snprintf((char *)txt.data, txt.len, "%+0.01f mm", x_mm);
+				snprintf((char *)txt.data, txt.len, fmt[i], mm);
 				DrawTextPro(ctx->font, (char *)txt.data, txt_pos.rl, (Vector2){0},
-				            90, ctx->font_size, ctx->font_spacing, txt_colour);
-				start_pos.x += x_inc;
-				end_pos.x   += x_inc;
-				txt_pos.x   += x_inc;
-				x_mm        += x_mm_inc;
-			}
-		}
-
-		/* NOTE: Vertical Scale Bar */
-		{
-			f32 y_inc     = vr.size.h / (line_count.y - 1);
-			v2 start_pos  = vr.pos;
-			start_pos.x  += vr.size.w;
-
-			v2 end_pos  = start_pos;
-			end_pos.x  += tick_len;
-
-			v2 txt_pos  = end_pos;
-			txt_pos.x  += 10;
-			txt_pos.y  -= txt_s.y/2;
-
-			Rect tick_rect   = {.pos = start_pos, .size = vr.size};
-			tick_rect.size.w = 10 + tick_len + txt_s.x;
-
-			static f32 txt_colour_t;
-			if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
-				f32 size_delta = GetMouseWheelMove() * 0.5e-3;
-				/* TODO: smooth scroll this? */
-				bp->output_max_xz.E[1] += size_delta;
-				if (size_delta) {
-					ctx->flags |= DO_COMPUTE;
-					ctx->params->upload = 1;
-				}
-				txt_colour_t += TEXT_HOVER_SPEED * ctx->dt;
-			} else {
-				txt_colour_t -= TEXT_HOVER_SPEED * ctx->dt;
-			}
-			CLAMP01(txt_colour_t);
-
-			f32 y_mm     = bp->output_min_xz.E[1] * 1e3;
-			f32 y_mm_inc = y_inc * output_dim.E[1] * 1e3 / vr.size.h;
-
-			Color txt_colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR,
-			                                                  txt_colour_t));
-			for (u32 i = 0 ; i < line_count.E[1]; i++) {
-				DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(FG_COLOUR));
-				snprintf((char *)txt.data, txt.len, "%0.01f mm", y_mm);
-				DrawTextEx(ctx->font, (char *)txt.data, txt_pos.rl,
-				           ctx->font_size, ctx->font_spacing, txt_colour);
-				start_pos.y += y_inc;
-				end_pos.y   += y_inc;
-				txt_pos.y   += y_inc;
-				y_mm        += y_mm_inc;
+				            rot[i], ctx->font_size, ctx->font_spacing, txt_colour);
+				start_pos.E[i] += inc;
+				end_pos.E[i]   += inc;
+				txt_pos.E[i]   += inc;
+				mm             += mm_inc;
 			}
 		}
 
