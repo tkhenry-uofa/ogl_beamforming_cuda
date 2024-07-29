@@ -302,10 +302,11 @@ parse_and_store_text_input(BeamformerCtx *ctx, struct listing *l)
 }
 
 static void
-set_text_input_idx(BeamformerCtx *ctx, i32 idx, struct listing *l, Rect r, v2 mouse)
+set_text_input_idx(BeamformerCtx *ctx, i32 idx, struct listing *l, struct listing *last_l, Rect r,
+                   v2 mouse)
 {
 	if (ctx->is.idx != idx && ctx->is.idx != -1)
-		parse_and_store_text_input(ctx, l);
+		parse_and_store_text_input(ctx, last_l);
 
 	ctx->is.buf_len = snprintf(ctx->is.buf, ARRAY_COUNT(ctx->is.buf), "%0.02f",
 	                           *l->data * l->data_scale);
@@ -367,11 +368,11 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 		v2 txt_s;
 		if (ctx->is.idx == i) {
 			txt_s.rl = MeasureTextEx(ctx->font, ctx->is.buf, ctx->font_size,
-		                                 ctx->font_spacing);
+			                         ctx->font_spacing);
 		} else {
 			snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
 			txt_s.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
-		                                 ctx->font_spacing);
+			                         ctx->font_spacing);
 		}
 
 		Rect edit_rect = {
@@ -396,13 +397,13 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 			hover_t[i] -= TEXT_HOVER_SPEED * ctx->dt;
 		CLAMP01(hover_t[i]);
 
-		if (!collides && ctx->is.idx == i && l->editable &&
-		    IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-			set_text_input_idx(ctx, -1, l, edit_rect, mouse);
+		if (!collides && ctx->is.idx == i && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+			set_text_input_idx(ctx, -1, l, l, (Rect){0}, mouse);
+			snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
 		}
 
 		if (collides && l->editable && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-			set_text_input_idx(ctx, i, l, edit_rect, mouse);
+			set_text_input_idx(ctx, i, l, listings + ctx->is.idx, edit_rect, mouse);
 
 		Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, hover_t[i]));
 
@@ -421,8 +422,10 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 		pos.y += txt_s.y + line_pad;
 	}
 
-	if (IsKeyPressed(KEY_ENTER) && ctx->is.idx != -1)
-		set_text_input_idx(ctx, -1, &listings[ctx->is.idx], (Rect){0}, mouse);
+	if (IsKeyPressed(KEY_ENTER) && ctx->is.idx != -1) {
+		struct listing *l = listings + ctx->is.idx;
+		set_text_input_idx(ctx, -1, l, l, (Rect){0}, mouse);
+	}
 }
 
 static void
