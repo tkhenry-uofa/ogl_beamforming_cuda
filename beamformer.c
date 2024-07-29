@@ -591,21 +591,27 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		Rect wr = {.size = {.w = (f32)ctx->window_size.w, .h = (f32)ctx->window_size.h}};
 		Rect lr = wr, rr = wr;
 		lr.size.w = 420;
-		rr.size.w = wr.size.w - lr.size.w - 10;
-		rr.pos.x  = lr.pos.x  + lr.size.w + 10;
+
+		rr.size.w  = wr.size.w - lr.size.w;
+		rr.pos.x   = lr.pos.x  + lr.size.w;
+
+		rr.pos.x  += 0.07 * rr.size.w;
+		rr.size.w *= 0.86;
+		rr.pos.y  += 0.02 * rr.size.h;
+		rr.size.h *= 0.96;
 
 		f32 tick_len = 20;
-		f32 x_pad    = txt_s.x + tick_len;
-		f32 y_pad    = 1.5 * txt_s.x + tick_len;
+		f32 x_pad    = 1.0  * txt_s.x + tick_len + 0.5 * txt_s.y;
+		f32 y_pad    = 1.25 * txt_s.x + tick_len;
 
 		Rect vr    = rr;
 		vr.size.h -= y_pad;
-		vr.size.w  = vr.size.h * output_dim.w / output_dim.h;
+		vr.size.w  = vr.size.h * output_dim.w / output_dim.h - x_pad;
 		if (vr.size.w + x_pad > rr.size.w) {
 			vr.size.h = (rr.size.w - x_pad) * output_dim.h / output_dim.w;
 			vr.size.w = vr.size.h * output_dim.w / output_dim.h;
 		}
-		vr.pos.x += (rr.size.w - (vr.size.w + x_pad)) / 2;
+		vr.pos.x += (rr.size.w - (vr.size.w + x_pad) + txt_s.h) / 2;
 		vr.pos.y += (rr.size.h - (vr.size.h + y_pad) + txt_s.h) / 2;
 
 		Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
