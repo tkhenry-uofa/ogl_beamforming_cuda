@@ -154,6 +154,9 @@ main(void)
 	ctx.font_spacing = 0;
 	ctx.font         = LoadFontEx("assets/IBMPlexSans-Bold.ttf", ctx.font_size, 0, 0);
 
+	ctx.is.idx            = -1;
+	ctx.is.cursor_blink_t = 1;
+
 	init_fragment_shader_ctx(&ctx.fsctx, ctx.out_data_dim);
 
 	ctx.data_pipe = os_open_named_pipe(OS_PIPE_NAME);

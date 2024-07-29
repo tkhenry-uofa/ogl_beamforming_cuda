@@ -1,6 +1,9 @@
 /* See LICENSE for license details. */
 #include "beamformer.h"
 
+/* TODO: remove this */
+#include <string.h> /* memmove */
+
 static void
 alloc_output_image(BeamformerCtx *ctx)
 {
@@ -199,50 +202,165 @@ scaled_sub_v4(v4 a, v4 b, f32 scale)
 	};
 }
 
+static v4
+lerp_v4(v4 a, v4 b, f32 t)
+{
+	return (v4){
+		.x = a.x + t * (b.x - a.x),
+		.y = a.y + t * (b.y - a.y),
+		.z = a.z + t * (b.z - a.z),
+		.w = a.w + t * (b.w - a.w),
+	};
+}
+
 static void
-draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
+do_text_input(BeamformerCtx *ctx, i32 max_chars, Rect r, Color colour)
+{
+	v2 ts  = {.rl = MeasureTextEx(ctx->font, ctx->is.buf, ctx->font_size, 0)};
+	v2 pos = {.x = r.pos.x, .y = r.pos.y + (r.size.y - ts.y) / 2};
+
+	i32 buf_delta = ctx->is.buf_len - max_chars;
+	if (buf_delta < 0) buf_delta = 0;
+	char *buf     = ctx->is.buf + buf_delta;
+	DrawTextEx(ctx->font, buf, pos.rl, ctx->font_size, 0, colour);
+
+	ctx->is.cursor_blink_t = move_towards_f32(ctx->is.cursor_blink_t,
+	                                          ctx->is.cursor_blink_target, 1.5 * ctx->dt);
+	if (ctx->is.cursor_blink_t == ctx->is.cursor_blink_target) {
+		if (ctx->is.cursor_blink_target == 0) ctx->is.cursor_blink_target = 1;
+		else                                  ctx->is.cursor_blink_target = 0;
+	}
+
+	v4 bg = FOCUSED_COLOUR;
+	bg.a  = 0;
+	Color cursor_colour = colour_from_normalized(lerp_v4(bg, FOCUSED_COLOUR,
+	                                                     ctx->is.cursor_blink_t));
+
+	/* NOTE: guess a cursor position */
+	if (ctx->is.cursor == -1) {
+		f32 narrow_char_scale = 1.45;
+		ctx->is.cursor = ctx->is.cursor_hover_p * ctx->is.buf_len * narrow_char_scale;
+		CLAMP(ctx->is.cursor, 0, ctx->is.buf_len);
+	}
+
+	/* NOTE: Braindead NULL termination stupidity */
+	char saved_c = buf[ctx->is.cursor - buf_delta];
+	buf[ctx->is.cursor - buf_delta] = 0;
+
+	v2 sts           = {.rl = MeasureTextEx(ctx->font, buf, ctx->font_size, 0)};
+	f32 cursor_x     = r.pos.x + sts.x;
+	f32 cursor_width = ctx->is.cursor == ctx->is.buf_len ? 20 : 6;
+
+	buf[ctx->is.cursor - buf_delta] = saved_c;
+
+	Rect cursor_r = {
+		.pos  = {.x = cursor_x,     .y = pos.y},
+		.size = {.w = cursor_width, .h = ts.h},
+	};
+
+	DrawRectangleRec(cursor_r.rl, cursor_colour);
+
+	/* NOTE: handle multiple input keys on a single frame */
+	i32 key = GetCharPressed();
+	while (key > 0) {
+		if (ctx->is.buf_len == (ARRAY_COUNT(ctx->is.buf) - 1)) {
+			ctx->is.buf[ARRAY_COUNT(ctx->is.buf) - 1] = 0;
+			break;
+		}
+
+		b32 allow_key = ((key >= '0' && key <= '9') || (key == '.') ||
+		                 (key == '-' && ctx->is.cursor == 0));
+		if (allow_key) {
+			/* TODO: remove memmove */
+			memmove(ctx->is.buf + ctx->is.cursor + 1,
+			        ctx->is.buf + ctx->is.cursor,
+			        ctx->is.buf_len - ctx->is.cursor + 1);
+
+			ctx->is.buf[ctx->is.cursor++] = key;
+			ctx->is.buf_len++;
+		}
+		key = GetCharPressed();
+	}
+
+	if ((IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) && ctx->is.cursor > 0)
+		ctx->is.cursor--;
+
+	if ((IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) &&
+	    ctx->is.cursor < ctx->is.buf_len)
+		ctx->is.cursor++;
+
+	if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) &&
+	    ctx->is.cursor > 0) {
+		/* TODO: remove memmove */
+		ctx->is.cursor--;
+		memmove(ctx->is.buf + ctx->is.cursor,
+		        ctx->is.buf + ctx->is.cursor + 1,
+			ctx->is.buf_len - ctx->is.cursor - 1);
+		ctx->is.buf[--ctx->is.buf_len] = 0;
+	}
+}
+
+struct listing {
+	char *prefix;
+	char *suffix;
+	f32  *data;
+	v2   limits;
+	f32  data_scale;
+	b32  editable;
+};
+
+static void
+parse_and_store_text_input(BeamformerCtx *ctx, struct listing *l)
+{
+	f32 new_val = strtof(ctx->is.buf, NULL);
+	/* TODO: allow zero for certain listings only */
+	if (new_val / l->data_scale != *l->data) {
+		*l->data = new_val / l->data_scale;
+		CLAMP(*l->data, l->limits.x, l->limits.y);
+		ctx->flags |= DO_COMPUTE;
+		ctx->params->upload = 1;
+	}
+}
+
+static void
+set_text_input_idx(BeamformerCtx *ctx, i32 idx, struct listing *l, Rect r, v2 mouse)
+{
+	if (ctx->is.idx != idx && ctx->is.idx != -1)
+		parse_and_store_text_input(ctx, l);
+
+	ctx->is.buf_len = snprintf(ctx->is.buf, ARRAY_COUNT(ctx->is.buf), "%0.02f",
+	                           *l->data * l->data_scale);
+
+	ctx->is.idx    = idx;
+	ctx->is.cursor = -1;
+
+	if (ctx->is.idx == -1)
+		return;
+
+	ASSERT(CheckCollisionPointRec(mouse.rl, r.rl));
+	ctx->is.cursor_hover_p = (mouse.x - r.pos.x) / r.size.w;
+	CLAMP01(ctx->is.cursor_hover_p);
+}
+
+static void
+draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 {
 	BeamformerParameters *bp = &ctx->params->raw;
 
-	struct listing {
-		char *prefix;
-		char *suffix;
-		f32  *data;
-		f32  data_scale;
-		b32  editable;
-	} listings[] = {
-		{ "Sampling Rate:",    " [MHz]", &bp->sampling_frequency, 1e-6, 0 },
-		{ "Center Frequency:", " [MHz]", &bp->center_frequency,   1e-6, 1 },
-		{ "Speed of Sound:",   " [m/s]", &bp->speed_of_sound,     1,    1 },
-		{ "Min X Point:",      " [mm]",  &bp->output_min_xz.x,    1e3,  1 },
-		{ "Max X Point:",      " [mm]",  &bp->output_max_xz.x,    1e3,  1 },
-		{ "Min Z Point:",      " [mm]",  &bp->output_min_xz.y,    1e3,  1 },
-		{ "Max Z Point:",      " [mm]",  &bp->output_max_xz.y,    1e3,  1 },
-		{ "Dynamic Range:",    " [dB]",  &ctx->fsctx.db,          1,    1 },
+	f32 minx = bp->output_min_xz.x + 1e-6, maxx = bp->output_max_xz.x - 1e-6;
+	f32 minz = bp->output_min_xz.y + 1e-6, maxz = bp->output_max_xz.y - 1e-6;
+	struct listing listings[] = {
+		{ "Sampling Rate:",    "[MHz]", &bp->sampling_frequency, {{0,    0}},     1e-6, 0 },
+		{ "Center Frequency:", "[MHz]", &bp->center_frequency,   {{0,    100e6}}, 1e-6, 1 },
+		{ "Speed of Sound:",   "[m/s]", &bp->speed_of_sound,     {{0,    1e6}},   1,    1 },
+		{ "Min X Point:",      "[mm]",  &bp->output_min_xz.x,    {{-1e3, maxx}},  1e3,  1 },
+		{ "Max X Point:",      "[mm]",  &bp->output_max_xz.x,    {{minx, 1e3}},   1e3,  1 },
+		{ "Min Z Point:",      "[mm]",  &bp->output_min_xz.y,    {{0,    maxz}},  1e3,  1 },
+		{ "Max Z Point:",      "[mm]",  &bp->output_max_xz.y,    {{minz, 1e3}},   1e3,  1 },
+		{ "Dynamic Range:",    "[dB]",  &ctx->fsctx.db,          {{-120, 0}},     1,    1 },
 	};
 
-	static v4 colours[] = {
-		FG_COLOUR, FG_COLOUR, FG_COLOUR, FG_COLOUR,
-		FG_COLOUR, FG_COLOUR, FG_COLOUR, FG_COLOUR,
-	};
-	static_assert(ARRAY_COUNT(colours) == ARRAY_COUNT(listings),
-	              "draw_settings_ui: colours array count must match listings array count");
-
-	struct { f32 min, max; } limits[] = {
-		{0},
-		{0, 100e6},
-		{0, 1e6},
-		{-1e3,                       bp->output_max_xz.x - 1e-6},
-		{bp->output_min_xz.x + 1e-6, 1e3},
-		{0,                          bp->output_max_xz.y - 1e-6},
-		{bp->output_min_xz.y + 1e-6, 1e3},
-		{-120, 0},
-	};
-
-	static char focus_buf[64];
-	static i32 focus_buf_curs = 0;
-	static i32 focused_idx    = -1;
-	i32 overlap_idx           = -1;
+	static f32 hover_t[ARRAY_COUNT(listings)];
 
 	f32 line_pad  = 10;
 
@@ -250,104 +368,86 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, f32 dt, Rect r, v2 mouse)
 	pos.y  += 50;
 	pos.x  += 20;
 
-	s8 txt  = s8alloc(&arena, 64);
-
-	f32 scale = 6;
-	v4 delta  = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scale * dt);
-
+	s8 txt = s8alloc(&arena, 64);
+	f32 max_prefix_len = 0;
 	for (i32 i = 0; i < ARRAY_COUNT(listings); i++) {
 		struct listing *l = listings + i;
 		DrawTextEx(ctx->font, l->prefix, pos.rl, ctx->font_size, ctx->font_spacing,
 		           colour_from_normalized(FG_COLOUR));
-
-		if (i == focused_idx) snprintf((char *)txt.data, txt.len, "%s", focus_buf);
-		else                  snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
-
-		v2 suffix_s = {.rl = MeasureTextEx(ctx->font, l->suffix, ctx->font_size,
+		v2 prefix_s = {.rl = MeasureTextEx(ctx->font, l->prefix, ctx->font_size,
 		                                   ctx->font_spacing)};
-		v2 txt_s    = {.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
-		                                   ctx->font_spacing)};
+		if (prefix_s.w > max_prefix_len)
+			max_prefix_len = prefix_s.w;
+		pos.y += prefix_s.y + line_pad;
+	}
+	pos.y = 50 + r.pos.y;
 
-		v2 rpos  = {.x = r.pos.x + r.size.w - txt_s.w - suffix_s.w, .y = pos.y};
+	for (i32 i = 0; i < ARRAY_COUNT(listings); i++) {
+		struct listing *l = listings + i;
 
-		Rectangle edit_rect = {rpos.x, rpos.y, txt_s.x, txt_s.y};
-		if (CheckCollisionPointRec(mouse.rl, edit_rect) && l->editable) {
-			overlap_idx = i;
+		v2 txt_s;
+		if (ctx->is.idx == i) {
+			txt_s.rl = MeasureTextEx(ctx->font, ctx->is.buf, ctx->font_size,
+		                                 ctx->font_spacing);
+		} else {
+			snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
+			txt_s.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
+		                                 ctx->font_spacing);
+		}
+
+		Rect edit_rect = {
+			.pos  = {.x = pos.x + max_prefix_len + 15, .y = pos.y},
+			.size = {.x = txt_s.w + 10, .y = txt_s.h}
+		};
+
+		b32 collides = CheckCollisionPointRec(mouse.rl, edit_rect.rl);
+		if (collides && l->editable) {
 			f32 mouse_scroll = GetMouseWheelMove();
 			if (mouse_scroll) {
 				*l->data += mouse_scroll / l->data_scale;
-				CLAMP(*l->data, limits[i].min, limits[i].max);
+				CLAMP(*l->data, l->limits.x, l->limits.y);
 				ctx->flags |= DO_COMPUTE;
 				ctx->params->upload = 1;
 			}
 		}
 
-		if (i == focused_idx)
-			colours[i] = move_towards_v4(colours[i], FOCUSED_COLOUR, delta);
-		else if (i == overlap_idx)
-			colours[i] = move_towards_v4(colours[i], HOVERED_COLOUR, delta);
+		if (collides && ctx->is.idx != i && l->editable)
+			hover_t[i] += TEXT_HOVER_SPEED * ctx->dt;
 		else
-			colours[i] = move_towards_v4(colours[i], FG_COLOUR, delta);
+			hover_t[i] -= TEXT_HOVER_SPEED * ctx->dt;
+		CLAMP01(hover_t[i]);
 
-		DrawTextEx(ctx->font, (char *)txt.data, rpos.rl, ctx->font_size,
-		           ctx->font_spacing, colour_from_normalized(colours[i]));
+		if (!collides && ctx->is.idx == i && l->editable &&
+		    IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+			set_text_input_idx(ctx, -1, l, edit_rect, mouse);
+		}
 
-		rpos.x += txt_s.x;
-		DrawTextEx(ctx->font, l->suffix, rpos.rl, ctx->font_size, ctx->font_spacing,
+		if (collides && l->editable && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+			set_text_input_idx(ctx, i, l, edit_rect, mouse);
+
+		Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, hover_t[i]));
+
+		if (ctx->is.idx != i) {
+			DrawTextEx(ctx->font, (char *)txt.data, edit_rect.pos.rl, ctx->font_size,
+			           ctx->font_spacing, colour);
+		} else {
+			do_text_input(ctx, 7, edit_rect, colour);
+		}
+
+		v2 suffix_s = {.rl = MeasureTextEx(ctx->font, l->suffix, ctx->font_size,
+		                                   ctx->font_spacing)};
+		v2 suffix_p = {.x = r.pos.x + r.size.w - suffix_s.w, .y = pos.y};
+		DrawTextEx(ctx->font, l->suffix, suffix_p.rl, ctx->font_size, ctx->font_spacing,
 		           colour_from_normalized(FG_COLOUR));
 		pos.y += txt_s.y + line_pad;
 	}
 
-	b32 save_focus = IsKeyPressed(KEY_ENTER) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
-	if (save_focus && focused_idx != -1) {
-		f32 new_val = strtof(focus_buf, NULL);
-		/* TODO: allow zero for certain listings only */
-		if (new_val != 0) {
-			*listings[focused_idx].data = new_val / listings[focused_idx].data_scale;
-			CLAMP(*listings[focused_idx].data, limits[focused_idx].min,
-			      limits[focused_idx].max);
-			ctx->flags |= DO_COMPUTE;
-			ctx->params->upload = 1;
-		}
-		focused_idx  = -1;
-		focus_buf[0] = 0;
-	}
-
-	if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-		focused_idx = overlap_idx;
-		if (focused_idx != -1) {
-			f32 val = *listings[overlap_idx].data * listings[overlap_idx].data_scale;
-			focus_buf_curs = snprintf(focus_buf, sizeof(focus_buf), "%0.02f", val);
-		}
-	}
-
-	if (overlap_idx != -1) SetMouseCursor(MOUSE_CURSOR_IBEAM);
-	else                   SetMouseCursor(MOUSE_CURSOR_DEFAULT);
-
-	if (focused_idx == -1)
-		return;
-
-	i32 key = GetCharPressed();
-	while (key > 0) {
-		if (focus_buf_curs == (sizeof(focus_buf) - 1)) {
-			focus_buf[focus_buf_curs] = 0;
-			break;
-		}
-
-		if ((key >= '0' && key <= '9') ||
-		    (key == '.') ||
-		    (key == '-' && focus_buf_curs == 0))
-			focus_buf[focus_buf_curs++] = key;
-
-		key = GetCharPressed();
-	}
-
-	if (IsKeyPressed(KEY_BACKSPACE) && focus_buf_curs > 0)
-		focus_buf[--focus_buf_curs] = 0;
+	if (IsKeyPressed(KEY_ENTER) && ctx->is.idx != -1)
+		set_text_input_idx(ctx, -1, &listings[ctx->is.idx], (Rect){0}, mouse);
 }
 
 static void
-draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r, f32 dt)
+draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 {
 	DrawFPS(20, 20);
 
@@ -391,8 +491,8 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r, f32 dt)
 			ts[1] = (v2){ .rl = MeasureTextEx(ctx->font, txt[1], fontsize, fontspace) };
 		}
 
-		pos.x += 130 * dt * scale.x;
-		pos.y += 120 * dt * scale.y;
+		pos.x += 130 * ctx->dt * scale.x;
+		pos.y += 120 * ctx->dt * scale.y;
 
 		if (pos.x > (ws.w - ts[txt_idx].x) || pos.x < 0) {
 			txt_idx = !txt_idx;
@@ -414,7 +514,7 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r, f32 dt)
 DEBUG_EXPORT void
 do_beamformer(BeamformerCtx *ctx, Arena arena)
 {
-	f32 dt = GetFrameTime();
+	ctx->dt = GetFrameTime();
 
 	if (IsWindowResized()) {
 		ctx->window_size.h = GetScreenHeight();
@@ -558,7 +658,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 			static v4 txt_colour = FG_COLOUR;
 			f32 scale = 6;
-			v4 delta  = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scale * dt);
+			v4 delta  = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scale * ctx->dt);
 
 			if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
 				txt_colour = move_towards_v4(txt_colour, HOVERED_COLOUR, delta);
@@ -608,7 +708,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 			static v4 txt_colour = FG_COLOUR;
 			f32 scale = 6;
-			v4 delta  = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scale * dt);
+			v4 delta  = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scale * ctx->dt);
 
 			if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
 				txt_colour = move_towards_v4(txt_colour, HOVERED_COLOUR, delta);
@@ -646,8 +746,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			SetWindowMinSize(desired_width, 720);
 		}
 
-		draw_settings_ui(ctx, arena, dt, lr, mouse);
-		draw_debug_overlay(ctx, arena, lr, dt);
+		draw_settings_ui(ctx, arena, lr, mouse);
+		draw_debug_overlay(ctx, arena, lr);
 	EndDrawing();
 
 	if (IsKeyPressed(KEY_R))

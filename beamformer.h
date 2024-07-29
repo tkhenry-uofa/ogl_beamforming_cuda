@@ -12,10 +12,12 @@
 
 #include "util.h"
 
-#define BG_COLOUR      (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
-#define FG_COLOUR      (v4){.r = 0.92, .g = 0.88, .b = 0.78, .a = 1.0}
-#define FOCUSED_COLOUR (v4){.r = 0.86, .g = 0.28, .b = 0.21, .a = 1.0}
-#define HOVERED_COLOUR (v4){.r = 0.11, .g = 0.50, .b = 0.59, .a = 1.0}
+#define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
+#define FG_COLOUR              (v4){.r = 0.92, .g = 0.88, .b = 0.78, .a = 1.0}
+#define FOCUSED_COLOUR         (v4){.r = 0.86, .g = 0.28, .b = 0.21, .a = 1.0}
+#define HOVERED_COLOUR         (v4){.r = 0.11, .g = 0.50, .b = 0.59, .a = 1.0}
+
+#define TEXT_HOVER_SPEED       5.0f
 
 typedef union {
 	struct { f32 x, y; };
@@ -53,6 +55,16 @@ enum program_flags {
 	UPLOAD_FILTER  = 1 << 3,
 	DO_COMPUTE     = 1 << 30,
 };
+
+typedef struct {
+	char buf[64];
+	i32  buf_len;
+	i32  idx;
+	i32  cursor;
+	f32  cursor_hover_p;
+	f32  cursor_blink_t;
+	f32  cursor_blink_target;
+} InputState;
 
 #include "beamformer_parameters.h"
 typedef struct {
@@ -114,10 +126,14 @@ typedef struct {
 	uv2 window_size;
 	u32 flags;
 
+	f32 dt;
+
 	/* UI Theming */
 	Font  font;
 	u32   font_size;
 	u32   font_spacing;
+
+	InputState is;
 
 	uv4 out_data_dim;
 	u32 out_texture;
