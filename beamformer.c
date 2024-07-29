@@ -182,27 +182,6 @@ move_towards_f32(f32 current, f32 target, f32 delta)
 }
 
 static v4
-move_towards_v4(v4 current, v4 target, v4 delta)
-{
-	current.x = move_towards_f32(current.x, target.x, delta.x);
-	current.y = move_towards_f32(current.y, target.y, delta.y);
-	current.z = move_towards_f32(current.z, target.z, delta.z);
-	current.w = move_towards_f32(current.w, target.w, delta.w);
-	return current;
-}
-
-static v4
-scaled_sub_v4(v4 a, v4 b, f32 scale)
-{
-	return (v4){
-		.x = scale * (a.x - b.x),
-		.y = scale * (a.y - b.y),
-		.z = scale * (a.z - b.z),
-		.w = scale * (a.w - b.w),
-	};
-}
-
-static v4
 lerp_v4(v4 a, v4 b, f32 t)
 {
 	return (v4){
@@ -656,33 +635,32 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			Rect tick_rect   = {.pos = start_pos, .size = vr.size};
 			tick_rect.size.h = 10 + tick_len + txt_s.x;
 
-			static v4 txt_colour = FG_COLOUR;
-			f32 scale = 6;
-			v4 delta  = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scale * ctx->dt);
-
+			static f32 txt_colour_t;
 			if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
-				txt_colour = move_towards_v4(txt_colour, HOVERED_COLOUR, delta);
 				f32 size_delta = GetMouseWheelMove() * 0.5e-3;
 				/* TODO: smooth scroll this? */
-				bp->output_min_xz.x -= size_delta;
-				bp->output_max_xz.x += size_delta;
+				bp->output_min_xz.E[0] -= size_delta;
+				bp->output_max_xz.E[0] += size_delta;
 				if (size_delta) {
 					ctx->flags |= DO_COMPUTE;
 					ctx->params->upload = 1;
 				}
+				txt_colour_t += TEXT_HOVER_SPEED * ctx->dt;
 			} else {
-				txt_colour = move_towards_v4(txt_colour, FG_COLOUR, delta);
+				txt_colour_t -= TEXT_HOVER_SPEED * ctx->dt;
 			}
+			CLAMP01(txt_colour_t);
 
-			f32 x_mm     = bp->output_min_xz.x * 1e3;
-			f32 x_mm_inc = x_inc * output_dim.x * 1e3 / vr.size.w;
+			f32 x_mm     = bp->output_min_xz.E[0] * 1e3;
+			f32 x_mm_inc = x_inc * output_dim.E[0] * 1e3 / vr.size.w;
 
-			for (u32 i = 0 ; i < line_count.x; i++) {
+			Color txt_colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR,
+			                                                  txt_colour_t));
+			for (u32 i = 0 ; i < line_count.E[0]; i++) {
 				DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(FG_COLOUR));
 				snprintf((char *)txt.data, txt.len, "%+0.01f mm", x_mm);
 				DrawTextPro(ctx->font, (char *)txt.data, txt_pos.rl, (Vector2){0},
-				            90, ctx->font_size, ctx->font_spacing,
-				            colour_from_normalized(txt_colour));
+				            90, ctx->font_size, ctx->font_spacing, txt_colour);
 				start_pos.x += x_inc;
 				end_pos.x   += x_inc;
 				txt_pos.x   += x_inc;
@@ -706,32 +684,31 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			Rect tick_rect   = {.pos = start_pos, .size = vr.size};
 			tick_rect.size.w = 10 + tick_len + txt_s.x;
 
-			static v4 txt_colour = FG_COLOUR;
-			f32 scale = 6;
-			v4 delta  = scaled_sub_v4(FG_COLOUR, HOVERED_COLOUR, scale * ctx->dt);
-
+			static f32 txt_colour_t;
 			if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
-				txt_colour = move_towards_v4(txt_colour, HOVERED_COLOUR, delta);
 				f32 size_delta = GetMouseWheelMove() * 0.5e-3;
 				/* TODO: smooth scroll this? */
-				bp->output_max_xz.y += size_delta;
+				bp->output_max_xz.E[1] += size_delta;
 				if (size_delta) {
 					ctx->flags |= DO_COMPUTE;
 					ctx->params->upload = 1;
 				}
+				txt_colour_t += TEXT_HOVER_SPEED * ctx->dt;
 			} else {
-				txt_colour = move_towards_v4(txt_colour, FG_COLOUR, delta);
+				txt_colour_t -= TEXT_HOVER_SPEED * ctx->dt;
 			}
+			CLAMP01(txt_colour_t);
 
-			f32 y_mm     = bp->output_min_xz.y * 1e3;
-			f32 y_mm_inc = y_inc * output_dim.y * 1e3 / vr.size.h;
+			f32 y_mm     = bp->output_min_xz.E[1] * 1e3;
+			f32 y_mm_inc = y_inc * output_dim.E[1] * 1e3 / vr.size.h;
 
-			for (u32 i = 0 ; i < line_count.y; i++) {
+			Color txt_colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR,
+			                                                  txt_colour_t));
+			for (u32 i = 0 ; i < line_count.E[1]; i++) {
 				DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(FG_COLOUR));
 				snprintf((char *)txt.data, txt.len, "%0.01f mm", y_mm);
 				DrawTextEx(ctx->font, (char *)txt.data, txt_pos.rl,
-				           ctx->font_size, ctx->font_spacing,
-				           colour_from_normalized(txt_colour));
+				           ctx->font_size, ctx->font_spacing, txt_colour);
 				start_pos.y += y_inc;
 				end_pos.y   += y_inc;
 				txt_pos.y   += y_inc;
