@@ -17,6 +17,9 @@
 #define FOCUSED_COLOUR         (v4){.r = 0.86, .g = 0.28, .b = 0.21, .a = 1.0}
 #define HOVERED_COLOUR         (v4){.r = 0.11, .g = 0.50, .b = 0.59, .a = 1.0}
 
+/* NOTE: extra space used for allowing mouse clicks after end of text */
+#define TEXT_BOX_EXTRA_X       10.0f
+
 #define TEXT_HOVER_SPEED       5.0f
 
 typedef union {
