@@ -1,0 +1,5 @@
+ogl
+*.so
+*.mexa64
+external/lib
+external/include/r*.h
