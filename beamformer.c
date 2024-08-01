@@ -97,8 +97,8 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 
 	glBindBufferBase(GL_UNIFORM_BUFFER, 0, csctx->shared_ubo);
 
-	u32 output_ssbo_idx = !csctx->last_active_ssbo_index;
-	u32 input_ssbo_idx  = csctx->last_active_ssbo_index;
+	u32 output_ssbo_idx = !csctx->last_output_ssbo_index;
+	u32 input_ssbo_idx  = csctx->last_output_ssbo_index;
 	switch (shader) {
 	case CS_HADAMARD:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo);
@@ -107,7 +107,7 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		glDispatchCompute(ORONE(csctx->dec_data_dim.x / 32),
 		                  ORONE(csctx->dec_data_dim.y / 32),
 		                  ORONE(csctx->dec_data_dim.z));
-		csctx->last_active_ssbo_index = !csctx->last_active_ssbo_index;
+		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_LPF:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
@@ -119,7 +119,7 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		glDispatchCompute(ORONE(csctx->dec_data_dim.x / 32),
 		                  ORONE(csctx->dec_data_dim.y / 32),
 		                  ORONE(csctx->dec_data_dim.z));
-		csctx->last_active_ssbo_index = !csctx->last_active_ssbo_index;
+		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_MIN_MAX:
 		glBindImageTexture(ctx->out_texture_unit, ctx->out_texture, 0, GL_FALSE, 0,

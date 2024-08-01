@@ -100,7 +100,7 @@ typedef struct {
 	/* NOTE: One SSBO for raw data and two for decoded data (swapped for chained stages)*/
 	u32 raw_data_ssbo;
 	u32 rf_data_ssbos[2];
-	u32 last_active_ssbo_index;
+	u32 last_output_ssbo_index;
 	u32 hadamard_ssbo;
 	uv2 hadamard_dim;
 
