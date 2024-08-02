@@ -57,14 +57,13 @@ vec2 cubic(uint ridx, float x)
 
 void main()
 {
-	vec2  pixel     = vec2(gl_GlobalInvocationID.xy);
-	ivec3 out_coord = ivec3(gl_GlobalInvocationID.xyz);
-
+	vec2  pixel        = vec2(gl_GlobalInvocationID.xy);
+	ivec3 out_coord    = ivec3(gl_GlobalInvocationID.xyz);
 	ivec3 out_data_dim = imageSize(u_out_data_tex);
 
 	/* NOTE: Convert pixel to physical coordinates */
-	vec2 xdc_size    = abs(xdc_max_xy - xdc_min_xy);
-	vec2 output_size = abs(output_max_xz - output_min_xz);
+	vec2 xdc_size      = abs(xdc_max_xy - xdc_min_xy);
+	vec2 output_size   = abs(output_max_xz - output_min_xz);
 
 	/* TODO: for now assume y-dimension is along transducer center */
 	vec3 image_point = vec3(
@@ -73,15 +72,24 @@ void main()
 		output_min_xz.y + pixel.y * output_size.y / out_data_dim.y
 	);
 
-	float x      = image_point.x - xdc_min_xy.x;
-	float dx     = xdc_size.x / float(dec_data_dim.y);
-	float dzsign = sign(image_point.z - focal_depth);
+	/* NOTE: used for constant F# dynamic receive apodization. This is implemented as:
+	 *
+	 *                  /        |x_e - x_i|\
+	 *    a(x, z) = cos(F# * π * ----------- ) ^ 2
+	 *                  \        |z_e - z_i|/
+         *
+	 * where x,z_e are transducer element positions and x,z_i are image positions. */
+	float apod_arg = 0.5 * radians(360) * output_size.y / output_size.x / abs(image_point.z);
 
-	vec2 sum = vec2(0);
+	/* NOTE: for I-Q data phase correction */
+	float iq_time_scale = radians(360) * center_frequency;
 
-	float time_scale = radians(360) * center_frequency;
+	vec2  starting_dist = vec2(image_point.x - xdc_min_xy.x, image_point.z - xdc_min_xy.y);
+	float dx            = xdc_size.x / float(dec_data_dim.y);
+	float dzsign        = sign(image_point.z - focal_depth);
 
 	uint ridx = dec_data_dim.y * dec_data_dim.x;
+	vec2 sum  = vec2(0);
 	/* NOTE: skip first acquisition in uforces since its garbage */
 	for (uint i = uforces; i < dec_data_dim.z; i++) {
 		uint base_idx = (i - uforces) / 4;
@@ -90,16 +98,19 @@ void main()
 		vec3  focal_point   = vec3(uforces_channels[base_idx][sub_idx] * dx, 0, focal_depth);
 		float transmit_dist = focal_depth + dzsign * distance(image_point, focal_point);
 
-		vec2 rdist = vec2(x, image_point.z);
+		vec2 rdist = starting_dist;
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float dist = transmit_dist + length(rdist);
 			float time = dist / speed_of_sound + time_offset;
 
-			/* NOTE: do cubic interp between adjacent time samples */
+			/* NOTE: apodization value for this transducer element */
+			float a  = cos(clamp(abs(apod_arg * rdist.x),  0, 0.25 * radians(360)));
+			a        = a * a;
+
 			vec2 p   = cubic(ridx, time * sampling_frequency);
-			p.x     *= cos(time_scale * time);
-			p.y     *= sin(time_scale * time);
-			sum     += p;
+			p.x     *= cos(iq_time_scale * time);
+			p.y     *= sin(iq_time_scale * time);
+			sum     += p * a;
 			rdist.x -= dx;
 			ridx    += dec_data_dim.x;
 		}
