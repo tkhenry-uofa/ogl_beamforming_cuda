@@ -32,6 +32,7 @@ layout(std140, binding = 0) uniform parameters {
 	float center_frequency;       /* [Hz]  */
 	float focal_depth;            /* [m]   */
 	float time_offset;            /* pulse length correction time [s]   */
+	uint  uforces;                /* mode is UFORCES (1) or FORCES (0) */
 };
 
 //layout(location = 1) uniform uint u_lpf_order;

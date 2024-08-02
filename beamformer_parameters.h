@@ -20,5 +20,6 @@ typedef struct {
 	f32 center_frequency;       /* [Hz]  */
 	f32 focal_depth;            /* [m]   */
 	f32 time_offset;            /* pulse length correction time [s]   */
-	f32 _pad[2];
+	u32 uforces;                /* mode is UFORCES (1) or FORCES (0) */
+	f32 _pad[1];
 } BeamformerParameters;

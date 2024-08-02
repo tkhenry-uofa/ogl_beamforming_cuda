@@ -24,6 +24,7 @@ layout(std140, binding = 0) uniform parameters {
 	float center_frequency;       /* [Hz]  */
 	float focal_depth;            /* [m]   */
 	float time_offset;            /* pulse length correction time [s]   */
+	uint  uforces;                /* mode is UFORCES (1) or FORCES (0) */
 };
 
 layout(rg32f, location = 1) uniform image3D   u_out_data_tex;
@@ -81,10 +82,10 @@ void main()
 	float time_scale = radians(360) * center_frequency;
 
 	uint ridx = dec_data_dim.y * dec_data_dim.x;
-	/* NOTE: skip first acquisition since its garbage */
-	for (uint i = 1; i < dec_data_dim.z; i++) {
-		uint base_idx = (i - 1) / 4;
-		uint sub_idx  = (i - 1) - base_idx * 4;
+	/* NOTE: skip first acquisition in uforces since its garbage */
+	for (uint i = uforces; i < dec_data_dim.z; i++) {
+		uint base_idx = (i - uforces) / 4;
+		uint sub_idx  = (i - uforces) - base_idx * 4;
 
 		vec3  focal_point   = vec3(uforces_channels[base_idx][sub_idx] * dx, 0, focal_depth);
 		float transmit_dist = focal_depth + dzsign * distance(image_point, focal_point);
