@@ -3,6 +3,7 @@
 
 static char *compute_shader_paths[CS_LAST] = {
 	[CS_HADAMARD] = "shaders/hadamard.glsl",
+	[CS_HERCULES] = "shaders/2d_hercules.glsl",
 	[CS_LPF]      = "shaders/lpf.glsl",
 	[CS_MIN_MAX]  = "shaders/min_max.glsl",
 	[CS_UFORCES]  = "shaders/uforces.glsl",

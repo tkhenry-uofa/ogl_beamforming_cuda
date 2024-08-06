@@ -29,6 +29,7 @@ layout(std140, binding = 0) uniform parameters {
 	float focal_depth;            /* [m]   */
 	float time_offset;            /* pulse length correction time [s]   */
 	uint  uforces;                /* mode is UFORCES (1) or FORCES (0) */
+	float off_axis_pos;           /* Where on the 3rd axis to render the image (Hercules only) */
 };
 
 void main()

@@ -55,7 +55,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 			glUnmapNamedBuffer(cs->raw_data_ssbo);
 		storage_flags |= GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT;
 	case GL_VENDOR_NVIDIA:
-		/* TODO: does the cuda buffer need to be unregistered? */
+		/* NOTE: register_cuda_buffers will handle the updated ssbo */
 		break;
 	}
 
@@ -63,6 +63,9 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glDeleteBuffers(1, &cs->raw_data_ssbo);
 	glCreateBuffers(1, &cs->raw_data_ssbo);
 	glNamedBufferStorage(cs->raw_data_ssbo, full_rf_buf_size, 0, storage_flags);
+
+	for (u32 i = 0; i < ARRAY_COUNT(cs->rf_data_ssbos); i++)
+		glNamedBufferStorage(cs->rf_data_ssbos[i], rf_decoded_size, 0, 0);
 
 	i32 map_flags = GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT|GL_MAP_UNSYNCHRONIZED_BIT;
 	switch (ctx->gl_vendor_id) {
@@ -73,16 +76,16 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		break;
 	case GL_VENDOR_NVIDIA:
 		cs->raw_data_arena = os_alloc_arena(cs->raw_data_arena, full_rf_buf_size);
-		if (g_cuda_lib_functions[CLF_REGISTER_BUFFER]) {
-			cuda_register_buffer *fn = g_cuda_lib_functions[CLF_REGISTER_BUFFER];
-			/* TODO: this needs the correct parameters */
-			fn(NULL, cs->raw_data_ssbo);
+		if (g_cuda_lib_functions[CLF_REGISTER_BUFFERS] && g_cuda_lib_functions[CLF_INIT_CONFIG]) {
+			register_cuda_buffers *fn = g_cuda_lib_functions[CLF_REGISTER_BUFFERS];
+			fn(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos), cs->raw_data_ssbo);
+
+			init_cuda_configuration *init_fn = g_cuda_lib_functions[CLF_INIT_CONFIG];
+			init_fn(bp->rf_raw_dim.E, bp->dec_data_dim.E, bp->channel_mapping,
+			        bp->channel_offset > 0);
 		}
 		break;
 	}
-
-	for (u32 i = 0; i < ARRAY_COUNT(cs->rf_data_ssbos); i++)
-		glNamedBufferStorage(cs->rf_data_ssbos[i], rf_decoded_size, 0, 0);
 
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
 	cs->hadamard_dim       = (uv2){.x = dec_data_dim.z, .y = dec_data_dim.z};
@@ -123,13 +126,14 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		                  ORONE(csctx->dec_data_dim.z));
 		csctx->raw_data_fences[csctx->raw_data_index] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
-		csctx->raw_data_index = (csctx->raw_data_index + 1) % ARRAY_COUNT(csctx->raw_data_fences);
 		break;
 	case CS_CUDA_DECODE_AND_DEMOD:
 		if (g_cuda_lib_functions[CLF_DECODE_AND_DEMOD]) {
-			cuda_decode_and_demod *fn = g_cuda_lib_functions[CLF_DECODE_AND_DEMOD];
-			/* TODO: fill in correct params */
-			fn(1, 2, 3);
+			decode_and_hilbert*fn = g_cuda_lib_functions[CLF_DECODE_AND_DEMOD];
+
+			fn(csctx->raw_data_index * rf_raw_size, output_ssbo_idx);
+			csctx->raw_data_fences[csctx->raw_data_index] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+			csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		}
 		break;
 	case CS_LPF:
@@ -354,14 +358,15 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	f32 minx = bp->output_min_xz.x + 1e-6, maxx = bp->output_max_xz.x - 1e-6;
 	f32 minz = bp->output_min_xz.y + 1e-6, maxz = bp->output_max_xz.y - 1e-6;
 	struct listing listings[] = {
-		{ "Sampling Rate:",    "[MHz]", &bp->sampling_frequency, {{0,    0}},     1e-6, 0 },
-		{ "Center Frequency:", "[MHz]", &bp->center_frequency,   {{0,    100e6}}, 1e-6, 1 },
-		{ "Speed of Sound:",   "[m/s]", &bp->speed_of_sound,     {{0,    1e6}},   1,    1 },
-		{ "Min X Point:",      "[mm]",  &bp->output_min_xz.x,    {{-1e3, maxx}},  1e3,  1 },
-		{ "Max X Point:",      "[mm]",  &bp->output_max_xz.x,    {{minx, 1e3}},   1e3,  1 },
-		{ "Min Z Point:",      "[mm]",  &bp->output_min_xz.y,    {{0,    maxz}},  1e3,  1 },
-		{ "Max Z Point:",      "[mm]",  &bp->output_max_xz.y,    {{minz, 1e3}},   1e3,  1 },
-		{ "Dynamic Range:",    "[dB]",  &ctx->fsctx.db,          {{-120, 0}},     1,    1 },
+		{ "Sampling Rate:",    "[MHz]", &bp->sampling_frequency, {{0,    0}},        1e-6, 0 },
+		{ "Center Frequency:", "[MHz]", &bp->center_frequency,   {{0,    100e6}},    1e-6, 1 },
+		{ "Speed of Sound:",   "[m/s]", &bp->speed_of_sound,     {{0,    1e6}},      1,    1 },
+		{ "Min X Point:",      "[mm]",  &bp->output_min_xz.x,    {{-1e3, maxx}},     1e3,  1 },
+		{ "Max X Point:",      "[mm]",  &bp->output_max_xz.x,    {{minx, 1e3}},      1e3,  1 },
+		{ "Min Z Point:",      "[mm]",  &bp->output_min_xz.y,    {{0,    maxz}},     1e3,  1 },
+		{ "Max Z Point:",      "[mm]",  &bp->output_max_xz.y,    {{minz, 1e3}},      1e3,  1 },
+		{ "Dynamic Range:",    "[dB]",  &ctx->fsctx.db,          {{-120, 0}},        1,    1 },
+		{ "Y Position:",       "[mm]",  &bp->off_axis_pos,       {{minx*2, maxx*2}}, 1e3,  1 },
 	};
 
 	static f32 hover_t[ARRAY_COUNT(listings)];
@@ -463,6 +468,7 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 
 	static char *labels[CS_LAST] = {
 		[CS_HADAMARD] = "Decoding:",
+		[CS_CUDA_DECODE_AND_DEMOD] = "Cuda Decoding:",
 		[CS_LPF]      = "LPF:",
 		[CS_MIN_MAX]  = "Min/Max:",
 		[CS_UFORCES]  = "UFORCES:",
@@ -553,9 +559,11 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		ComputeShaderCtx *cs = &ctx->csctx;
 		if (!uv4_equal(cs->dec_data_dim, bp->dec_data_dim) || ctx->flags & ALLOC_SSBOS)
 			alloc_shader_storage(ctx, arena);
+
 		if (!uv4_equal(ctx->out_data_dim, bp->output_points) || ctx->flags & ALLOC_OUT_TEX)
 			alloc_output_image(ctx);
 
+		cs->raw_data_index = (cs->raw_data_index + 1) % ARRAY_COUNT(cs->raw_data_fences);
 		i32 raw_index = ctx->csctx.raw_data_index;
 		/* NOTE: if this times out it means the command queue is more than 3 frames behind.
 		 * In that case we need to re-evaluate the buffer size */
@@ -592,10 +600,12 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			glNamedBufferSubData(ctx->csctx.shared_ubo, 0, sizeof(*bp), bp);
 			ctx->params->upload = 0;
 		}
+
 		do_compute_shader(ctx, CS_HADAMARD);
 		do_compute_shader(ctx, CS_LPF);
 		do_compute_shader(ctx, CS_UFORCES);
 		do_compute_shader(ctx, CS_MIN_MAX);
+
 		ctx->flags &= ~DO_COMPUTE;
 		ctx->flags |= GEN_MIPMAPS;
 

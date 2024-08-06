@@ -21,5 +21,5 @@ typedef struct {
 	f32 focal_depth;            /* [m]   */
 	f32 time_offset;            /* pulse length correction time [s]   */
 	u32 uforces;                /* mode is UFORCES (1) or FORCES (0) */
-	f32 _pad[1];
+	f32 off_axis_pos;           /* Where on the 3rd axis to render the image (Hercules only)*/
 } BeamformerParameters;
