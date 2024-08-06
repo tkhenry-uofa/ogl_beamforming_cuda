@@ -84,8 +84,6 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		break;
 	}
 
-	register_cuda_buffers(ctx->csctx.rf_data_ssbos, ARRAY_COUNT(ctx->csctx.rf_data_ssbos));
-
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
 	cs->hadamard_dim       = (uv2){.x = dec_data_dim.z, .y = dec_data_dim.z};
 	size hadamard_elements = dec_data_dim.z * dec_data_dim.z;
@@ -212,7 +210,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	/* NOTE: Store the compute time for the last frame. */
 	check_compute_timers(&ctx->csctx, ctx->params);
 
-	bool CUDA_BEAMFORM = true;
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
