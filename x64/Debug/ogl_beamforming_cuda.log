@@ -1,0 +1,6 @@
+﻿  /c/Users/tkhen/source/repos/cuda_toolkit
+  In file included from ogl_beamforming_cuda/main.c:13:
+  ogl_beamforming_cuda/beamformer.c: In function 'do_beamformer':
+ogl_beamforming_cuda/beamformer.c(576,29): warning G41AE70B8: unused variable 'output_ssbo_idx' [-Wunused-variable]
+    576 |                         u32 output_ssbo_idx = !csctx->last_output_ssbo_index;
+        |                             ^~~~~~~~~~~~~~~

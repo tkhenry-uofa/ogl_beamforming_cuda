@@ -1,8 +1,11 @@
 /* See LICENSE for license details. */
 #include "beamformer.h"
 
+#include "../cuda_toolkit/cuda_toolkit.h"
+
 /* TODO: remove this */
 #include <string.h> /* memmove */
+#include <time.h>
 
 static void
 alloc_output_image(BeamformerCtx *ctx)
@@ -73,6 +76,8 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbos[i]);
 		glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_decoded_size, 0, GL_DYNAMIC_STORAGE_BIT);
 	}
+
+	register_cuda_buffers(ctx->csctx.rf_data_ssbos, ARRAY_COUNT(ctx->csctx.rf_data_ssbos));
 
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
 	ctx->csctx.hadamard_dim = (uv2){.x = dec_data_dim.z, .y = dec_data_dim.z};
@@ -217,16 +222,9 @@ do_text_input(BeamformerCtx *ctx, i32 max_chars, Rect r, Color colour)
 
 	/* NOTE: guess a cursor position */
 	if (ctx->is.cursor == -1) {
-		f32 x_off = TEXT_BOX_EXTRA_X, x_bounds = r.size.w * ctx->is.cursor_hover_p;
-		u32 i;
-		for (i = 0; i < ctx->is.buf_len && x_off < x_bounds; i++) {
-			u32 idx = GetGlyphIndex(ctx->font, ctx->is.buf[i]);
-			if (ctx->font.glyphs[idx].advanceX == 0)
-				x_off += ctx->font.recs[idx].width;
-			else
-				x_off += ctx->font.glyphs[idx].advanceX;
-		}
-		ctx->is.cursor = i;
+		f32 narrow_char_scale = 1.45;
+		ctx->is.cursor = ctx->is.cursor_hover_p * ctx->is.buf_len * narrow_char_scale;
+		CLAMP(ctx->is.cursor, 0, ctx->is.buf_len);
 	}
 
 	/* NOTE: Braindead NULL termination stupidity */
@@ -384,7 +382,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 
 		Rect edit_rect = {
 			.pos  = {.x = pos.x + max_prefix_len + 15, .y = pos.y},
-			.size = {.x = txt_s.w + TEXT_BOX_EXTRA_X,  .y = txt_s.h}
+			.size = {.x = txt_s.w + 10, .y = txt_s.h}
 		};
 
 		b32 collides = CheckCollisionPointRec(mouse.rl, edit_rect.rl);
@@ -523,6 +521,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		}
 	}
 
+	bool CUDA_BEAMFORM = true;
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
@@ -531,13 +530,27 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		if (!uv4_equal(ctx->out_data_dim, bp->output_points) || ctx->flags & ALLOC_OUT_TEX)
 			alloc_output_image(ctx);
 
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.raw_data_ssbo);
-		void *rf_data_buf = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
-		ASSERT(rf_data_buf);
+
 		uv2  rf_raw_dim   = ctx->csctx.rf_raw_dim;
 		size rf_raw_size  = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
-		size rlen         = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
-		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+		size rlen;
+		if(CUDA_BEAMFORM)
+		{
+			i16* rf_data_buf = malloc(rf_raw_size);
+			rlen = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
+
+			ASSERT(raw_data_to_cuda(rf_data_buf, rf_raw_dim.E, ctx->csctx.dec_data_dim.E, ctx->params->raw.channel_mapping));
+			free(rf_data_buf);
+		}
+		else
+		{
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.raw_data_ssbo);
+			void *rf_data_buf = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+			ASSERT(rf_data_buf);
+			rlen = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
+			glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+		}
 
 		if (rlen == rf_raw_size) ctx->flags |= DO_COMPUTE;
 		else                     ctx->partial_transfer_count++;
@@ -546,6 +559,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	if (ctx->flags & UPLOAD_FILTER)
 		upload_filter_coefficients(ctx, arena);
 
+//ctx->flags & DO_COMPUTE
 	if (ctx->flags & DO_COMPUTE) {
 		if (ctx->params->upload) {
 			glBindBuffer(GL_UNIFORM_BUFFER, ctx->csctx.shared_ubo);
@@ -555,8 +569,23 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			glUnmapBuffer(GL_UNIFORM_BUFFER);
 			ctx->params->upload = 0;
 		}
-		do_compute_shader(ctx, CS_HADAMARD);
-		do_compute_shader(ctx, CS_LPF);
+		ComputeShaderCtx *csctx = &ctx->csctx;
+		
+		if(CUDA_BEAMFORM)
+		{
+			u32 output_ssbo_idx = !csctx->last_output_ssbo_index;
+			csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
+
+			glBeginQuery(GL_TIME_ELAPSED, csctx->timer_ids[CS_HADAMARD]);
+			ASSERT(decode_and_hilbert(true, output_ssbo_idx));
+			glEndQuery(GL_TIME_ELAPSED);
+		}
+		else
+		{
+			do_compute_shader(ctx, CS_HADAMARD);
+			do_compute_shader(ctx, CS_LPF);
+		}
+		
 		do_compute_shader(ctx, CS_UFORCES);
 		do_compute_shader(ctx, CS_MIN_MAX);
 		ctx->flags &= ~DO_COMPUTE;
