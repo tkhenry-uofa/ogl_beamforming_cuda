@@ -29,9 +29,9 @@ case "$1" in
 	;;
 "win32lib")
 	libcflags="$cflags -fPIC -shared"
-	${cc} $libcflags -I'C:/Program Files/MATLAB/R2022a/extern/include' \
+	${cc} $libcflags -I'C:/Program Files/MATLAB/R2024a/extern/include' \
 		helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.dll \
-		-L'C:/Program Files/MATLAB/R2022a/extern/lib/win64/microsoft' \
+		-L'C:/Program Files/MATLAB/R2024a/extern/lib/win64/microsoft' \
 		-llibmat -llibmex
 	;;
 "lib")

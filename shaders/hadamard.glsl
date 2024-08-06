@@ -46,6 +46,11 @@ void main()
 	uint channel     = gl_GlobalInvocationID.y;
 	uint acq         = gl_GlobalInvocationID.z;
 
+	//if (acq != 0)
+	//{
+	//	return;
+	//}
+
 	/* NOTE: offset to get the correct column in hadamard matrix */
 	uint hoff = dec_data_dim.z * acq;
 
@@ -60,6 +65,8 @@ void main()
 	 * index of the first acquisition for this channel and time sample  */
 	uint rf_stride = dec_data_dim.x;
 	uint rf_off    = rf_raw_dim.x * rf_channel + dec_data_dim.x * acq + time_sample;
+
+	//uint rf_off = rf_raw_dim.x * rf_channel + time_sample;
 
 	/* NOTE: rf_data index and stride considering the data is i16 not i32 */
 	uint ridx       = rf_off / 2;
@@ -82,4 +89,7 @@ void main()
 	float arg = radians(360) * center_frequency * time_sample / sampling_frequency;
 	out_data[out_off].x = float(sum) * cos(arg);
 	out_data[out_off].y = float(sum) * sin(arg);
+
+	//out_data[out_off].x = float(sum);
+	//out_data[out_off].y = 0.0f
 }

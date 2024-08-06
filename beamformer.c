@@ -222,9 +222,16 @@ do_text_input(BeamformerCtx *ctx, i32 max_chars, Rect r, Color colour)
 
 	/* NOTE: guess a cursor position */
 	if (ctx->is.cursor == -1) {
-		f32 narrow_char_scale = 1.45;
-		ctx->is.cursor = ctx->is.cursor_hover_p * ctx->is.buf_len * narrow_char_scale;
-		CLAMP(ctx->is.cursor, 0, ctx->is.buf_len);
+		f32 x_off = TEXT_BOX_EXTRA_X, x_bounds = r.size.w * ctx->is.cursor_hover_p;
+		u32 i;
+		for (i = 0; i < ctx->is.buf_len && x_off < x_bounds; i++) {
+			u32 idx = GetGlyphIndex(ctx->font, ctx->is.buf[i]);
+			if (ctx->font.glyphs[idx].advanceX == 0)
+				x_off += ctx->font.recs[idx].width;
+			else
+				x_off += ctx->font.glyphs[idx].advanceX;
+		}
+		ctx->is.cursor = i;
 	}
 
 	/* NOTE: Braindead NULL termination stupidity */
@@ -382,7 +389,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 
 		Rect edit_rect = {
 			.pos  = {.x = pos.x + max_prefix_len + 15, .y = pos.y},
-			.size = {.x = txt_s.w + 10, .y = txt_s.h}
+			.size = {.x = txt_s.w + TEXT_BOX_EXTRA_X, .y = txt_s.h}
 		};
 
 		b32 collides = CheckCollisionPointRec(mouse.rl, edit_rect.rl);
@@ -521,7 +528,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		}
 	}
 
-	bool CUDA_BEAMFORM = true;
+	bool CUDA_BEAMFORM = false;
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
@@ -540,7 +547,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			i16* rf_data_buf = malloc(rf_raw_size);
 			rlen = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
 
-			ASSERT(raw_data_to_cuda(rf_data_buf, rf_raw_dim.E, ctx->csctx.dec_data_dim.E, ctx->params->raw.channel_mapping));
+			raw_data_to_cuda(rf_data_buf, rf_raw_dim.E, ctx->csctx.dec_data_dim.E, ctx->params->raw.channel_mapping);
 			free(rf_data_buf);
 		}
 		else
@@ -577,7 +584,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 
 			glBeginQuery(GL_TIME_ELAPSED, csctx->timer_ids[CS_HADAMARD]);
-			ASSERT(decode_and_hilbert(true, output_ssbo_idx));
+			decode_and_hilbert(true, output_ssbo_idx);
 			glEndQuery(GL_TIME_ELAPSED);
 		}
 		else

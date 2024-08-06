@@ -55,5 +55,6 @@ void main()
 		else                 data = vec2(0);
 		sum += lpf_coefficients[i / 4][i % 4] * data;
 	}
+	//out_data[stride * acq + off] = in_data[off];
 	out_data[stride * acq + off] = sum;
 }

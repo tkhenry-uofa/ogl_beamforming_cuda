@@ -451,6 +451,11 @@
     <None Include="external\raylib\src\minshell.html" />
     <None Include="external\raylib\src\shell.html" />
     <None Include="LICENSE" />
+    <None Include="shaders\hadamard.glsl" />
+    <None Include="shaders\lpf.glsl" />
+    <None Include="shaders\min_max.glsl" />
+    <None Include="shaders\render.glsl" />
+    <None Include="shaders\uforces.glsl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
