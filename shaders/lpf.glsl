@@ -45,7 +45,7 @@ void main()
 
 	/* NOTE: offsets for storing the results in the output data */
 	uint stride = dec_data_dim.x * dec_data_dim.y;
-	uint off    = dec_data_dim.x * channel + time_sample;
+	uint off    = dec_data_dim.x * channel + stride * acq + time_sample;
 
 	vec2 sum = vec2(0);
 	for (int i = 0; i <= lpf_order; i++) {
@@ -55,5 +55,5 @@ void main()
 		else                 data = vec2(0);
 		sum += lpf_coefficients[i / 4][i % 4] * data;
 	}
-	out_data[stride * acq + off] = sum;
+	out_data[off] = sum;
 }

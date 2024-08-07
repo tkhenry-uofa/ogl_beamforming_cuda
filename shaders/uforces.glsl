@@ -88,9 +88,9 @@ void main()
 	float dx            = xdc_size.x / float(dec_data_dim.y);
 	float dzsign        = sign(image_point.z - focal_depth);
 
-	uint ridx = dec_data_dim.y * dec_data_dim.x;
 	vec2 sum  = vec2(0);
 	/* NOTE: skip first acquisition in uforces since its garbage */
+	uint ridx = dec_data_dim.y * dec_data_dim.x * uforces;
 	for (uint i = uforces; i < dec_data_dim.z; i++) {
 		uint base_idx = (i - uforces) / 4;
 		uint sub_idx  = (i - uforces) - base_idx * 4;
@@ -114,7 +114,6 @@ void main()
 			rdist.x -= dx;
 			ridx    += dec_data_dim.x;
 		}
-		ridx += dec_data_dim.y * dec_data_dim.x;
 	}
 	float val = length(sum);
 	imageStore(u_out_data_tex, out_coord, vec4(val, val, 0, 0));
