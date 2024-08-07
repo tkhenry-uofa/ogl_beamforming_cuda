@@ -514,7 +514,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		ctx->window_size.h = GetScreenHeight();
 		ctx->window_size.w = GetScreenWidth();
 	}
-
 	/* NOTE: Store the compute time for the last frame. */
 	{
 		i32 timer_status, _unused;
@@ -527,6 +526,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			}
 		}
 	}
+
+	bool CUDA_BEAMFORM = true;
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
@@ -539,7 +540,11 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		uv2  rf_raw_dim   = ctx->csctx.rf_raw_dim;
 		size rf_raw_size  = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
 
-		init_cuda_configuration(rf_raw_dim.E, ctx->csctx.dec_data_dim.E, ctx->params->raw.channel_mapping, ctx->params->raw.channel_offset != 0);
+		if (CUDA_BEAMFORM)
+		{
+			init_cuda_configuration(rf_raw_dim.E, ctx->csctx.dec_data_dim.E, ctx->params->raw.channel_mapping, ctx->params->raw.channel_offset != 0);
+		}
+		
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.raw_data_ssbo);
 		void* rf_data_buf = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
@@ -566,7 +571,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		}
 		ComputeShaderCtx *csctx = &ctx->csctx;
 
-		bool CUDA_BEAMFORM = false;
+		
 		
 		if(CUDA_BEAMFORM)
 		{

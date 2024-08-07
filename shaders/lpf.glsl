@@ -14,7 +14,7 @@ layout(std430, binding = 2) writeonly restrict buffer buffer_2 {
 //	float lpf_coeff[];
 //};
 
-layout(std140, binding = 0) uniform parameters {
+layout(std140, binding = 0) uniform parameters{
 	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
 	vec4  lpf_coefficients[16];   /* Low Pass Filter Cofficients */
@@ -40,12 +40,12 @@ layout(std140, binding = 0) uniform parameters {
 void main()
 {
 	uint time_sample = gl_GlobalInvocationID.x;
-	uint channel     = gl_GlobalInvocationID.y;
-	uint acq         = gl_GlobalInvocationID.z;
+	uint channel = gl_GlobalInvocationID.y;
+	uint acq = gl_GlobalInvocationID.z;
 
 	/* NOTE: offsets for storing the results in the output data */
 	uint stride = dec_data_dim.x * dec_data_dim.y;
-	uint off    = dec_data_dim.x * channel + stride * acq + time_sample;
+	uint off = dec_data_dim.x * channel + stride * acq + time_sample;
 
 	vec2 sum = vec2(0);
 	for (int i = 0; i <= lpf_order; i++) {
@@ -55,5 +55,5 @@ void main()
 		else                 data = vec2(0);
 		sum += lpf_coefficients[i / 4][i % 4] * data;
 	}
-	out_data[off] = sum;
+	out_data[off] = in_data[off];
 }

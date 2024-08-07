@@ -14,7 +14,7 @@ layout(std430, binding = 3) readonly restrict buffer buffer_3 {
 	int hadamard[];
 };
 
-layout(std140, binding = 0) uniform parameters {
+layout(std140, binding = 0) uniform parameters{
 	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
 	vec4  lpf_coefficients[16];   /* Low Pass Filter Cofficients */
@@ -43,13 +43,8 @@ void main()
 	 * The result is stored to the equivalent row, column index of the output.
 	 */
 	uint time_sample = gl_GlobalInvocationID.x;
-	uint channel     = gl_GlobalInvocationID.y;
-	uint acq         = gl_GlobalInvocationID.z;
-
-	//if (acq != 0)
-	//{
-	//	return;
-	//}
+	uint channel = gl_GlobalInvocationID.y;
+	uint acq = gl_GlobalInvocationID.z;
 
 	/* NOTE: offset to get the correct column in hadamard matrix */
 	uint hoff = dec_data_dim.z * acq;
@@ -58,18 +53,16 @@ void main()
 	uint out_off = dec_data_dim.x * dec_data_dim.y * acq + dec_data_dim.x * channel + time_sample;
 
 	uint ch_base_idx = (channel + channel_offset) / 4;
-	uint ch_sub_idx  = (channel + channel_offset) - ch_base_idx * 4;
-	uint rf_channel  = channel_mapping[ch_base_idx][ch_sub_idx];
+	uint ch_sub_idx = (channel + channel_offset) - ch_base_idx * 4;
+	uint rf_channel = channel_mapping[ch_base_idx][ch_sub_idx];
 
 	/* NOTE: stride is the number of samples between acquistions; off is the
 	 * index of the first acquisition for this channel and time sample  */
 	uint rf_stride = dec_data_dim.x;
-	uint rf_off    = rf_raw_dim.x * rf_channel + time_sample;
-
-	//uint rf_off = rf_raw_dim.x * rf_channel + time_sample;
+	uint rf_off = rf_raw_dim.x * rf_channel + time_sample;
 
 	/* NOTE: rf_data index and stride considering the data is i16 not i32 */
-	uint ridx       = rf_off / 2;
+	uint ridx = rf_off / 2;
 	uint ridx_delta = rf_stride / 2;
 
 	/* NOTE: rf_data is i16 so each access grabs two time samples at time.
@@ -82,14 +75,11 @@ void main()
 	int sum = 0;
 	for (int i = 0; i < dec_data_dim.z; i++) {
 		int data = (rf_data[ridx] << lfs) >> 16;
-		sum  += hadamard[hoff + i] * data;
+		sum += hadamard[hoff + i] * data;
 		ridx += ridx_delta;
 	}
 
 	float arg = radians(360) * center_frequency * time_sample / sampling_frequency;
 	out_data[out_off].x = float(sum) * cos(arg);
 	out_data[out_off].y = float(sum) * sin(arg);
-
-	//out_data[out_off].x = float(sum);
-	//out_data[out_off].y = 0.0f
 }

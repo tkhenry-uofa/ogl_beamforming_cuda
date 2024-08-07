@@ -96,7 +96,6 @@ void main()
 		uint sub_idx  = (i - uforces) - base_idx * 4;
 
 		vec3  focal_point   = vec3(uforces_channels[base_idx][sub_idx] * dx, 0, focal_depth);
-		//vec3  focal_point = vec3(i * dx, 0, focal_depth);
 		float transmit_dist = focal_depth + dzsign * distance(image_point, focal_point);
 
 		vec2 rdist = starting_dist;

@@ -26,7 +26,7 @@ typedef struct {
 	b32 upload;
 } BeamformerParametersFull;
 
-#include "/tmp/downloads/240723_ATS539_Resolution_uFORCES-32-TxRow_bp_inc.h"
+#include "./temp/240723_ATS539_Resolution_uFORCES-32-TxRow_bp_inc.h"
 //#include "/tmp/downloads/240723_ATS539_Contrast_FORCES-TxRow_bp_inc.h"
 //#include "/tmp/downloads/240723_ATS539_Resolution_FORCES-TxRow_bp_inc.h"
 
@@ -205,7 +205,7 @@ check_shared_memory(char *name)
 }
 
 static size
-send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim)
+send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim, uv4 dec_data_dim)
 {
 	if (g_pipe.file == OS_INVALID_FILE) {
 		g_pipe = os_open_named_pipe(pipe_name);
@@ -217,7 +217,8 @@ send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim)
 
 	check_shared_memory(shm_name);
 	/* TODO: this probably needs a mutex around it if we want to change it here */
-	g_bp->raw.rf_raw_dim = data_dim;
+	//g_bp->raw.rf_raw_dim = data_dim;
+	//g_bp->raw.dec_data_dim = dec_data_dim;
 	size data_size       = data_dim.x * data_dim.y * sizeof(i16);
 	size written         = os_write_to_pipe(g_pipe, data, data_size);
 	if (written != data_size)
@@ -257,6 +258,8 @@ main(i32 argc, char *argv[])
 		i32  fcount     = 0;
 		f32  frame_time = 0;
 		clock_t timestamp;
+
+		int loop_flag = 1;
 		while (1) {
 			if (fcount == 5) {
 				printf("Last Frame Time: %0.03f [ms]; Throughput: %0.03f [GB/s]\n",
@@ -265,9 +268,10 @@ main(i32 argc, char *argv[])
 				fcount = 0;
 			}
 			timestamp  = clock();
-			written    = send_data(OS_PIPE_NAME, OS_SMEM_NAME, data, bp.rf_raw_dim);
+			written    = send_data(OS_PIPE_NAME, OS_SMEM_NAME, data, bp.rf_raw_dim, bp.dec_data_dim);
 			frame_time = (f32)(clock() - timestamp)/(f32)CLOCKS_PER_SEC;
 			fcount++;
+			loop_flag = 0;
 		}
 	}
 
