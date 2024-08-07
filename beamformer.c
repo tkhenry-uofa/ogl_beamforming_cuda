@@ -77,7 +77,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_decoded_size, 0, GL_DYNAMIC_STORAGE_BIT);
 	}
 
-	register_cuda_buffers(ctx->csctx.rf_data_ssbos, ARRAY_COUNT(ctx->csctx.rf_data_ssbos));
+	register_cuda_buffers(ctx->csctx.rf_data_ssbos, ARRAY_COUNT(ctx->csctx.rf_data_ssbos), ctx->csctx.raw_data_ssbo);
 
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
 	ctx->csctx.hadamard_dim = (uv2){.x = dec_data_dim.z, .y = dec_data_dim.z};
@@ -527,8 +527,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			}
 		}
 	}
-
-	bool CUDA_BEAMFORM = false;
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
@@ -541,23 +539,13 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		uv2  rf_raw_dim   = ctx->csctx.rf_raw_dim;
 		size rf_raw_size  = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
 
-		size rlen;
-		if(CUDA_BEAMFORM)
-		{
-			i16* rf_data_buf = malloc(rf_raw_size);
-			rlen = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
+		init_cuda_configuration(rf_raw_dim.E, ctx->csctx.dec_data_dim.E, ctx->params->raw.channel_mapping, ctx->params->raw.channel_offset != 0);
 
-			raw_data_to_cuda(rf_data_buf, rf_raw_dim.E, ctx->csctx.dec_data_dim.E, ctx->params->raw.channel_mapping);
-			free(rf_data_buf);
-		}
-		else
-		{
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.raw_data_ssbo);
-			void *rf_data_buf = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
-			ASSERT(rf_data_buf);
-			rlen = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
-			glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-		}
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.raw_data_ssbo);
+		void* rf_data_buf = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+		ASSERT(rf_data_buf);
+		size rlen = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
+		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
 		if (rlen == rf_raw_size) ctx->flags |= DO_COMPUTE;
 		else                     ctx->partial_transfer_count++;
@@ -577,6 +565,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			ctx->params->upload = 0;
 		}
 		ComputeShaderCtx *csctx = &ctx->csctx;
+
+		bool CUDA_BEAMFORM = false;
 		
 		if(CUDA_BEAMFORM)
 		{
@@ -584,7 +574,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 
 			glBeginQuery(GL_TIME_ELAPSED, csctx->timer_ids[CS_HADAMARD]);
-			decode_and_hilbert(true, output_ssbo_idx);
+			decode_and_hilbert(output_ssbo_idx);
 			glEndQuery(GL_TIME_ELAPSED);
 		}
 		else
