@@ -64,7 +64,7 @@ void main()
 	/* NOTE: stride is the number of samples between acquistions; off is the
 	 * index of the first acquisition for this channel and time sample  */
 	uint rf_stride = dec_data_dim.x;
-	uint rf_off    = rf_raw_dim.x * rf_channel + dec_data_dim.x * acq + time_sample;
+	uint rf_off    = rf_raw_dim.x * rf_channel + time_sample;
 
 	//uint rf_off = rf_raw_dim.x * rf_channel + time_sample;
 
