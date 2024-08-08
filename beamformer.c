@@ -71,7 +71,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 
 	for (u32 i = 0; i < ARRAY_COUNT(ctx->csctx.rf_data_ssbos); i++) {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.rf_data_ssbos[i]);
-		glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_decoded_size, 0, GL_DYNAMIC_STORAGE_BIT);
+		glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_decoded_size, 0, 0);
 	}
 
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
