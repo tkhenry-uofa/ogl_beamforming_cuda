@@ -56,6 +56,7 @@ enum program_flags {
 	ALLOC_SSBOS    = 1 << 1,
 	ALLOC_OUT_TEX  = 1 << 2,
 	UPLOAD_FILTER  = 1 << 3,
+	GEN_MIPMAPS    = 1 << 29,
 	DO_COMPUTE     = 1 << 30,
 };
 

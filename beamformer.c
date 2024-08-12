@@ -27,6 +27,10 @@ alloc_output_image(BeamformerCtx *ctx)
 
 	UnloadRenderTexture(ctx->fsctx.output);
 	ctx->fsctx.output = LoadRenderTexture(odim.x, odim.y);
+	GenTextureMipmaps(&ctx->fsctx.output.texture);
+	//SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_ANISOTROPIC_8X);
+	//SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_TRILINEAR);
+	SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_BILINEAR);
 
 	ctx->flags &= ~ALLOC_OUT_TEX;
 }
@@ -584,6 +588,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		do_compute_shader(ctx, CS_UFORCES);
 		do_compute_shader(ctx, CS_MIN_MAX);
 		ctx->flags &= ~DO_COMPUTE;
+		ctx->flags |= GEN_MIPMAPS;
 		glDeleteSync(ctx->csctx.timer_fence);
 		ctx->csctx.timer_fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 	}
@@ -599,6 +604,12 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			DrawTexture(fs->output.texture, 0, 0, WHITE);
 		EndShaderMode();
 	EndTextureMode();
+
+	/* NOTE: regenerate mipmaps only when the output has actually changed */
+	if (ctx->flags & GEN_MIPMAPS) {
+		GenTextureMipmaps(&ctx->fsctx.output.texture);
+		ctx->flags &= ~GEN_MIPMAPS;
+	}
 
 	/* NOTE: Draw UI */
 	BeginDrawing();
@@ -655,8 +666,10 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		/* NOTE: check mouse wheel for adjusting dynamic range of image */
 		v2 mouse = { .rl = GetMousePosition() };
 		if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
-			ctx->fsctx.db += GetMouseWheelMove();
+			f32 delta = GetMouseWheelMove();
+			ctx->fsctx.db += delta;
 			CLAMP(ctx->fsctx.db, -120, 0);
+			if (delta) ctx->flags |= GEN_MIPMAPS;
 		}
 
 		static f32 txt_colour_t[2];
