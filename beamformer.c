@@ -607,7 +607,10 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 	/* NOTE: regenerate mipmaps only when the output has actually changed */
 	if (ctx->flags & GEN_MIPMAPS) {
+		/* NOTE: shut up raylib's reporting on mipmap gen */
+		SetTraceLogLevel(LOG_NONE);
 		GenTextureMipmaps(&ctx->fsctx.output.texture);
+		SetTraceLogLevel(LOG_INFO);
 		ctx->flags &= ~GEN_MIPMAPS;
 	}
 
