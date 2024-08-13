@@ -176,7 +176,11 @@ main(void)
 
 	glGenQueries(CS_LAST, ctx.csctx.timer_ids);
 
-	ctx.flags |= RELOAD_SHADERS|ALLOC_SSBOS|ALLOC_OUT_TEX|UPLOAD_FILTER;
+	/* NOTE: do not DO_COMPUTE on first frame */
+	reload_shaders(&ctx, temp_memory);
+	ctx.flags &= ~DO_COMPUTE;
+
+	ctx.flags |= ALLOC_SSBOS|ALLOC_OUT_TEX|UPLOAD_FILTER;
 
 	while(!WindowShouldClose()) {
 		do_debug();
