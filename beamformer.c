@@ -69,12 +69,17 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glDeleteBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
 	glGenBuffers(ARRAY_COUNT(cs->rf_data_ssbos),    cs->rf_data_ssbos);
 
+	i32 storage_flags = GL_DYNAMIC_STORAGE_BIT;
+	if (ctx->gl_vendor_id == GL_VENDOR_INTEL)
+		storage_flags |= GL_MAP_WRITE_BIT;
 	glDeleteBuffers(1, &cs->raw_data_ssbo);
-	glGenBuffers(1,    &cs->raw_data_ssbo);
+	glCreateBuffers(1, &cs->raw_data_ssbo);
+	glNamedBufferStorage(cs->raw_data_ssbo, ARRAY_COUNT(cs->raw_data_fences) * rf_raw_size, 0,
+	                     storage_flags);
 
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, cs->raw_data_ssbo);
-	glBufferStorage(GL_SHADER_STORAGE_BUFFER, ARRAY_COUNT(cs->raw_data_fences) * rf_raw_size,
-	                0, GL_MAP_WRITE_BIT);
+	/* TODO: allow this to grow if the raw data has been resized */
+	if (cs->raw_data_arena.beg == 0)
+		cs->raw_data_arena = os_new_arena(rf_raw_size);
 
 	for (u32 i = 0; i < ARRAY_COUNT(cs->rf_data_ssbos); i++) {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, cs->rf_data_ssbos[i]);
@@ -538,7 +543,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
-		if (!uv4_equal(ctx->csctx.dec_data_dim, bp->dec_data_dim) || ctx->flags & ALLOC_SSBOS)
+		ComputeShaderCtx *cs = &ctx->csctx;
+		if (!uv4_equal(cs->dec_data_dim, bp->dec_data_dim) || ctx->flags & ALLOC_SSBOS)
 			alloc_shader_storage(ctx, arena);
 		if (!uv4_equal(ctx->out_data_dim, bp->output_points) || ctx->flags & ALLOC_OUT_TEX)
 			alloc_output_image(ctx);
@@ -547,31 +553,39 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		/* NOTE: if this times out it means the command queue is more than 3 frames behind.
 		 * In that case we need to re-evaluate the buffer size */
 		if (ctx->csctx.raw_data_fences[raw_index]) {
-			i32 result = glClientWaitSync(ctx->csctx.raw_data_fences[raw_index], 0, 10000);
+			i32 result = glClientWaitSync(cs->raw_data_fences[raw_index], 0, 10000);
 			if (result == GL_TIMEOUT_EXPIRED) {
 				//ASSERT(0);
 			}
-			glDeleteSync(ctx->csctx.raw_data_fences[raw_index]);
-			ctx->csctx.raw_data_fences[raw_index] = NULL;
+			glDeleteSync(cs->raw_data_fences[raw_index]);
+			cs->raw_data_fences[raw_index] = NULL;
 		}
 
-		uv2  rf_raw_dim   = ctx->csctx.rf_raw_dim;
+		uv2  rf_raw_dim   = cs->rf_raw_dim;
 		size rf_raw_size  = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
 
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ctx->csctx.raw_data_ssbo);
-		void *rf_data_buf = glMapBufferRange(GL_SHADER_STORAGE_BUFFER,
-		                                     raw_index * rf_raw_size, rf_raw_size,
-		                                     GL_MAP_UNSYNCHRONIZED_BIT | GL_MAP_WRITE_BIT);
-		if (!rf_data_buf) {
-			rlCheckErrors();
-			ASSERT(0);
+		if (ctx->gl_vendor_id == GL_VENDOR_INTEL) {
+			/* TODO: intel complains about this buffer being busy even with
+			 * MAP_UNSYNCHRONIZED_BIT */
+			void *rf_data_buf = glMapNamedBufferRange(cs->raw_data_ssbo,
+			                                          raw_index * rf_raw_size,
+			                                          rf_raw_size,
+			                                          GL_MAP_WRITE_BIT);
+			size rlen = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
+			glUnmapNamedBuffer(cs->raw_data_ssbo);
+			if (rlen == rf_raw_size) ctx->flags |= DO_COMPUTE;
+			else                     ctx->partial_transfer_count++;
+		} else {
+			void *rf_data_buf = cs->raw_data_arena.beg + raw_index * rf_raw_size;
+			size rlen = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
+			if (rlen == rf_raw_size) {
+				ctx->flags |= DO_COMPUTE;
+				glNamedBufferSubData(cs->raw_data_ssbo, raw_index * rf_raw_size,
+				                     rf_raw_size, rf_data_buf);
+			} else {
+				ctx->partial_transfer_count++;
+			}
 		}
-		size rlen = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
-
-		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-
-		if (rlen == rf_raw_size) ctx->flags |= DO_COMPUTE;
-		else                     ctx->partial_transfer_count++;
 	}
 
 	if (ctx->flags & UPLOAD_FILTER)

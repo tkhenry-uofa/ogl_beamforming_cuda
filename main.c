@@ -185,6 +185,18 @@ main(void)
 
 	ctx.params->raw.output_points = ctx.out_data_dim;
 
+	/* NOTE: Determine which graphics vendor we are running on */
+	{
+		const u8 *vendor = glGetString(GL_VENDOR);
+		if (!vendor)
+			die("Failed to determine GL Vendor\n");
+		switch (vendor[0]) {
+		case 'A': ctx.gl_vendor_id = GL_VENDOR_AMD;       break;
+		case 'I': ctx.gl_vendor_id = GL_VENDOR_INTEL;     break;
+		case 'N': ctx.gl_vendor_id = GL_VENDOR_NVIDIA;    break;
+		default:  die("Unknown GL Vendor: %s\n", vendor); break;
+		}
+	}
 
 	/* NOTE: set up OpenGL debug logging */
 	glDebugMessageCallback(gl_debug_logger, NULL);

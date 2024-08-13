@@ -60,6 +60,12 @@ enum program_flags {
 	DO_COMPUTE     = 1 << 30,
 };
 
+enum gl_vendor_ids {
+	GL_VENDOR_AMD,
+	GL_VENDOR_INTEL,
+	GL_VENDOR_NVIDIA,
+};
+
 typedef struct {
 	char buf[64];
 	i32  buf_len;
@@ -98,13 +104,17 @@ typedef struct {
 	GLsync timer_fence;
 	f32    last_frame_time[CS_LAST];
 
-	/* NOTE: multiple raw data SSBOs for unsynchronized mapping.
-	 * Decoded data is only relavent in the context of a single frame, two are
-	 * used so that they can be swapped when chaining multiple compute stages */
+	/* NOTE: the raw_data_ssbo is allocated at 3x the required size to allow for tiled
+	 * transfers when the GPU is running behind the CPU. It is not mapped because NVIDIA's
+	 * drivers _will_ store the buffer in the sytem memory in that case (this doesn't happen
+	 * for Intel or AMD). Instead BufferSubData is used to update the correct subrange */
 	GLsync raw_data_fences[3];
+	Arena  raw_data_arena;
 	u32    raw_data_ssbo;
 	u32    raw_data_index;
 
+	/* NOTE: Decoded data is only relevant in the context of a single frame. We use two
+	 * buffers so that they can be swapped when chaining multiple compute stages */
 	u32 rf_data_ssbos[2];
 	u32 last_output_ssbo_index;
 	u32 hadamard_ssbo;
@@ -134,6 +144,7 @@ typedef struct {
 typedef struct {
 	uv2 window_size;
 	u32 flags;
+	enum gl_vendor_ids gl_vendor_id;
 
 	f32 dt;
 
