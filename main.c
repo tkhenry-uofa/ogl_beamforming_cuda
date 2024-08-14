@@ -204,10 +204,9 @@ main(void)
 	glEnable(GL_DEBUG_OUTPUT);
 #endif
 
-	/* NOTE: allocate space for Uniform Buffer Object but don't send anything yet */
-	glGenBuffers(1, &ctx.csctx.shared_ubo);
-	glBindBuffer(GL_UNIFORM_BUFFER, ctx.csctx.shared_ubo);
-	glBufferStorage(GL_UNIFORM_BUFFER, sizeof(BeamformerParameters), 0, GL_MAP_WRITE_BIT);
+	/* NOTE: allocate space for Uniform Buffer but don't send anything yet */
+	glCreateBuffers(1, &ctx.csctx.shared_ubo);
+	glNamedBufferStorage(ctx.csctx.shared_ubo, sizeof(BeamformerParameters), 0, GL_DYNAMIC_STORAGE_BIT);
 
 	glGenQueries(CS_LAST, ctx.csctx.timer_ids);
 

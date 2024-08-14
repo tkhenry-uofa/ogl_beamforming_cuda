@@ -67,7 +67,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	ctx->csctx.dec_data_dim  = dec_data_dim;
 
 	glDeleteBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
-	glGenBuffers(ARRAY_COUNT(cs->rf_data_ssbos),    cs->rf_data_ssbos);
+	glCreateBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
 
 	i32 storage_flags = GL_DYNAMIC_STORAGE_BIT;
 	if (ctx->gl_vendor_id == GL_VENDOR_INTEL)
@@ -81,20 +81,19 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	if (cs->raw_data_arena.beg == 0)
 		cs->raw_data_arena = os_new_arena(rf_raw_size);
 
-	for (u32 i = 0; i < ARRAY_COUNT(cs->rf_data_ssbos); i++) {
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, cs->rf_data_ssbos[i]);
-		glBufferStorage(GL_SHADER_STORAGE_BUFFER, rf_decoded_size, 0, 0);
-	}
+	for (u32 i = 0; i < ARRAY_COUNT(cs->rf_data_ssbos); i++)
+		glNamedBufferStorage(cs->rf_data_ssbos[i], rf_decoded_size, 0, 0);
 
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
 	cs->hadamard_dim       = (uv2){.x = dec_data_dim.z, .y = dec_data_dim.z};
 	size hadamard_elements = dec_data_dim.z * dec_data_dim.z;
 	i32  *hadamard         = alloc(&a, i32, hadamard_elements);
 	fill_hadamard(hadamard, dec_data_dim.z);
+	glDeleteBuffers(1, &cs->hadamard_ssbo);
+	glCreateBuffers(1, &cs->hadamard_ssbo);
+	glNamedBufferStorage(cs->hadamard_ssbo, hadamard_elements * sizeof(i32), hadamard, 0);
 
-	rlUnloadShaderBuffer(cs->hadamard_ssbo);
-	cs->hadamard_ssbo  = rlLoadShaderBuffer(hadamard_elements * sizeof(i32), hadamard, GL_STATIC_DRAW);
-	ctx->flags        &= ~ALLOC_SSBOS;
+	ctx->flags &= ~ALLOC_SSBOS;
 }
 
 static void
@@ -593,11 +592,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 	if (ctx->flags & DO_COMPUTE) {
 		if (ctx->params->upload) {
-			glBindBuffer(GL_UNIFORM_BUFFER, ctx->csctx.shared_ubo);
-			void *ubo = glMapBuffer(GL_UNIFORM_BUFFER, GL_WRITE_ONLY);
-			mem_copy((s8){.data = (u8 *)bp,  .len = sizeof(*bp)},
-			         (s8){.data = (u8 *)ubo, .len = sizeof(*bp)});
-			glUnmapBuffer(GL_UNIFORM_BUFFER);
+			glNamedBufferSubData(ctx->csctx.shared_ubo, 0, sizeof(*bp), bp);
 			ctx->params->upload = 0;
 		}
 		do_compute_shader(ctx, CS_HADAMARD);

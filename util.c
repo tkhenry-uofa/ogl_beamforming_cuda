@@ -15,14 +15,6 @@ die(char *fmt, ...)
 	exit(1);
 }
 
-static void
-mem_copy(s8 src, s8 dest)
-{
-	ASSERT(src.len <= dest.len);
-	for (size i = 0; i < src.len; i++)
-		dest.data[i] = src.data[i];
-}
-
 static void *
 mem_clear(u8 *p, u8 c, size len)
 {
