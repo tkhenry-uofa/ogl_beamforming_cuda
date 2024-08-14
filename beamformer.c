@@ -1,9 +1,6 @@
 /* See LICENSE for license details. */
 #include "beamformer.h"
 
-/* TODO: remove this */
-#include <string.h> /* memmove */
-
 static void
 alloc_output_image(BeamformerCtx *ctx)
 {
@@ -273,10 +270,9 @@ do_text_input(BeamformerCtx *ctx, i32 max_chars, Rect r, Color colour)
 		b32 allow_key = ((key >= '0' && key <= '9') || (key == '.') ||
 		                 (key == '-' && ctx->is.cursor == 0));
 		if (allow_key) {
-			/* TODO: remove memmove */
-			memmove(ctx->is.buf + ctx->is.cursor + 1,
-			        ctx->is.buf + ctx->is.cursor,
-			        ctx->is.buf_len - ctx->is.cursor + 1);
+			mem_move(ctx->is.buf + ctx->is.cursor,
+			         ctx->is.buf + ctx->is.cursor + 1,
+			         ctx->is.buf_len - ctx->is.cursor + 1);
 
 			ctx->is.buf[ctx->is.cursor++] = key;
 			ctx->is.buf_len++;
@@ -293,11 +289,10 @@ do_text_input(BeamformerCtx *ctx, i32 max_chars, Rect r, Color colour)
 
 	if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) &&
 	    ctx->is.cursor > 0) {
-		/* TODO: remove memmove */
 		ctx->is.cursor--;
-		memmove(ctx->is.buf + ctx->is.cursor,
-		        ctx->is.buf + ctx->is.cursor + 1,
-			ctx->is.buf_len - ctx->is.cursor - 1);
+		mem_move(ctx->is.buf + ctx->is.cursor + 1,
+		         ctx->is.buf + ctx->is.cursor,
+		         ctx->is.buf_len - ctx->is.cursor);
 		ctx->is.buf[--ctx->is.buf_len] = 0;
 	}
 }

@@ -22,6 +22,13 @@ mem_clear(u8 *p, u8 c, size len)
 	return p;
 }
 
+static void
+mem_move(char *src, char *dest, size n)
+{
+	if (dest < src) while (n) { *dest++ = *src++; n--; }
+	else            while (n) { n--; dest[n] = src[n]; }
+}
+
 #define alloc(a, t, n)  (t *)alloc_(a, sizeof(t), _Alignof(t), n)
 __attribute((malloc, alloc_size(4, 2), alloc_align(3)))
 static void *
