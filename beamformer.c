@@ -74,7 +74,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, cs->raw_data_ssbo);
 	glBufferStorage(GL_SHADER_STORAGE_BUFFER, ARRAY_COUNT(cs->raw_data_fences) * rf_raw_size,
-	                0, GL_DYNAMIC_STORAGE_BIT|GL_MAP_WRITE_BIT);
+	                0, GL_MAP_WRITE_BIT);
 
 	for (u32 i = 0; i < ARRAY_COUNT(cs->rf_data_ssbos); i++) {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, cs->rf_data_ssbos[i]);
@@ -523,7 +523,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	}
 
 	/* NOTE: Store the compute time for the last frame. */
-	{
+	if (ctx->csctx.timer_fence) {
 		i32 timer_status, _unused;
 		glGetSynciv(ctx->csctx.timer_fence, GL_SYNC_STATUS, 4, &_unused, &timer_status);
 		if (timer_status == GL_SIGNALED) {
@@ -546,11 +546,14 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		i32 raw_index = ctx->csctx.raw_data_index;
 		/* NOTE: if this times out it means the command queue is more than 3 frames behind.
 		 * In that case we need to re-evaluate the buffer size */
-		i32 result = glClientWaitSync(ctx->csctx.raw_data_fences[raw_index], 0, 10000);
-		if (result == GL_TIMEOUT_EXPIRED) {
-			//ASSERT(0);
+		if (ctx->csctx.raw_data_fences[raw_index]) {
+			i32 result = glClientWaitSync(ctx->csctx.raw_data_fences[raw_index], 0, 10000);
+			if (result == GL_TIMEOUT_EXPIRED) {
+				//ASSERT(0);
+			}
+			glDeleteSync(ctx->csctx.raw_data_fences[raw_index]);
+			ctx->csctx.raw_data_fences[raw_index] = NULL;
 		}
-		glDeleteSync(ctx->csctx.raw_data_fences[raw_index]);
 
 		uv2  rf_raw_dim   = ctx->csctx.rf_raw_dim;
 		size rf_raw_size  = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);

@@ -66,6 +66,22 @@ do_debug(void)
 
 #endif /* _DEBUG */
 
+static void
+gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, const void *userctx)
+{
+	(void)src; (void)type; (void)id; (void)userctx;
+	fputs("[GL DEBUG ", stderr);
+	switch (lvl) {
+	case GL_DEBUG_SEVERITY_HIGH:         fputs("HIGH]: ",         stderr); break;
+	case GL_DEBUG_SEVERITY_MEDIUM:       fputs("MEDIUM]: ",       stderr); break;
+	case GL_DEBUG_SEVERITY_LOW:          fputs("LOW]: ",          stderr); break;
+	case GL_DEBUG_SEVERITY_NOTIFICATION: fputs("NOTIFICATION]: ", stderr); break;
+	default:                             fputs("INVALID]: ",      stderr); break;
+	}
+	fwrite(msg, 1, len, stderr);
+	fputc('\n', stderr);
+}
+
 static u32
 compile_shader(Arena a, u32 type, s8 shader)
 {
@@ -169,10 +185,17 @@ main(void)
 
 	ctx.params->raw.output_points = ctx.out_data_dim;
 
+
+	/* NOTE: set up OpenGL debug logging */
+	glDebugMessageCallback(gl_debug_logger, NULL);
+#ifdef _DEBUG
+	glEnable(GL_DEBUG_OUTPUT);
+#endif
+
 	/* NOTE: allocate space for Uniform Buffer Object but don't send anything yet */
 	glGenBuffers(1, &ctx.csctx.shared_ubo);
 	glBindBuffer(GL_UNIFORM_BUFFER, ctx.csctx.shared_ubo);
-	glBufferData(GL_UNIFORM_BUFFER, sizeof(BeamformerParameters), 0, GL_STATIC_DRAW);
+	glBufferStorage(GL_UNIFORM_BUFFER, sizeof(BeamformerParameters), 0, GL_MAP_WRITE_BIT);
 
 	glGenQueries(CS_LAST, ctx.csctx.timer_ids);
 
