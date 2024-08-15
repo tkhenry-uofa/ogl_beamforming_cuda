@@ -51,7 +51,8 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	switch (ctx->gl_vendor_id) {
 	case GL_VENDOR_INTEL:
 	case GL_VENDOR_AMD:
-		glUnmapNamedBuffer(cs->raw_data_ssbo);
+		if (cs->raw_data_ssbo)
+			glUnmapNamedBuffer(cs->raw_data_ssbo);
 		storage_flags |= GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT;
 	case GL_VENDOR_NVIDIA:
 		break;
