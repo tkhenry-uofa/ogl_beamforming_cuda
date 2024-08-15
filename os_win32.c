@@ -1,6 +1,7 @@
 /* See LICENSE for license details. */
 #include <fileapi.h>
 #include <handleapi.h>
+#include <libloaderapi.h>
 #include <memoryapi.h>
 #include <sysinfoapi.h>
 
@@ -18,6 +19,7 @@ typedef struct {
 } os_pipe;
 
 typedef FILETIME os_filetime;
+typedef HANDLE   os_library_handle;
 
 typedef struct {
 	size        filesize;
@@ -141,3 +143,29 @@ static void
 os_remove_shared_memory(char *name)
 {
 }
+
+static os_library_handle
+os_load_library(char *name)
+{
+	os_library_handle res = LoadLibraryA(name);
+	if (!res)
+		TraceLog(LOG_WARNING, "os_load_library(%s): %d\n", name, GetLastError());
+	return res;
+}
+
+static void *
+os_lookup_dynamic_symbol(os_library_handle h, char *name)
+{
+	void *res = GetProcAddress(h, name);
+	if (!res)
+		TraceLog(LOG_WARNING, "os_lookup_dynamic_symbol(%s): %s\n", name, GetLastError());
+	return res;
+}
+
+#ifdef _DEBUG
+static void
+os_close_library(os_library_handle h)
+{
+	FreeLibrary(h);
+}
+#endif /* _DEBUG */

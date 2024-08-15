@@ -14,11 +14,10 @@ static char *compute_shader_paths[CS_LAST] = {
 static void do_debug(void) { }
 
 #else
-#include <dlfcn.h>
 #include <time.h>
 
 static char *libname = "./beamformer.so";
-static void *libhandle;
+static os_library_handle libhandle;
 
 typedef void do_beamformer_fn(BeamformerCtx *, Arena);
 static do_beamformer_fn *do_beamformer;
@@ -37,21 +36,6 @@ filetime_is_newer(struct timespec a, struct timespec b)
 }
 
 static void
-load_library(const char *lib)
-{
-	/* NOTE: glibc is buggy gnuware so we need to check this */
-	if (libhandle)
-		dlclose(libhandle);
-	libhandle = dlopen(lib, RTLD_NOW|RTLD_LOCAL);
-	if (!libhandle)
-		TraceLog(LOG_ERROR, "do_debug: dlopen: %s\n", dlerror());
-
-	do_beamformer = dlsym(libhandle, "do_beamformer");
-	if (!do_beamformer)
-		TraceLog(LOG_ERROR, "do_debug: dlsym: %s\n", dlerror());
-}
-
-static void
 do_debug(void)
 {
 	static os_filetime updated_time;
@@ -59,7 +43,9 @@ do_debug(void)
 	if (filetime_is_newer(test_time, updated_time)) {
 		struct timespec sleep_time = {.tv_sec = 0, .tv_nsec = 100e6};
 		nanosleep(&sleep_time, &sleep_time);
-		load_library(libname);
+		os_close_library(libhandle);
+		libhandle     = os_load_library(libname);
+		do_beamformer = os_lookup_dynamic_symbol(libhandle, "do_beamformer");
 		updated_time = test_time;
 	}
 }

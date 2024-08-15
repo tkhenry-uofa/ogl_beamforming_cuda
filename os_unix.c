@@ -1,3 +1,4 @@
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/mman.h>
@@ -12,6 +13,8 @@ typedef struct {
 } os_pipe;
 
 typedef struct timespec os_filetime;
+
+typedef void *os_library_handle;
 
 typedef struct {
 	size        filesize;
@@ -134,3 +137,31 @@ os_remove_shared_memory(char *name)
 {
 	shm_unlink(name);
 }
+
+static os_library_handle
+os_load_library(char *name)
+{
+	os_library_handle res = dlopen(name, RTLD_NOW|RTLD_LOCAL);
+	if (!res)
+		TraceLog(LOG_WARNING, "os_load_library(%s): %s\n", name, dlerror());
+	return res;
+}
+
+static void *
+os_lookup_dynamic_symbol(os_library_handle h, char *name)
+{
+	void *res = dlsym(h, name);
+	if (!res)
+		TraceLog(LOG_WARNING, "os_lookup_dynamic_symbol(%s): %s\n", name, dlerror());
+	return res;
+}
+
+#ifdef _DEBUG
+static void
+os_close_library(os_library_handle h)
+{
+	/* NOTE: glibc is buggy gnuware so we need to check this */
+	if (h)
+		dlclose(h);
+}
+#endif /* _DEBUG */
