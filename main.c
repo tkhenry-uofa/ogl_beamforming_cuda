@@ -158,7 +158,7 @@ main(void)
 {
 	BeamformerCtx ctx = {0};
 
-	Arena temp_memory = os_new_arena(256 * MEGABYTE);
+	Arena temp_memory = os_alloc_arena((Arena){0}, 8 * MEGABYTE);
 
 	ctx.window_size  = (uv2){.w = 960, .h = 720};
 	ctx.out_data_dim = (uv4){.x = 256, .y = 1024, .z = 1};

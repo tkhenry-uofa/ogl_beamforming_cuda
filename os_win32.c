@@ -25,19 +25,24 @@ typedef struct {
 } os_file_stats;
 
 static Arena
-os_new_arena(size capacity)
+os_alloc_arena(Arena a, size capacity)
 {
-	Arena a = {0};
-
 	SYSTEM_INFO Info;
 	GetSystemInfo(&Info);
 
 	if (capacity % Info.dwPageSize != 0)
 		capacity += (Info.dwPageSize - capacity % Info.dwPageSize);
 
+	size oldsize = a.end - a.beg;
+	if (oldsize > capacity)
+		return a;
+
+	if (a.beg)
+		VirtualFree(a.beg, oldsize, MEM_RELEASE);
+
 	a.beg = VirtualAlloc(0, capacity, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 	if (a.beg == NULL)
-		die("os_new_arena: couldn't allocate memory\n");
+		die("os_alloc_arena: couldn't allocate memory\n");
 	a.end = a.beg + capacity;
 	return a;
 }
