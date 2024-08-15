@@ -33,25 +33,6 @@ alloc_output_image(BeamformerCtx *ctx)
 }
 
 static void
-upload_filter_coefficients(BeamformerCtx *ctx, Arena a)
-{
-	ctx->flags &= ~UPLOAD_FILTER;
-	return;
-#if 0
-	f32 lpf_coeff[] = {
-		0.001504252781, 0.006636276841, 0.01834679954,  0.0386288017,
-		0.06680636108,  0.09852545708,  0.1264867932,   0.1429549307,
-		0.1429549307,   0.1264867932,   0.09852545708,  0.06680636108,
-		0.0386288017,   0.01834679954,  0.006636276841, 0.001504252781,
-	};
-	u32 lpf_coeff_count  = ARRAY_COUNT(lpf_coeff);
-	ctx->csctx.lpf_order = lpf_coeff_count - 1;
-	rlUnloadShaderBuffer(ctx->csctx.lpf_ssbo);
-	ctx->csctx.lpf_ssbo  = rlLoadShaderBuffer(lpf_coeff_count * sizeof(f32), lpf_coeff, GL_STATIC_DRAW);
-#endif
-}
-
-static void
 alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 {
 	ComputeShaderCtx *cs     = &ctx->csctx;
@@ -588,9 +569,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		if (rlen == rf_raw_size) ctx->flags |= DO_COMPUTE;
 		else                     ctx->partial_transfer_count++;
 	}
-
-	if (ctx->flags & UPLOAD_FILTER)
-		upload_filter_coefficients(ctx, arena);
 
 	if (ctx->flags & DO_COMPUTE) {
 		if (ctx->params->upload) {

@@ -10,10 +10,6 @@ layout(std430, binding = 2) writeonly restrict buffer buffer_2 {
 	vec2 out_data[];
 };
 
-//layout(std430, binding = 3) readonly restrict buffer buffer_3 {
-//	float lpf_coeff[];
-//};
-
 layout(std140, binding = 0) uniform parameters {
 	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
@@ -34,8 +30,6 @@ layout(std140, binding = 0) uniform parameters {
 	float time_offset;            /* pulse length correction time [s]   */
 	uint  uforces;                /* mode is UFORCES (1) or FORCES (0) */
 };
-
-//layout(location = 1) uniform uint u_lpf_order;
 
 void main()
 {

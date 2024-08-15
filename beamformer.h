@@ -42,7 +42,6 @@ typedef union {
 } Rect;
 
 enum compute_shaders {
-//	CS_FORCES,
 	CS_HADAMARD,
 //	CS_HERCULES,
 	CS_LPF,
@@ -55,7 +54,6 @@ enum program_flags {
 	RELOAD_SHADERS = 1 << 0,
 	ALLOC_SSBOS    = 1 << 1,
 	ALLOC_OUT_TEX  = 1 << 2,
-	UPLOAD_FILTER  = 1 << 3,
 	GEN_MIPMAPS    = 1 << 29,
 	DO_COMPUTE     = 1 << 30,
 };
@@ -107,7 +105,7 @@ typedef struct {
 	/* NOTE: the raw_data_ssbo is allocated at 3x the required size to allow for tiled
 	 * transfers when the GPU is running behind the CPU. It is not mapped on NVIDIA because
 	 * their drivers _will_ store the buffer in the system memory. This doesn't happen
-	 * for Intel or AMD and mapping the buffer is prefered. In either case incoming data can
+	 * for Intel or AMD and mapping the buffer is preferred. In either case incoming data can
 	 * be written to the arena at the appropriate offset for the current raw_data_index. An
 	 * additional BufferSubData is needed on NVIDIA to upload the data. */
 	GLsync raw_data_fences[3];
@@ -129,10 +127,6 @@ typedef struct {
 	i32 out_data_tex_id;
 	i32 mip_view_tex_id;
 	i32 mips_level_id;
-
-	//u32 lpf_ssbo;
-	//u32 lpf_order;
-	//i32 lpf_order_id;
 } ComputeShaderCtx;
 
 typedef struct {
