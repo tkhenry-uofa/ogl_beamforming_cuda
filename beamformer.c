@@ -67,16 +67,33 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glCreateBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
 
 	i32 storage_flags = GL_DYNAMIC_STORAGE_BIT;
-	if (ctx->gl_vendor_id == GL_VENDOR_INTEL)
-		storage_flags |= GL_MAP_WRITE_BIT;
+	switch (ctx->gl_vendor_id) {
+	case GL_VENDOR_INTEL:
+	case GL_VENDOR_AMD:
+		glUnmapNamedBuffer(cs->raw_data_ssbo);
+		storage_flags |= GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT;
+	case GL_VENDOR_NVIDIA:
+		break;
+	}
+
+	size full_rf_buf_size = ARRAY_COUNT(cs->raw_data_fences) * rf_raw_size;
 	glDeleteBuffers(1, &cs->raw_data_ssbo);
 	glCreateBuffers(1, &cs->raw_data_ssbo);
-	glNamedBufferStorage(cs->raw_data_ssbo, ARRAY_COUNT(cs->raw_data_fences) * rf_raw_size, 0,
-	                     storage_flags);
+	glNamedBufferStorage(cs->raw_data_ssbo, full_rf_buf_size, 0, storage_flags);
 
-	/* TODO: allow this to grow if the raw data has been resized */
-	if (cs->raw_data_arena.beg == 0)
-		cs->raw_data_arena = os_new_arena(rf_raw_size);
+	i32 map_flags = GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT|GL_MAP_UNSYNCHRONIZED_BIT;
+	switch (ctx->gl_vendor_id) {
+	case GL_VENDOR_INTEL:
+	case GL_VENDOR_AMD:
+		cs->raw_data_arena.beg = glMapNamedBufferRange(cs->raw_data_ssbo, 0,
+		                                               full_rf_buf_size, map_flags);
+		break;
+	case GL_VENDOR_NVIDIA:
+		/* TODO: allow this to grow if the raw data has been resized */
+		if (cs->raw_data_arena.beg == 0)
+			cs->raw_data_arena = os_new_arena(rf_raw_size);
+		break;
+	}
 
 	for (u32 i = 0; i < ARRAY_COUNT(cs->rf_data_ssbos); i++)
 		glNamedBufferStorage(cs->rf_data_ssbos[i], rf_decoded_size, 0, 0);
@@ -558,28 +575,20 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		uv2  rf_raw_dim   = cs->rf_raw_dim;
 		size rf_raw_size  = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
 
-		if (ctx->gl_vendor_id == GL_VENDOR_INTEL) {
+		void *rf_data_buf = cs->raw_data_arena.beg + raw_index * rf_raw_size;
+		size rlen         = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
+		switch (ctx->gl_vendor_id) {
+		case GL_VENDOR_INTEL:
 			/* TODO: intel complains about this buffer being busy even with
 			 * MAP_UNSYNCHRONIZED_BIT */
-			void *rf_data_buf = glMapNamedBufferRange(cs->raw_data_ssbo,
-			                                          raw_index * rf_raw_size,
-			                                          rf_raw_size,
-			                                          GL_MAP_WRITE_BIT);
-			size rlen = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
-			glUnmapNamedBuffer(cs->raw_data_ssbo);
-			if (rlen == rf_raw_size) ctx->flags |= DO_COMPUTE;
-			else                     ctx->partial_transfer_count++;
-		} else {
-			void *rf_data_buf = cs->raw_data_arena.beg + raw_index * rf_raw_size;
-			size rlen = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
-			if (rlen == rf_raw_size) {
-				ctx->flags |= DO_COMPUTE;
-				glNamedBufferSubData(cs->raw_data_ssbo, raw_index * rf_raw_size,
-				                     rf_raw_size, rf_data_buf);
-			} else {
-				ctx->partial_transfer_count++;
-			}
+		case GL_VENDOR_AMD:
+			break;
+		case GL_VENDOR_NVIDIA:
+			glNamedBufferSubData(cs->raw_data_ssbo, raw_index * rf_raw_size,
+			                     rf_raw_size, rf_data_buf);
 		}
+		if (rlen == rf_raw_size) ctx->flags |= DO_COMPUTE;
+		else                     ctx->partial_transfer_count++;
 	}
 
 	if (ctx->flags & UPLOAD_FILTER)
