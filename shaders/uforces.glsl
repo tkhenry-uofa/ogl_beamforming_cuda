@@ -88,6 +88,9 @@ void main()
 	float dx            = xdc_size.x / float(dec_data_dim.y);
 	float dzsign        = sign(image_point.z - focal_depth);
 
+	/* NOTE: offset correcting for both pulse length and low pass filtering */
+	float time_correction = time_offset + (lpf_order + 1)/sampling_frequency;
+
 	vec2 sum  = vec2(0);
 	/* NOTE: skip first acquisition in uforces since its garbage */
 	uint ridx = dec_data_dim.y * dec_data_dim.x * uforces;
@@ -101,15 +104,14 @@ void main()
 		vec2 rdist = starting_dist;
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float dist = transmit_dist + length(rdist);
-			float time = dist / speed_of_sound + time_offset;
+			float time = dist / speed_of_sound + time_correction;
 
 			/* NOTE: apodization value for this transducer element */
 			float a  = cos(clamp(abs(apod_arg * rdist.x),  0, 0.25 * radians(360)));
 			a        = a * a;
 
 			vec2 p   = cubic(ridx, time * sampling_frequency);
-			p.x     *= cos(iq_time_scale * time);
-			p.y     *= sin(iq_time_scale * time);
+			p       *= vec2(cos(iq_time_scale * time), sin(iq_time_scale * time));
 			sum     += p * a;
 			rdist.x -= dx;
 			ridx    += dec_data_dim.x;
