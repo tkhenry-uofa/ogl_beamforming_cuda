@@ -502,6 +502,24 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 	}
 }
 
+static void
+check_compute_timers(ComputeShaderCtx *cs)
+{
+	u32 last_idx = (cs->timer_index - 1) % ARRAY_COUNT(cs->timer_fences);
+	if (!cs->timer_fences[last_idx])
+		return;
+
+	i32 timer_status, _unused;
+	glGetSynciv(cs->timer_fences[last_idx], GL_SYNC_STATUS, 4, &_unused, &timer_status);
+	if (timer_status != GL_SIGNALED)
+		return;
+
+	for (u32 i = 0; i < ARRAY_COUNT(cs->timer_ids); i++) {
+		u64 ns = 0;
+		glGetQueryObjectui64v(cs->timer_ids[i], GL_QUERY_RESULT, &ns);
+		cs->last_frame_time[i] = (f32)ns / 1e9;
+	}
+}
 
 DEBUG_EXPORT void
 do_beamformer(BeamformerCtx *ctx, Arena arena)
@@ -514,17 +532,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	}
 
 	/* NOTE: Store the compute time for the last frame. */
-	if (ctx->csctx.timer_fence) {
-		i32 timer_status, _unused;
-		glGetSynciv(ctx->csctx.timer_fence, GL_SYNC_STATUS, 4, &_unused, &timer_status);
-		if (timer_status == GL_SIGNALED) {
-			for (u32 i = 0; i < ARRAY_COUNT(ctx->csctx.timer_ids); i++) {
-				u64 ns = 0;
-				glGetQueryObjectui64v(ctx->csctx.timer_ids[i], GL_QUERY_RESULT, &ns);
-				ctx->csctx.last_frame_time[i] = (f32)ns / 1e9;
-			}
-		}
-	}
+	check_compute_timers(&ctx->csctx);
 
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
@@ -577,8 +585,11 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		do_compute_shader(ctx, CS_MIN_MAX);
 		ctx->flags &= ~DO_COMPUTE;
 		ctx->flags |= GEN_MIPMAPS;
-		glDeleteSync(ctx->csctx.timer_fence);
-		ctx->csctx.timer_fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+
+		u32 tidx = ctx->csctx.timer_index;
+		glDeleteSync(ctx->csctx.timer_fences[tidx]);
+		ctx->csctx.timer_fences[tidx] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+		ctx->csctx.timer_index = (tidx + 1) % ARRAY_COUNT(ctx->csctx.timer_fences);
 	}
 
 	/* NOTE: draw output image texture using render fragment shader */

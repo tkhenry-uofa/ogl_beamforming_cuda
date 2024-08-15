@@ -97,9 +97,9 @@ typedef struct {
 typedef struct {
 	u32 programs[CS_LAST];
 
+	u32    timer_index;
 	u32    timer_ids[CS_LAST];
-	i32    timer_idx;
-	GLsync timer_fence;
+	GLsync timer_fences[3];
 	f32    last_frame_time[CS_LAST];
 
 	/* NOTE: the raw_data_ssbo is allocated at 3x the required size to allow for tiled
