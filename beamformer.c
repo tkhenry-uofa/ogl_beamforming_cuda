@@ -89,7 +89,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		                                               full_rf_buf_size, map_flags);
 		break;
 	case GL_VENDOR_NVIDIA:
-		cs->raw_data_arena = os_alloc_arena(cs->raw_data_arena, rf_raw_size);
+		cs->raw_data_arena = os_alloc_arena(cs->raw_data_arena, full_rf_buf_size);
 		break;
 	}
 
