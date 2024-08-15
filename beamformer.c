@@ -121,10 +121,6 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 	case CS_LPF:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
-		#if 0
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, csctx->lpf_ssbo);
-		glUniform1i(csctx->lpf_order_id, csctx->lpf_order);
-		#endif
 		glDispatchCompute(ORONE(csctx->dec_data_dim.x / 32),
 		                  ORONE(csctx->dec_data_dim.y / 32),
 		                  ORONE(csctx->dec_data_dim.z));
