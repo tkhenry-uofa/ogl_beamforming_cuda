@@ -207,7 +207,7 @@ main(void)
 	glCreateBuffers(1, &ctx.csctx.shared_ubo);
 	glNamedBufferStorage(ctx.csctx.shared_ubo, sizeof(BeamformerParameters), 0, GL_DYNAMIC_STORAGE_BIT);
 
-	glGenQueries(CS_LAST, ctx.csctx.timer_ids);
+	glGenQueries(ARRAY_COUNT(ctx.csctx.timer_fences) * CS_LAST, (u32 *)ctx.csctx.timer_ids);
 
 	/* NOTE: do not DO_COMPUTE on first frame */
 	reload_shaders(&ctx, temp_memory);

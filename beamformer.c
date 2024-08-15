@@ -96,7 +96,7 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 	uv2  rf_raw_dim         = ctx->params->raw.rf_raw_dim;
 	size rf_raw_size        = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
 
-	glBeginQuery(GL_TIME_ELAPSED, csctx->timer_ids[shader]);
+	glBeginQuery(GL_TIME_ELAPSED, csctx->timer_ids[csctx->timer_index][shader]);
 
 	glUseProgram(csctx->programs[shader]);
 
@@ -509,14 +509,13 @@ check_compute_timers(ComputeShaderCtx *cs)
 	if (!cs->timer_fences[last_idx])
 		return;
 
-	i32 timer_status, _unused;
-	glGetSynciv(cs->timer_fences[last_idx], GL_SYNC_STATUS, 4, &_unused, &timer_status);
-	if (timer_status != GL_SIGNALED)
+	i32 status = glClientWaitSync(cs->timer_fences[last_idx], 0, 0);
+	if (status == GL_TIMEOUT_EXPIRED || status == GL_WAIT_FAILED)
 		return;
 
-	for (u32 i = 0; i < ARRAY_COUNT(cs->timer_ids); i++) {
+	for (u32 i = 0; i < ARRAY_COUNT(cs->last_frame_time); i++) {
 		u64 ns = 0;
-		glGetQueryObjectui64v(cs->timer_ids[i], GL_QUERY_RESULT, &ns);
+		glGetQueryObjectui64v(cs->timer_ids[last_idx][i], GL_QUERY_RESULT, &ns);
 		cs->last_frame_time[i] = (f32)ns / 1e9;
 	}
 }

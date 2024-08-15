@@ -94,12 +94,14 @@ typedef struct {
 	#error Unsupported Platform!
 #endif
 
+#define MAX_FRAMES_IN_FLIGHT 3
+
 typedef struct {
 	u32 programs[CS_LAST];
 
 	u32    timer_index;
-	u32    timer_ids[CS_LAST];
-	GLsync timer_fences[3];
+	u32    timer_ids[MAX_FRAMES_IN_FLIGHT][CS_LAST];
+	GLsync timer_fences[MAX_FRAMES_IN_FLIGHT];
 	f32    last_frame_time[CS_LAST];
 
 	/* NOTE: the raw_data_ssbo is allocated at 3x the required size to allow for tiled
@@ -108,7 +110,7 @@ typedef struct {
 	 * for Intel or AMD and mapping the buffer is preferred. In either case incoming data can
 	 * be written to the arena at the appropriate offset for the current raw_data_index. An
 	 * additional BufferSubData is needed on NVIDIA to upload the data. */
-	GLsync raw_data_fences[3];
+	GLsync raw_data_fences[MAX_FRAMES_IN_FLIGHT];
 	Arena  raw_data_arena;
 	u32    raw_data_ssbo;
 	u32    raw_data_index;
