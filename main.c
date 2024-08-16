@@ -173,6 +173,12 @@ main(void)
 	ASSERT(ctx.params);
 
 	ctx.params->raw.output_points = ctx.out_data_dim;
+	/* NOTE: default compute shader pipeline */
+	ctx.params->compute_stages[0]    = CS_HADAMARD;
+	ctx.params->compute_stages[1]    = CS_LPF;
+	ctx.params->compute_stages[2]    = CS_UFORCES;
+	ctx.params->compute_stages[3]    = CS_MIN_MAX;
+	ctx.params->compute_stages_count = 4;
 
 	/* NOTE: Determine which graphics vendor we are running on */
 	{

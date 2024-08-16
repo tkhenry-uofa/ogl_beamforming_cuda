@@ -467,25 +467,28 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 	u32 fontspace = ctx->font_spacing;
 
 	static char *labels[CS_LAST] = {
-		[CS_HADAMARD] = "Decoding:",
-		[CS_CUDA_DECODE_AND_DEMOD] = "Cuda Decoding:",
-		[CS_LPF]      = "LPF:",
-		[CS_MIN_MAX]  = "Min/Max:",
-		[CS_UFORCES]  = "UFORCES:",
+		[CS_CUDA_DECODE_AND_DEMOD] = "CUDA Decoding:",
+		[CS_HADAMARD]              = "Decoding:",
+		[CS_LPF]                   = "LPF:",
+		[CS_MIN_MAX]               = "Min/Max:",
+		[CS_UFORCES]               = "UFORCES:",
 	};
 
 	ComputeShaderCtx *cs = &ctx->csctx;
 
 	s8 txt_buf = s8alloc(&arena, 64);
 	v2 pos = {.x = 20, .y = ws.h - 10};
-	for (u32 i = 0; i < CS_LAST; i++) {
-		v2 txt_fs  = {.rl = MeasureTextEx(ctx->font, labels[i], fontsize, fontspace)};
+
+	u32 stages = ctx->params->compute_stages_count;
+	for (u32 i = 0; i < stages; i++) {
+		u32 index = ctx->params->compute_stages[i];
+		v2 txt_fs  = {.rl = MeasureTextEx(ctx->font, labels[index], fontsize, fontspace)};
 		pos.y     -= txt_fs.y;
 
-		DrawTextEx(ctx->font, labels[i], pos.rl, fontsize, fontspace,
+		DrawTextEx(ctx->font, labels[index], pos.rl, fontsize, fontspace,
 		           colour_from_normalized(FG_COLOUR));
 
-		snprintf((char *)txt_buf.data, txt_buf.len, "%0.02e [s]", cs->last_frame_time[i]);
+		snprintf((char *)txt_buf.data, txt_buf.len, "%0.02e [s]", cs->last_frame_time[index]);
 		txt_fs.rl = MeasureTextEx(ctx->font, (char *)txt_buf.data, fontsize, fontspace);
 		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
 		DrawTextEx(ctx->font, (char *)txt_buf.data, rpos.rl, fontsize, fontspace,
@@ -600,12 +603,10 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			glNamedBufferSubData(ctx->csctx.shared_ubo, 0, sizeof(*bp), bp);
 			ctx->params->upload = 0;
 		}
-
-		do_compute_shader(ctx, CS_HADAMARD);
-		do_compute_shader(ctx, CS_LPF);
-		do_compute_shader(ctx, CS_UFORCES);
-		do_compute_shader(ctx, CS_MIN_MAX);
-
+		u32 stages = ctx->params->compute_stages_count;
+		for (u32 i = 0; i < stages; i++) {
+			do_compute_shader(ctx, ctx->params->compute_stages[i]);
+		}
 		ctx->flags &= ~DO_COMPUTE;
 		ctx->flags |= GEN_MIPMAPS;
 

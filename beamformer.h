@@ -42,9 +42,9 @@ typedef union {
 } Rect;
 
 enum compute_shaders {
-	CS_HADAMARD,
 	/* TODO: Probably this should be split up */
 	CS_CUDA_DECODE_AND_DEMOD,
+	CS_HADAMARD,
 	CS_HERCULES,
 	CS_LPF,
 	CS_MIN_MAX,
@@ -79,7 +79,9 @@ typedef struct {
 #include "beamformer_parameters.h"
 typedef struct {
 	BeamformerParameters raw;
-	b32 upload;
+	enum compute_shaders compute_stages[16];
+	u32                  compute_stages_count;
+	b32                  upload;
 } BeamformerParametersFull;
 
 #if defined(__unix__)
