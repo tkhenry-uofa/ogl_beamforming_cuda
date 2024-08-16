@@ -305,6 +305,13 @@ do_text_input(BeamformerCtx *ctx, i32 max_chars, Rect r, Color colour)
 		         ctx->is.buf_len - ctx->is.cursor);
 		ctx->is.buf[--ctx->is.buf_len] = 0;
 	}
+	if ((IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) &&
+	    ctx->is.cursor < ctx->is.buf_len) {
+		mem_move(ctx->is.buf + ctx->is.cursor + 1,
+		         ctx->is.buf + ctx->is.cursor,
+		         ctx->is.buf_len - ctx->is.cursor);
+		ctx->is.buf[--ctx->is.buf_len] = 0;
+	}
 }
 
 struct listing {
