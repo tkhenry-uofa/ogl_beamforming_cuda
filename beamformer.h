@@ -41,17 +41,6 @@ typedef union {
 	Rectangle rl;
 } Rect;
 
-enum compute_shaders {
-	/* TODO: Probably this should be split up */
-	CS_CUDA_DECODE_AND_DEMOD,
-	CS_HADAMARD,
-	CS_HERCULES,
-	CS_LPF,
-	CS_MIN_MAX,
-	CS_UFORCES,
-	CS_LAST
-};
-
 enum program_flags {
 	RELOAD_SHADERS = 1 << 0,
 	ALLOC_SSBOS    = 1 << 1,

@@ -1,4 +1,14 @@
 /* See LICENSE for license details. */
+enum compute_shaders {
+	/* TODO: Probably this should be split up */
+	CS_CUDA_DECODE_AND_DEMOD = 0,
+	CS_HADAMARD              = 1,
+	CS_HERCULES              = 2,
+	CS_LPF                   = 3,
+	CS_MIN_MAX               = 4,
+	CS_UFORCES               = 5,
+	CS_LAST
+};
 
 /* NOTE: This struct follows the OpenGL std140 layout. DO NOT modify unless you have
  * read and understood the rules, particulary with regards to _member alignment_ */

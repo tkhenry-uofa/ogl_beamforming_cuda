@@ -1,8 +1,12 @@
 #include "ogl_beamformer_lib.h"
 typedef struct {
 	BeamformerParameters raw;
-	b32 upload;
+	enum compute_shaders compute_stages[16];
+	u32                  compute_stages_count;
+	b32                  upload;
 } BeamformerParametersFull;
+
+#define ARRAY_COUNT(a) (sizeof(a) / sizeof(*a))
 
 #if defined(__unix__)
 #include <fcntl.h>
@@ -121,6 +125,35 @@ check_shared_memory(char *name)
 	if (g_bp == NULL)
 		mexErrMsgIdAndTxt("ogl_beamformer:shared_memory",
 		                  "failed to open shared memory area");
+}
+
+void
+set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
+{
+	if (stages_count > ARRAY_COUNT(g_bp->compute_stages)) {
+		mexErrMsgIdAndTxt("ogl_beamformer:config", "maximum stage count is %u",
+		                  ARRAY_COUNT(g_bp->compute_stages));
+		return;
+	}
+
+	check_shared_memory(shm_name);
+
+	for (i32 i = 0; i < stages_count; i++) {
+		switch (stages[i]) {
+		case CS_CUDA_DECODE_AND_DEMOD:
+		case CS_HADAMARD:
+		case CS_HERCULES:
+		case CS_LPF:
+		case CS_MIN_MAX:
+		case CS_UFORCES:
+			g_bp->compute_stages[i] = stages[i];
+			break;
+		default:
+			mexErrMsgIdAndTxt("ogl_beamformer:config", "invalid shader stage: %d",
+			                  stages[i]);
+			return;
+		}
+	}
 }
 
 void
