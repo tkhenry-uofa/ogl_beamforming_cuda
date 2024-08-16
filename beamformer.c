@@ -55,6 +55,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 			glUnmapNamedBuffer(cs->raw_data_ssbo);
 		storage_flags |= GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT;
 	case GL_VENDOR_NVIDIA:
+		/* TODO: does the cuda buffer need to be unregistered? */
 		break;
 	}
 
@@ -72,6 +73,11 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		break;
 	case GL_VENDOR_NVIDIA:
 		cs->raw_data_arena = os_alloc_arena(cs->raw_data_arena, full_rf_buf_size);
+		if (g_cuda_lib_functions[CLF_REGISTER_BUFFER]) {
+			cuda_register_buffer *fn = g_cuda_lib_functions[CLF_REGISTER_BUFFER];
+			/* TODO: this needs the correct parameters */
+			fn(NULL, cs->raw_data_ssbo);
+		}
 		break;
 	}
 
@@ -118,6 +124,13 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		csctx->raw_data_fences[csctx->raw_data_index] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		csctx->raw_data_index = (csctx->raw_data_index + 1) % ARRAY_COUNT(csctx->raw_data_fences);
+		break;
+	case CS_CUDA_DECODE_AND_DEMOD:
+		if (g_cuda_lib_functions[CLF_DECODE_AND_DEMOD]) {
+			cuda_decode_and_demod *fn = g_cuda_lib_functions[CLF_DECODE_AND_DEMOD];
+			/* TODO: fill in correct params */
+			fn(1, 2, 3);
+		}
 		break;
 	case CS_LPF:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);

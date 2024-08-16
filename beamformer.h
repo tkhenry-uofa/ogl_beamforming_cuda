@@ -43,6 +43,8 @@ typedef union {
 
 enum compute_shaders {
 	CS_HADAMARD,
+	/* TODO: Probably this should be split up */
+	CS_CUDA_DECODE_AND_DEMOD,
 //	CS_HERCULES,
 	CS_LPF,
 	CS_MIN_MAX,
@@ -166,5 +168,27 @@ typedef struct {
 
 	BeamformerParametersFull *params;
 } BeamformerCtx;
+
+enum cuda_lib_functions {
+	CLF_REGISTER_BUFFER,
+	CLF_DECODE_AND_DEMOD,
+	CLF_LAST
+};
+
+/* TODO: fill in cuda lib entry points (function names) */
+static char *cuda_lib_function_names[CLF_LAST] = {
+	[CLF_REGISTER_BUFFER]  = "cuda_register_buffers",
+	[CLF_DECODE_AND_DEMOD] = "cuda_decode_and_demod",
+};
+
+/* TODO: fill in portable function type params */
+#define CUDA_LIB_NAME "libcuda.dll"
+typedef void cuda_register_buffer(void *, u32);
+typedef void cuda_decode_and_demod(u32, u32, u32);
+
+/* NOTE: Array of Function Pointers used for accessing cuda lib functions */
+/* TODO: robustness: replace with function stubs when not found */
+static void *g_cuda_lib_functions[CLF_LAST];
+static os_library_handle g_cuda_lib_handle;
 
 #endif /*_BEAMFORMER_H_ */

@@ -111,6 +111,9 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
 	for (u32 i = 0; i < ARRAY_COUNT(csctx->programs); i++) {
+		if (!compute_shader_paths[i])
+			continue;
+
 		Arena tmp = a;
 		os_file_stats fs = os_get_file_stats(compute_shader_paths[i]);
 		s8 shader_text   = os_read_file(&tmp, compute_shader_paths[i], fs.filesize);
@@ -180,6 +183,21 @@ main(void)
 		case 'I': ctx.gl_vendor_id = GL_VENDOR_INTEL;     break;
 		case 'N': ctx.gl_vendor_id = GL_VENDOR_NVIDIA;    break;
 		default:  die("Unknown GL Vendor: %s\n", vendor); break;
+		}
+	}
+
+	switch (ctx.gl_vendor_id) {
+	case GL_VENDOR_AMD:
+	case GL_VENDOR_INTEL:
+		break;
+	case GL_VENDOR_NVIDIA:
+		g_cuda_lib_handle = os_load_library(CUDA_LIB_NAME);
+		if (!g_cuda_lib_handle)
+			break;
+		for (u32 i = 0; i < CLF_LAST; i++) {
+			void *fn = os_lookup_dynamic_symbol(g_cuda_lib_handle,
+			                                    cuda_lib_function_names[i]);
+			g_cuda_lib_functions[i] = fn;
 		}
 	}
 
