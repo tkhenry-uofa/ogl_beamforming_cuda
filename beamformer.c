@@ -655,117 +655,119 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			.y = bp->output_max_xz.y - bp->output_min_xz.y,
 		};
 
-		v2 line_step_mm = {.x = 3, .y = 5};
-		uv2 line_count  = {
-			.x = ABS(output_dim.x) * 1e3/line_step_mm.x + 1,
-			.y = ABS(output_dim.y) * 1e3/line_step_mm.y + 1,
-		};
-
-		s8 txt = s8alloc(&arena, 64);
-		snprintf((char *)txt.data, txt.len, "%+0.01f mm", -88.8f);
-		v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data,
-		                                ctx->font_size, ctx->font_spacing)};
-
+		v2 mouse = { .rl = GetMousePosition() };
 		Rect wr = {.size = {.w = (f32)ctx->window_size.w, .h = (f32)ctx->window_size.h}};
 		Rect lr = wr, rr = wr;
 		lr.size.w = 420;
 
-		rr.size.w  = wr.size.w - lr.size.w;
-		rr.pos.x   = lr.pos.x  + lr.size.w;
+		if (output_dim.x > 1e-6 && output_dim.y > 1e-6) {
+			s8 txt = s8alloc(&arena, 64);
+			snprintf((char *)txt.data, txt.len, "%+0.01f mm", -88.8f);
+			v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data,
+			                                ctx->font_size, ctx->font_spacing)};
 
-		rr.pos.x  += 0.07 * rr.size.w;
-		rr.size.w *= 0.86;
-		rr.pos.y  += 0.02 * rr.size.h;
-		rr.size.h *= 0.96;
+			rr.size.w  = wr.size.w - lr.size.w;
+			rr.pos.x   = lr.pos.x  + lr.size.w;
 
-		f32 tick_len = 20;
-		f32 x_pad    = 1.0  * txt_s.x + tick_len + 0.5 * txt_s.y;
-		f32 y_pad    = 1.25 * txt_s.x + tick_len;
+			rr.pos.x  += 0.07 * rr.size.w;
+			rr.size.w *= 0.86;
+			rr.pos.y  += 0.02 * rr.size.h;
+			rr.size.h *= 0.96;
 
-		Rect vr    = rr;
-		vr.size.h -= y_pad;
-		vr.size.w  = vr.size.h * output_dim.w / output_dim.h - x_pad;
-		if (vr.size.w + x_pad > rr.size.w) {
-			vr.size.h = (rr.size.w - x_pad) * output_dim.h / output_dim.w;
-			vr.size.w = vr.size.h * output_dim.w / output_dim.h;
-		}
-		vr.pos.x += (rr.size.w - (vr.size.w + x_pad) + txt_s.h) / 2;
-		vr.pos.y += (rr.size.h - (vr.size.h + y_pad) + txt_s.h) / 2;
+			f32 tick_len = 20;
+			f32 x_pad    = 1.0  * txt_s.x + tick_len + 0.5 * txt_s.y;
+			f32 y_pad    = 1.25 * txt_s.x + tick_len;
 
-		Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
-		NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
-		DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
+			Rect vr    = rr;
+			vr.size.h -= y_pad;
+			vr.size.w  = vr.size.h * output_dim.w / output_dim.h - x_pad;
+			if (vr.size.w + x_pad > rr.size.w) {
+				vr.size.h = (rr.size.w - x_pad) * output_dim.h / output_dim.w;
+				vr.size.w = vr.size.h * output_dim.w / output_dim.h;
+			}
+			vr.pos.x += (rr.size.w - (vr.size.w + x_pad) + txt_s.h) / 2;
+			vr.pos.y += (rr.size.h - (vr.size.h + y_pad) + txt_s.h) / 2;
+			Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
+			NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
+			DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
 
-		/* NOTE: check mouse wheel for adjusting dynamic range of image */
-		v2 mouse = { .rl = GetMousePosition() };
-		if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
-			f32 delta = GetMouseWheelMove();
-			ctx->fsctx.db += delta;
-			CLAMP(ctx->fsctx.db, -120, 0);
-			if (delta) ctx->flags |= GEN_MIPMAPS;
-		}
+			/* NOTE: check mouse wheel for adjusting dynamic range of image */
+			if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
+				f32 delta = GetMouseWheelMove();
+				ctx->fsctx.db += delta;
+				CLAMP(ctx->fsctx.db, -120, 0);
+				if (delta) ctx->flags |= GEN_MIPMAPS;
+			}
 
-		static f32 txt_colour_t[2];
-		for (u32 i = 0; i < 2; i++) {
-			f32 inc          = vr.size.E[i] / (line_count.E[i] - 1);
-			v2 start_pos     = vr.pos;
-			start_pos.E[!i] += vr.size.E[!i];
+			v2 line_step_mm = {.x = 3, .y = 5};
+			uv2 line_count  = {
+				.x = ABS(output_dim.x) * 1e3/line_step_mm.x + 1,
+				.y = ABS(output_dim.y) * 1e3/line_step_mm.y + 1,
+			};
 
-			v2 end_pos       = start_pos;
-			end_pos.E[!i]   += tick_len;
+			static f32 txt_colour_t[2];
+			for (u32 i = 0; i < 2; i++) {
+				f32 inc          = vr.size.E[i] / (line_count.E[i] - 1);
+				v2 start_pos     = vr.pos;
+				start_pos.E[!i] += vr.size.E[!i];
 
-			/* NOTE: Center the Text with the Tick center */
-			f32 txt_pos_scale[2] = {1, -1};
-			v2 txt_pos  = end_pos;
-			txt_pos.E[i]  += txt_pos_scale[i] * txt_s.y/2;
-			txt_pos.E[!i] += 10;
+				v2 end_pos       = start_pos;
+				end_pos.E[!i]   += tick_len;
 
-			Rect tick_rect       = {.pos = start_pos, .size = vr.size};
-			tick_rect.size.E[!i] = 10 + tick_len + txt_s.x;
+				/* NOTE: Center the Text with the Tick center */
+				f32 txt_pos_scale[2] = {1, -1};
+				v2 txt_pos  = end_pos;
+				txt_pos.E[i]  += txt_pos_scale[i] * txt_s.y/2;
+				txt_pos.E[!i] += 10;
 
-			if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
-				f32 scale[2]   = {0.5e-3, 1e-3};
-				f32 size_delta = GetMouseWheelMove() * scale[i];
-				/* TODO: smooth scroll this? */
-				if (i == 0)
-					bp->output_min_xz.E[i] -= size_delta;
-				bp->output_max_xz.E[i] += size_delta;
-				if (size_delta) {
-					ctx->flags |= DO_COMPUTE;
-					ctx->params->upload = 1;
+				Rect tick_rect       = {.pos = start_pos, .size = vr.size};
+				tick_rect.size.E[!i] = 10 + tick_len + txt_s.x;
+
+				if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
+					f32 scale[2]   = {0.5e-3, 1e-3};
+					f32 size_delta = GetMouseWheelMove() * scale[i];
+					/* TODO: smooth scroll this? */
+					if (i == 0)
+						bp->output_min_xz.E[i] -= size_delta;
+					bp->output_max_xz.E[i] += size_delta;
+					if (size_delta) {
+						ctx->flags |= DO_COMPUTE;
+						ctx->params->upload = 1;
+					}
+
+					txt_colour_t[i] += TEXT_HOVER_SPEED * ctx->dt;
+				} else {
+					txt_colour_t[i] -= TEXT_HOVER_SPEED * ctx->dt;
 				}
+				CLAMP01(txt_colour_t[i]);
 
-				txt_colour_t[i] += TEXT_HOVER_SPEED * ctx->dt;
-			} else {
-				txt_colour_t[i] -= TEXT_HOVER_SPEED * ctx->dt;
+				f32 mm     = bp->output_min_xz.E[i] * 1e3;
+				f32 mm_inc = inc * output_dim.E[i] * 1e3 / vr.size.E[i];
+
+				Color txt_colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR,
+				                                                  txt_colour_t[i]));
+
+				char *fmt[2] = {"%+0.01f mm", "%0.01f mm"};
+				f32 rot[2] = {90, 0};
+				for (u32 j = 0; j < line_count.E[i]; j++) {
+					DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(FG_COLOUR));
+					snprintf((char *)txt.data, txt.len, fmt[i], mm);
+					DrawTextPro(ctx->font, (char *)txt.data, txt_pos.rl, (Vector2){0},
+					            rot[i], ctx->font_size, ctx->font_spacing, txt_colour);
+					start_pos.E[i] += inc;
+					end_pos.E[i]   += inc;
+					txt_pos.E[i]   += inc;
+					mm             += mm_inc;
+				}
 			}
-			CLAMP01(txt_colour_t[i]);
 
-			f32 mm     = bp->output_min_xz.E[i] * 1e3;
-			f32 mm_inc = inc * output_dim.E[i] * 1e3 / vr.size.E[i];
-
-			Color txt_colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR,
-			                                                  txt_colour_t[i]));
-
-			char *fmt[2] = {"%+0.01f mm", "%0.01f mm"};
-			f32 rot[2] = {90, 0};
-			for (u32 j = 0; j < line_count.E[i]; j++) {
-				DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(FG_COLOUR));
-				snprintf((char *)txt.data, txt.len, fmt[i], mm);
-				DrawTextPro(ctx->font, (char *)txt.data, txt_pos.rl, (Vector2){0},
-				            rot[i], ctx->font_size, ctx->font_spacing, txt_colour);
-				start_pos.E[i] += inc;
-				end_pos.E[i]   += inc;
-				txt_pos.E[i]   += inc;
-				mm             += mm_inc;
+			/* TODO: this should be removed */
+			f32 desired_width = lr.size.w + vr.size.w;
+			if (desired_width > ctx->window_size.w) {
+				ctx->window_size.w = desired_width;
+				SetWindowSize(ctx->window_size.w, ctx->window_size.h);
+				SetWindowMinSize(desired_width, 720);
 			}
-		}
-
-		f32 desired_width = lr.size.w + vr.size.w;
-		if (desired_width > ctx->window_size.w) {
-			ctx->window_size.w = desired_width;
-			SetWindowSize(ctx->window_size.w, ctx->window_size.h);
-			SetWindowMinSize(desired_width, 720);
 		}
 
 		draw_settings_ui(ctx, arena, lr, mouse);
