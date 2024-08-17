@@ -699,15 +699,10 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 				if (delta) ctx->flags |= GEN_MIPMAPS;
 			}
 
-			v2 line_step_mm = {.x = 3, .y = 5};
-			uv2 line_count  = {
-				.x = ABS(output_dim.x) * 1e3/line_step_mm.x + 1,
-				.y = ABS(output_dim.y) * 1e3/line_step_mm.y + 1,
-			};
-
 			static f32 txt_colour_t[2];
 			for (u32 i = 0; i < 2; i++) {
-				f32 inc          = vr.size.E[i] / (line_count.E[i] - 1);
+				u32 line_count   = vr.size.E[i] / txt_s.h;
+				f32 inc          = vr.size.E[i] / line_count;
 				v2 start_pos     = vr.pos;
 				start_pos.E[!i] += vr.size.E[!i];
 
@@ -749,7 +744,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 				char *fmt[2] = {"%+0.01f mm", "%0.01f mm"};
 				f32 rot[2] = {90, 0};
-				for (u32 j = 0; j < line_count.E[i]; j++) {
+				for (u32 j = 0; j <= line_count; j++) {
 					DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(FG_COLOUR));
 					snprintf((char *)txt.data, txt.len, fmt[i], mm);
 					DrawTextPro(ctx->font, (char *)txt.data, txt_pos.rl, (Vector2){0},
