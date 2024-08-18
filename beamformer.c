@@ -581,7 +581,7 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 }
 
 static void
-check_compute_timers(ComputeShaderCtx *cs)
+check_compute_timers(ComputeShaderCtx *cs, BeamformerParametersFull *bp)
 {
 	u32 last_idx = (cs->timer_index - 1) % ARRAY_COUNT(cs->timer_fences);
 	if (!cs->timer_fences[last_idx])
@@ -590,11 +590,14 @@ check_compute_timers(ComputeShaderCtx *cs)
 	i32 status = glClientWaitSync(cs->timer_fences[last_idx], 0, 0);
 	if (status == GL_TIMEOUT_EXPIRED || status == GL_WAIT_FAILED)
 		return;
+	glDeleteSync(cs->timer_fences[last_idx]);
+	cs->timer_fences[last_idx] = NULL;
 
-	for (u32 i = 0; i < ARRAY_COUNT(cs->last_frame_time); i++) {
+	for (u32 i = 0; i < bp->compute_stages_count; i++) {
 		u64 ns = 0;
-		glGetQueryObjectui64v(cs->timer_ids[last_idx][i], GL_QUERY_RESULT, &ns);
-		cs->last_frame_time[i] = (f32)ns / 1e9;
+		i32 idx = bp->compute_stages[i];
+		glGetQueryObjectui64v(cs->timer_ids[last_idx][idx], GL_QUERY_RESULT, &ns);
+		cs->last_frame_time[idx] = (f32)ns / 1e9;
 	}
 }
 
@@ -609,7 +612,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	}
 
 	/* NOTE: Store the compute time for the last frame. */
-	check_compute_timers(&ctx->csctx);
+	check_compute_timers(&ctx->csctx, ctx->params);
 
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
