@@ -20,6 +20,7 @@
 #define CLAMP(x, a, b) ((x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x))
 #define CLAMP01(x)     CLAMP(x, 0, 1)
 #define ISPOWEROF2(a)  (((a) & ((a) - 1)) == 0)
+#define MIN(a, b)      ((a) < (b) ? (a) : (b))
 #define MAX(a, b)      ((a) > (b) ? (a) : (b))
 #define ORONE(x)       ((x)? (x) : 1)
 
@@ -41,6 +42,7 @@ typedef ptrdiff_t size;
 typedef struct { u8 *beg, *end; } Arena;
 
 typedef struct { size len; u8 *data; } s8;
+#define s8(s) (s8){.len = ARRAY_COUNT(s) - 1, .data = (u8 *)s}
 
 typedef union {
 	struct { u32 x, y; };

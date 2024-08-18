@@ -215,16 +215,71 @@ lerp_v4(v4 a, v4 b, f32 t)
 	};
 }
 
-static void
-do_text_input(BeamformerCtx *ctx, i32 max_chars, Rect r, Color colour)
+static v2
+measure_text(Font font, s8 text)
 {
-	v2 ts  = {.rl = MeasureTextEx(ctx->font, ctx->is.buf, ctx->font_size, 0)};
+	v2 result = {.y = font.baseSize};
+	for (size i = 0; i < text.len; i++) {
+		/* NOTE: assumes font glyphs are ordered ASCII */
+		i32 idx   = (i32)text.data[i] - 0x20;
+		result.x += font.glyphs[idx].advanceX;
+		if (font.glyphs[idx].advanceX == 0)
+			result.x += (font.recs[idx].width + font.glyphs[idx].offsetX);
+	}
+	return result;
+}
+
+static void
+draw_text(Font font, s8 text, v2 pos, f32 rotation, Color colour)
+{
+	rlPushMatrix();
+
+	rlTranslatef(pos.x, pos.y, 0);
+	rlRotatef(rotation, 0, 0, 1);
+
+	v2 off = {0};
+	for (size i = 0; i < text.len; i++) {
+		/* NOTE: assumes font glyphs are ordered ASCII */
+		i32 idx = text.data[i] - 0x20;
+		Rectangle dst = {
+			off.x + font.glyphs[idx].offsetX - font.glyphPadding,
+			off.y + font.glyphs[idx].offsetY - font.glyphPadding,
+			font.recs[idx].width  + 2.0f * font.glyphPadding,
+			font.recs[idx].height + 2.0f * font.glyphPadding
+		};
+		Rectangle src = {
+			font.recs[idx].x - font.glyphPadding,
+			font.recs[idx].y - font.glyphPadding,
+			font.recs[idx].width  + 2.0f * font.glyphPadding,
+			font.recs[idx].height + 2.0f * font.glyphPadding
+		};
+		DrawTexturePro(font.texture, src, dst, (Vector2){0}, 0, colour);
+
+		off.x += font.glyphs[idx].advanceX;
+		if (font.glyphs[idx].advanceX == 0)
+			off.x += font.recs[idx].width;
+	}
+	rlPopMatrix();
+}
+
+static void
+do_text_input(BeamformerCtx *ctx, i32 max_disp_chars, Rect r, Color colour)
+{
+	v2 ts  = measure_text(ctx->font, (s8){.len = ctx->is.buf_len, .data = (u8 *)ctx->is.buf});
 	v2 pos = {.x = r.pos.x, .y = r.pos.y + (r.size.y - ts.y) / 2};
 
-	i32 buf_delta = ctx->is.buf_len - max_chars;
+	i32 buf_delta = ctx->is.buf_len - max_disp_chars;
 	if (buf_delta < 0) buf_delta = 0;
-	char *buf     = ctx->is.buf + buf_delta;
-	DrawTextEx(ctx->font, buf, pos.rl, ctx->font_size, 0, colour);
+	s8 buf = {.len = ctx->is.buf_len - buf_delta, .data = (u8 *)ctx->is.buf + buf_delta};
+	{
+		/* NOTE: drop a char if the subtext still doesn't fit */
+		v2 nts = measure_text(ctx->font, buf);
+		if (nts.w > 0.96 * r.size.w) {
+			buf.data++;
+			buf.len--;
+		}
+	}
+	draw_text(ctx->font, buf, pos, 0, colour);
 
 	ctx->is.cursor_blink_t = move_towards_f32(ctx->is.cursor_blink_t,
 	                                          ctx->is.cursor_blink_target, 1.5 * ctx->dt);
@@ -238,36 +293,36 @@ do_text_input(BeamformerCtx *ctx, i32 max_chars, Rect r, Color colour)
 	Color cursor_colour = colour_from_normalized(lerp_v4(bg, FOCUSED_COLOUR,
 	                                                     ctx->is.cursor_blink_t));
 
+
 	/* NOTE: guess a cursor position */
 	if (ctx->is.cursor == -1) {
-		f32 x_off = TEXT_BOX_EXTRA_X, x_bounds = r.size.w * ctx->is.cursor_hover_p;
-		u32 i;
+		/* NOTE: extra offset to help with putting a cursor at idx 0 */
+		#define TEXT_HALF_CHAR_WIDTH 10
+		f32 x_off = TEXT_HALF_CHAR_WIDTH, x_bounds = r.size.w * ctx->is.cursor_hover_p;
+		i32 i;
 		for (i = 0; i < ctx->is.buf_len && x_off < x_bounds; i++) {
-			u32 idx = GetGlyphIndex(ctx->font, ctx->is.buf[i]);
+			/* NOTE: assumes font glyphs are ordered ASCII */
+			i32 idx  = ctx->is.buf[i] - 0x20;
+			x_off   += ctx->font.glyphs[idx].advanceX;
 			if (ctx->font.glyphs[idx].advanceX == 0)
 				x_off += ctx->font.recs[idx].width;
-			else
-				x_off += ctx->font.glyphs[idx].advanceX;
 		}
 		ctx->is.cursor = i;
 	}
 
-	/* NOTE: Braindead NULL termination stupidity */
-	char saved_c = buf[ctx->is.cursor - buf_delta];
-	buf[ctx->is.cursor - buf_delta] = 0;
-
-	v2 sts           = {.rl = MeasureTextEx(ctx->font, buf, ctx->font_size, 0)};
-	f32 cursor_x     = r.pos.x + sts.x;
-	f32 cursor_width = ctx->is.cursor == ctx->is.buf_len ? 20 : 6;
-
-	buf[ctx->is.cursor - buf_delta] = saved_c;
+	buf.len = ctx->is.cursor - buf_delta;
+	v2 sts = measure_text(ctx->font, buf);
+	f32 cursor_x = r.pos.x + sts.x;
+	f32 cursor_width;
+	if (ctx->is.cursor == ctx->is.buf_len) cursor_width = MIN(ctx->window_size.w * 0.03, 20);
+	else                                   cursor_width = MIN(ctx->window_size.w * 0.01, 6);
 
 	Rect cursor_r = {
 		.pos  = {.x = cursor_x,     .y = pos.y},
 		.size = {.w = cursor_width, .h = ts.h},
 	};
 
-	DrawRectangleRec(cursor_r.rl, cursor_colour);
+	DrawRectanglePro(cursor_r.rl, (Vector2){0}, 0, cursor_colour);
 
 	/* NOTE: handle multiple input keys on a single frame */
 	i32 key = GetCharPressed();
@@ -303,20 +358,20 @@ do_text_input(BeamformerCtx *ctx, i32 max_chars, Rect r, Color colour)
 		mem_move(ctx->is.buf + ctx->is.cursor + 1,
 		         ctx->is.buf + ctx->is.cursor,
 		         ctx->is.buf_len - ctx->is.cursor);
-		ctx->is.buf[--ctx->is.buf_len] = 0;
+		ctx->is.buf_len--;
 	}
 	if ((IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) &&
 	    ctx->is.cursor < ctx->is.buf_len) {
 		mem_move(ctx->is.buf + ctx->is.cursor + 1,
 		         ctx->is.buf + ctx->is.cursor,
 		         ctx->is.buf_len - ctx->is.cursor);
-		ctx->is.buf[--ctx->is.buf_len] = 0;
+		ctx->is.buf_len--;
 	}
 }
 
 struct listing {
-	char *prefix;
-	char *suffix;
+	s8   prefix;
+	s8   suffix;
 	f32  *data;
 	v2   limits;
 	f32  data_scale;
@@ -365,15 +420,15 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	f32 minx = bp->output_min_xz.x + 1e-6, maxx = bp->output_max_xz.x - 1e-6;
 	f32 minz = bp->output_min_xz.y + 1e-6, maxz = bp->output_max_xz.y - 1e-6;
 	struct listing listings[] = {
-		{ "Sampling Rate:",    "[MHz]", &bp->sampling_frequency, {{0,    0}},        1e-6, 0 },
-		{ "Center Frequency:", "[MHz]", &bp->center_frequency,   {{0,    100e6}},    1e-6, 1 },
-		{ "Speed of Sound:",   "[m/s]", &bp->speed_of_sound,     {{0,    1e6}},      1,    1 },
-		{ "Min X Point:",      "[mm]",  &bp->output_min_xz.x,    {{-1e3, maxx}},     1e3,  1 },
-		{ "Max X Point:",      "[mm]",  &bp->output_max_xz.x,    {{minx, 1e3}},      1e3,  1 },
-		{ "Min Z Point:",      "[mm]",  &bp->output_min_xz.y,    {{0,    maxz}},     1e3,  1 },
-		{ "Max Z Point:",      "[mm]",  &bp->output_max_xz.y,    {{minz, 1e3}},      1e3,  1 },
-		{ "Dynamic Range:",    "[dB]",  &ctx->fsctx.db,          {{-120, 0}},        1,    1 },
-		{ "Y Position:",       "[mm]",  &bp->off_axis_pos,       {{minx*2, maxx*2}}, 1e3,  1 },
+		{ s8("Sampling Rate:"),    s8("[MHz]"), &bp->sampling_frequency, {{0,    0}},        1e-6, 0 },
+		{ s8("Center Frequency:"), s8("[MHz]"), &bp->center_frequency,   {{0,    100e6}},    1e-6, 1 },
+		{ s8("Speed of Sound:"),   s8("[m/s]"), &bp->speed_of_sound,     {{0,    1e6}},      1,    1 },
+		{ s8("Min X Point:"),      s8("[mm]"),  &bp->output_min_xz.x,    {{-1e3, maxx}},     1e3,  1 },
+		{ s8("Max X Point:"),      s8("[mm]"),  &bp->output_max_xz.x,    {{minx, 1e3}},      1e3,  1 },
+		{ s8("Min Z Point:"),      s8("[mm]"),  &bp->output_min_xz.y,    {{0,    maxz}},     1e3,  1 },
+		{ s8("Max Z Point:"),      s8("[mm]"),  &bp->output_max_xz.y,    {{minz, 1e3}},      1e3,  1 },
+		{ s8("Dynamic Range:"),    s8("[dB]"),  &ctx->fsctx.db,          {{-120, 0}},        1,    1 },
+		{ s8("Y Position:"),       s8("[mm]"),  &bp->off_axis_pos,       {{minx*2, maxx*2}}, 1e3,  1 },
 	};
 
 	static f32 hover_t[ARRAY_COUNT(listings)];
@@ -388,10 +443,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	f32 max_prefix_len = 0;
 	for (i32 i = 0; i < ARRAY_COUNT(listings); i++) {
 		struct listing *l = listings + i;
-		DrawTextEx(ctx->font, l->prefix, pos.rl, ctx->font_size, ctx->font_spacing,
-		           colour_from_normalized(FG_COLOUR));
-		v2 prefix_s = {.rl = MeasureTextEx(ctx->font, l->prefix, ctx->font_size,
-		                                   ctx->font_spacing)};
+		draw_text(ctx->font, l->prefix, pos, 0, colour_from_normalized(FG_COLOUR));
+		v2 prefix_s = measure_text(ctx->font, l->prefix);
 		if (prefix_s.w > max_prefix_len)
 			max_prefix_len = prefix_s.w;
 		pos.y += prefix_s.y + line_pad;
@@ -401,14 +454,14 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	for (i32 i = 0; i < ARRAY_COUNT(listings); i++) {
 		struct listing *l = listings + i;
 
+		s8 tmp_s = txt;
 		v2 txt_s;
 		if (ctx->is.idx == i) {
-			txt_s.rl = MeasureTextEx(ctx->font, ctx->is.buf, ctx->font_size,
-			                         ctx->font_spacing);
+			txt_s = measure_text(ctx->font, (s8){.len = ctx->is.buf_len,
+			                                     .data = (u8 *)ctx->is.buf});
 		} else {
-			snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
-			txt_s.rl = MeasureTextEx(ctx->font, (char *)txt.data, ctx->font_size,
-			                         ctx->font_spacing);
+			tmp_s.len = snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
+			txt_s     = measure_text(ctx->font, tmp_s);
 		}
 
 		Rect edit_rect = {
@@ -435,7 +488,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 
 		if (!collides && ctx->is.idx == i && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
 			set_text_input_idx(ctx, -1, l, l, (Rect){0}, mouse);
-			snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
+			tmp_s.len = snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
 		}
 
 		if (collides && l->editable && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
@@ -444,17 +497,14 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 		Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, hover_t[i]));
 
 		if (ctx->is.idx != i) {
-			DrawTextEx(ctx->font, (char *)txt.data, edit_rect.pos.rl, ctx->font_size,
-			           ctx->font_spacing, colour);
+			draw_text(ctx->font, tmp_s, edit_rect.pos, 0, colour);
 		} else {
 			do_text_input(ctx, 7, edit_rect, colour);
 		}
 
-		v2 suffix_s = {.rl = MeasureTextEx(ctx->font, l->suffix, ctx->font_size,
-		                                   ctx->font_spacing)};
+		v2 suffix_s = measure_text(ctx->font, l->suffix);
 		v2 suffix_p = {.x = r.pos.x + r.size.w - suffix_s.w, .y = pos.y};
-		DrawTextEx(ctx->font, l->suffix, suffix_p.rl, ctx->font_size, ctx->font_spacing,
-		           colour_from_normalized(FG_COLOUR));
+		draw_text(ctx->font, l->suffix, suffix_p, 0, colour_from_normalized(FG_COLOUR));
 		pos.y += txt_s.y + line_pad;
 	}
 
@@ -470,15 +520,14 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 	DrawFPS(20, 20);
 
 	uv2 ws = ctx->window_size;
-	u32 fontsize  = ctx->font_size;
-	u32 fontspace = ctx->font_spacing;
 
-	static char *labels[CS_LAST] = {
-		[CS_CUDA_DECODE_AND_DEMOD] = "CUDA Decoding:",
-		[CS_HADAMARD]              = "Decoding:",
-		[CS_LPF]                   = "LPF:",
-		[CS_MIN_MAX]               = "Min/Max:",
-		[CS_UFORCES]               = "UFORCES:",
+	static s8 labels[CS_LAST] = {
+		[CS_CUDA_DECODE_AND_DEMOD] = s8("CUDA Decoding:"),
+		[CS_HADAMARD]              = s8("Decoding:"),
+		[CS_HERCULES]              = s8("HERCULES:"),
+		[CS_LPF]                   = s8("LPF:"),
+		[CS_MIN_MAX]               = s8("Min/Max:"),
+		[CS_UFORCES]               = s8("UFORCES:"),
 	};
 
 	ComputeShaderCtx *cs = &ctx->csctx;
@@ -488,29 +537,28 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 
 	u32 stages = ctx->params->compute_stages_count;
 	for (u32 i = 0; i < stages; i++) {
-		u32 index = ctx->params->compute_stages[i];
-		v2 txt_fs  = {.rl = MeasureTextEx(ctx->font, labels[index], fontsize, fontspace)};
+		u32 index  = ctx->params->compute_stages[i];
+		v2 txt_fs  = measure_text(ctx->font, labels[index]);
 		pos.y     -= txt_fs.y;
+		draw_text(ctx->font, labels[index], pos, 0, colour_from_normalized(FG_COLOUR));
 
-		DrawTextEx(ctx->font, labels[index], pos.rl, fontsize, fontspace,
-		           colour_from_normalized(FG_COLOUR));
-
-		snprintf((char *)txt_buf.data, txt_buf.len, "%0.02e [s]", cs->last_frame_time[index]);
-		txt_fs.rl = MeasureTextEx(ctx->font, (char *)txt_buf.data, fontsize, fontspace);
+		s8 tmp = txt_buf;
+		tmp.len = snprintf((char *)txt_buf.data, txt_buf.len, "%0.02e [s]",
+		                   cs->last_frame_time[index]);
+		txt_fs = measure_text(ctx->font, tmp);
 		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
-		DrawTextEx(ctx->font, (char *)txt_buf.data, rpos.rl, fontsize, fontspace,
-		           colour_from_normalized(FG_COLOUR));
+		draw_text(ctx->font, tmp, rpos, 0, colour_from_normalized(FG_COLOUR));
 	}
 
 	{
 		static v2 pos       = {.x = 32,  .y = 128};
 		static v2 scale     = {.x = 1.0, .y = 1.0};
 		static u32 txt_idx  = 0;
-		static char *txt[2] = { "-_-", "^_^" };
+		static s8 txt[2]    = { s8("-_-"), s8("^_^") };
 		static v2 ts[2];
 		if (ts[0].x == 0) {
-			ts[0] = (v2){ .rl = MeasureTextEx(ctx->font, txt[0], fontsize, fontspace) };
-			ts[1] = (v2){ .rl = MeasureTextEx(ctx->font, txt[1], fontsize, fontspace) };
+			ts[0] = measure_text(ctx->font, txt[0]);
+			ts[1] = measure_text(ctx->font, txt[1]);
 		}
 
 		pos.x += 130 * ctx->dt * scale.x;
@@ -528,7 +576,7 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 			scale.y *= -1.0;
 		}
 
-		DrawTextEx(ctx->font, txt[txt_idx], pos.rl, fontsize, fontspace, RED);
+		draw_text(ctx->font, txt[txt_idx], pos, 0, RED);
 	}
 }
 
@@ -661,10 +709,10 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		lr.size.w = 420;
 
 		if (output_dim.x > 1e-6 && output_dim.y > 1e-6) {
-			s8 txt = s8alloc(&arena, 64);
-			snprintf((char *)txt.data, txt.len, "%+0.01f mm", -88.8f);
-			v2 txt_s = {.rl = MeasureTextEx(ctx->font, (char *)txt.data,
-			                                ctx->font_size, ctx->font_spacing)};
+			s8 txt   = s8alloc(&arena, 64);
+			s8 tmp   = txt;
+			tmp.len  = snprintf((char *)txt.data, txt.len, "%+0.01f mm", -88.8f);
+			v2 txt_s = measure_text(ctx->font, tmp);
 
 			rr.size.w  = wr.size.w - lr.size.w;
 			rr.pos.x   = lr.pos.x  + lr.size.w;
@@ -746,9 +794,9 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 				f32 rot[2] = {90, 0};
 				for (u32 j = 0; j <= line_count; j++) {
 					DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(FG_COLOUR));
-					snprintf((char *)txt.data, txt.len, fmt[i], mm);
-					DrawTextPro(ctx->font, (char *)txt.data, txt_pos.rl, (Vector2){0},
-					            rot[i], ctx->font_size, ctx->font_spacing, txt_colour);
+					s8 tmp = txt;
+					tmp.len = snprintf((char *)txt.data, txt.len, fmt[i], mm);
+					draw_text(ctx->font, tmp, txt_pos, rot[i], txt_colour);
 					start_pos.E[i] += inc;
 					end_pos.E[i]   += inc;
 					txt_pos.E[i]   += inc;
