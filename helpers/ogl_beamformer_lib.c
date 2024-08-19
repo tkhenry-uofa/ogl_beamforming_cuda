@@ -154,6 +154,8 @@ set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 			return;
 		}
 	}
+
+	g_bp->compute_stages_count = stages_count;
 }
 
 void
