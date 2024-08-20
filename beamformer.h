@@ -162,11 +162,11 @@ typedef struct {
 
 #define CUDA_LIB_NAME "cuda_toolkit.dll"
 
-#define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *, u32 *, u32 *, b32)
+#define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims, u32 *channel_mapping, b32 rx_cols)
 typedef INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_fn);
-#define REGISTER_CUDA_BUFFERS_FN(name) void name(u32 *, u32, u32)
+#define REGISTER_CUDA_BUFFERS_FN(name) void name(u32 *rf_data_ssbos, u32 rf_buffer_count, u32 raw_data_ssbo)
 typedef REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_fn);
-#define DECODE_AND_HILBERT_FN(name) void name(size_t, u32)
+#define DECODE_AND_HILBERT_FN(name) void name(size_t input_offset, u32 output_buffer_idx)
 typedef DECODE_AND_HILBERT_FN(decode_and_hilbert_fn);
 
 static init_cuda_configuration_fn *init_cuda_configuration;
