@@ -160,27 +160,17 @@ typedef struct {
 	BeamformerParametersFull *params;
 } BeamformerCtx;
 
-enum cuda_lib_functions {
-	CLF_INIT_CONFIG,
-	CLF_REGISTER_BUFFERS,
-	CLF_DECODE_AND_DEMOD,
-	CLF_LAST
-};
-
-static char *cuda_lib_function_names[CLF_LAST] = {
-	[CLF_INIT_CONFIG]      = "init_cuda_configuration",
-	[CLF_REGISTER_BUFFERS] = "register_cuda_buffers",
-	[CLF_DECODE_AND_DEMOD] = "decode_and_hilbert",
-};
-
 #define CUDA_LIB_NAME "cuda_toolkit.dll"
-typedef void init_cuda_configuration(const u32*, const u32*, const u32*, b32);
-typedef void register_cuda_buffers(u32*, u32, u32);
-typedef void decode_and_hilbert(size_t, u32);
 
-/* NOTE: Array of Function Pointers used for accessing cuda lib functions */
-/* TODO: robustness: replace with function stubs when not found */
-static void *g_cuda_lib_functions[CLF_LAST];
-static os_library_handle g_cuda_lib_handle;
+#define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *, u32 *, u32 *, b32)
+typedef INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_fn);
+#define REGISTER_CUDA_BUFFERS_FN(name) void name(u32 *, u32, u32)
+typedef REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_fn);
+#define DECODE_AND_HILBERT_FN(name) void name(size_t, u32)
+typedef DECODE_AND_HILBERT_FN(decode_and_hilbert_fn);
+
+static init_cuda_configuration_fn *init_cuda_configuration;
+static register_cuda_buffers_fn   *register_cuda_buffers;
+static decode_and_hilbert_fn      *decode_and_hilbert;
 
 #endif /*_BEAMFORMER_H_ */

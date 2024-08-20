@@ -77,14 +77,10 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		break;
 	case GL_VENDOR_NVIDIA:
 		cs->raw_data_arena = os_alloc_arena(cs->raw_data_arena, full_rf_buf_size);
-		if (g_cuda_lib_functions[CLF_REGISTER_BUFFERS] && g_cuda_lib_functions[CLF_INIT_CONFIG]) {
-			register_cuda_buffers *fn = g_cuda_lib_functions[CLF_REGISTER_BUFFERS];
-			fn(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos), cs->raw_data_ssbo);
-
-			init_cuda_configuration *init_fn = g_cuda_lib_functions[CLF_INIT_CONFIG];
-			init_fn(bp->rf_raw_dim.E, bp->dec_data_dim.E, bp->channel_mapping,
-			        bp->channel_offset > 0);
-		}
+		register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
+		                      cs->raw_data_ssbo);
+		init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E, bp->channel_mapping,
+		                        bp->channel_offset > 0);
 		break;
 	}
 
@@ -129,13 +125,9 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_CUDA_DECODE_AND_DEMOD:
-		if (g_cuda_lib_functions[CLF_DECODE_AND_DEMOD]) {
-			decode_and_hilbert*fn = g_cuda_lib_functions[CLF_DECODE_AND_DEMOD];
-
-			fn(csctx->raw_data_index * rf_raw_size, output_ssbo_idx);
-			csctx->raw_data_fences[csctx->raw_data_index] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-			csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
-		}
+		decode_and_hilbert(csctx->raw_data_index * rf_raw_size, output_ssbo_idx);
+		csctx->raw_data_fences[csctx->raw_data_index] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_LPF:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);

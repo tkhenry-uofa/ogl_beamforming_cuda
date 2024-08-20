@@ -150,6 +150,8 @@ os_load_library(char *name)
 static void *
 os_lookup_dynamic_symbol(os_library_handle h, char *name)
 {
+	if (!h)
+		return 0;
 	void *res = dlsym(h, name);
 	if (!res)
 		TraceLog(LOG_WARNING, "os_lookup_dynamic_symbol(%s): %s\n", name, dlerror());

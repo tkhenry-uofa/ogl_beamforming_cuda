@@ -1,6 +1,8 @@
 /* See LICENSE for license details. */
 #include "beamformer.h"
 
+static os_library_handle g_cuda_lib_handle;
+
 static char *compute_shader_paths[CS_LAST] = {
 	[CS_HADAMARD] = "shaders/hadamard.glsl",
 	[CS_HERCULES] = "shaders/2d_hercules.glsl",
@@ -52,6 +54,11 @@ do_debug(void)
 }
 
 #endif /* _DEBUG */
+
+/* NOTE: cuda lib stubs */
+INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_stub) {}
+REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_stub) {}
+DECODE_AND_HILBERT_FN(decode_and_hilbert_stub) {}
 
 static void
 gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, const void *userctx)
@@ -199,13 +206,13 @@ main(void)
 		break;
 	case GL_VENDOR_NVIDIA:
 		g_cuda_lib_handle = os_load_library(CUDA_LIB_NAME);
-		if (!g_cuda_lib_handle)
-			break;
-		for (u32 i = 0; i < CLF_LAST; i++) {
-			void *fn = os_lookup_dynamic_symbol(g_cuda_lib_handle,
-			                                    cuda_lib_function_names[i]);
-			g_cuda_lib_functions[i] = fn;
-		}
+		#define LOOKUP_CUDA_FN(f) \
+			f = os_lookup_dynamic_symbol(g_cuda_lib_handle, #f); \
+			if (!f) f = f##_stub
+		LOOKUP_CUDA_FN(init_cuda_configuration);
+		LOOKUP_CUDA_FN(register_cuda_buffers);
+		LOOKUP_CUDA_FN(decode_and_hilbert);
+		break;
 	}
 
 	/* NOTE: set up OpenGL debug logging */
