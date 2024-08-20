@@ -6,7 +6,7 @@ layout(std430, binding = 1) readonly restrict buffer buffer_1 {
 	vec2 rf_data[];
 };
 
-layout(std140, binding = 0) uniform parameters{
+layout(std140, binding = 0) uniform parameters {
 	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
 	vec4  lpf_coefficients[16];   /* Low Pass Filter Cofficients */
@@ -36,15 +36,15 @@ layout(rg32f, location = 1) uniform image3D   u_out_data_tex;
 vec2 cubic(uint ridx, float x)
 {
 	mat4 h = mat4(
-		2, -3, 0, 1,
-		-2, 3, 0, 0,
-		1, -2, 1, 0,
-		1, -1, 0, 0
+		 2, -3,  0, 1,
+		-2,  3,  0, 0,
+		 1, -2,  1, 0,
+		 1, -1,  0, 0
 	);
 
 	uint  xk = uint(floor(x));
-	float t = (x - float(xk));
-	vec4  S = vec4(t * t * t, t * t, t, 1);
+	float t  = (x  - float(xk));
+	vec4  S  = vec4(t * t * t, t * t, t, 1);
 
 	vec2 P1 = rf_data[ridx + xk];
 	vec2 P2 = rf_data[ridx + xk + 1];
@@ -58,13 +58,13 @@ vec2 cubic(uint ridx, float x)
 
 void main()
 {
-	vec2  pixel = vec2(gl_GlobalInvocationID.xy);
-	ivec3 out_coord = ivec3(gl_GlobalInvocationID.xyz);
+	vec2  pixel        = vec2(gl_GlobalInvocationID.xy);
+	ivec3 out_coord    = ivec3(gl_GlobalInvocationID.xyz);
 	ivec3 out_data_dim = imageSize(u_out_data_tex);
 
 	/* NOTE: Convert pixel to physical coordinates */
-	vec2 xdc_size = abs(xdc_max_xy - xdc_min_xy);
-	vec2 output_size = abs(output_max_xz - output_min_xz);
+	vec2 xdc_size      = abs(xdc_max_xy - xdc_min_xy);
+	vec2 output_size   = abs(output_max_xz - output_min_xz);
 
 	/* TODO: for now assume y-dimension is along transducer center */
 	vec3 image_point = vec3(
@@ -78,7 +78,7 @@ void main()
 	 *                  /        |x_e - x_i|\
 	 *    a(x, z) = cos(F# * π * ----------- ) ^ 2
 	 *                  \        |z_e - z_i|/
-		 *
+	 *
 	 * where x,z_e are transducer element positions and x,z_i are image positions. */
 	float apod_arg = 0.5 * radians(360) * output_size.y / output_size.x / abs(image_point.z);
 
@@ -86,36 +86,37 @@ void main()
 	float iq_time_scale = radians(360) * center_frequency;
 
 	vec3  starting_dist = vec3(image_point.x - xdc_min_xy.x, image_point.y - xdc_min_xy.y, image_point.z);
-	float dx = xdc_size.x / float(dec_data_dim.y);
-	float dy = xdc_size.y / float(dec_data_dim.y);
-	float dzsign = sign(image_point.z - focal_depth);
+	float dx            = xdc_size.x / float(dec_data_dim.y);
+	float dy            = xdc_size.y / float(dec_data_dim.y);
+	float dzsign        = sign(image_point.z - focal_depth);
 
-	vec2 sum = vec2(0);
-	/* NOTE: skip first acquisition in uforces since its garbage */
+	/* NOTE: offset correcting for both pulse length and low pass filtering */
+	float time_correction = time_offset + (lpf_order + 1) / sampling_frequency;
+
+	vec2 sum   = vec2(0);
 	vec3 rdist = starting_dist;
-	uint ridx = dec_data_dim.y * dec_data_dim.x * uforces;
+	/* NOTE: skip first acquisition in uforces since its garbage */
+	uint ridx  = dec_data_dim.y * dec_data_dim.x * uforces;
 	for (uint i = uforces; i < dec_data_dim.z; i++) {
 		uint base_idx = (i - uforces) / 4;
-		uint sub_idx = (i - uforces) - base_idx * 4;
+		uint sub_idx  = (i - uforces) - base_idx * 4;
 
-		vec3  focal_point = vec3(uforces_channels[base_idx][sub_idx] * dx, 0, focal_depth);
+		vec3  focal_point   = vec3(uforces_channels[base_idx][sub_idx] * dx, 0, focal_depth);
 		float transmit_dist = image_point.z; //+dzsign * distance(image_point, focal_point);
 
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float dist = transmit_dist + length(rdist);
-			float time = dist / speed_of_sound + time_offset;
+			float time = dist / speed_of_sound + time_correction;
 
 			/* NOTE: apodization value for this transducer element */
-			vec2 lat_rdist = vec2(rdist.x, rdist.y);
-			float a = cos(clamp(abs(apod_arg * rdist.x), 0, 0.25 * radians(360)));
-			a = a * a;
+			float a  = cos(clamp(abs(apod_arg * rdist.x), 0, 0.25 * radians(360)));
+			a        = a * a;
 
-			vec2 p = cubic(ridx, time * sampling_frequency);
-			//p.x *= cos(iq_time_scale * time);
-			//p.y *= sin(iq_time_scale * time);
-			sum += p;
+			vec2 p   = cubic(ridx, time * sampling_frequency);
+			//p       *= vec2(cos(iq_time_scale * time), sin(iq_time_scale * time));
+			sum     += p;
 			rdist.y -= dy;
-			ridx += dec_data_dim.x;
+			ridx    += dec_data_dim.x;
 		}
 
 		rdist.y = starting_dist.y;

@@ -78,7 +78,7 @@ void main()
 	 *                  /        |x_e - x_i|\
 	 *    a(x, z) = cos(F# * π * ----------- ) ^ 2
 	 *                  \        |z_e - z_i|/
-         *
+	 *
 	 * where x,z_e are transducer element positions and x,z_i are image positions. */
 	float apod_arg = 0.5 * radians(360) * output_size.y / output_size.x / abs(image_point.z);
 
@@ -92,9 +92,9 @@ void main()
 	/* NOTE: offset correcting for both pulse length and low pass filtering */
 	float time_correction = time_offset + (lpf_order + 1) / sampling_frequency;
 
-	vec2 sum  = vec2(0);
+	vec2 sum   = vec2(0);
 	/* NOTE: skip first acquisition in uforces since its garbage */
-	uint ridx = dec_data_dim.y * dec_data_dim.x * uforces;
+	uint ridx  = dec_data_dim.y * dec_data_dim.x * uforces;
 	for (uint i = uforces; i < dec_data_dim.z; i++) {
 		uint base_idx = (i - uforces) / 4;
 		uint sub_idx  = (i - uforces) - base_idx * 4;
@@ -108,7 +108,7 @@ void main()
 			float time = dist / speed_of_sound + time_correction;
 
 			/* NOTE: apodization value for this transducer element */
-			float a  = cos(clamp(abs(apod_arg * rdist.x),  0, 0.25 * radians(360)));
+			float a  = cos(clamp(abs(apod_arg * rdist.x), 0, 0.25 * radians(360)));
 			a        = a * a;
 
 			vec2 p   = cubic(ridx, time * sampling_frequency);
