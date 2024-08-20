@@ -1,10 +1,15 @@
 #!/bin/sh
-cflags="-march=native -O3 -Wall -I./external/include"
+cflags="-march=native -std=c11 -O3 -Wall -I./external/include"
+
 ldflags="-lraylib"
 debug=${DEBUG}
 
 cc=${CC:-cc}
 system_raylib=${USE_SYSTEM_RAYLIB:-$debug}
+
+case $(uname -s) in
+Linux*) cflags="$cflags -D_DEFAULT_SOURCE" ;;
+esac
 
 if [ "$system_raylib" ]; then
 	ldflags="-L/usr/local/lib $ldflags"
