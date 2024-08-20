@@ -6,7 +6,7 @@ static os_library_handle g_cuda_lib_handle;
 static char *compute_shader_paths[CS_LAST] = {
 	[CS_HADAMARD] = "shaders/hadamard.glsl",
 	[CS_HERCULES] = "shaders/2d_hercules.glsl",
-	[CS_LPF]      = "shaders/lpf.glsl",
+	[CS_DEMOD]    = "shaders/demod.glsl",
 	[CS_MIN_MAX]  = "shaders/min_max.glsl",
 	[CS_UFORCES]  = "shaders/uforces.glsl",
 };
@@ -182,7 +182,7 @@ main(void)
 	ctx.params->raw.output_points = ctx.out_data_dim;
 	/* NOTE: default compute shader pipeline */
 	ctx.params->compute_stages[0]    = CS_HADAMARD;
-	ctx.params->compute_stages[1]    = CS_LPF;
+	ctx.params->compute_stages[1]    = CS_DEMOD;
 	ctx.params->compute_stages[2]    = CS_UFORCES;
 	ctx.params->compute_stages[3]    = CS_MIN_MAX;
 	ctx.params->compute_stages_count = 4;

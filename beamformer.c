@@ -129,7 +129,7 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		csctx->raw_data_fences[csctx->raw_data_index] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
-	case CS_LPF:
+	case CS_DEMOD:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
 		glDispatchCompute(ORONE(csctx->dec_data_dim.x / 32),

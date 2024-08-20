@@ -18,7 +18,7 @@ layout(std140, binding = 0) uniform parameters {
 	vec2  xdc_min_xy;             /* [m] Min center of transducer elements */
 	vec2  xdc_max_xy;             /* [m] Max center of transducer elements */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
-	uint  lpf_order;              /* Order of Low Pass Filter */
+	int   lpf_order;              /* Order of Low Pass Filter (-1 if disabled) */
 	float speed_of_sound;         /* [m/s] */
 	float sampling_frequency;     /* [Hz]  */
 	float center_frequency;       /* [Hz]  */
@@ -90,7 +90,7 @@ void main()
 	float dzsign        = sign(image_point.z - focal_depth);
 
 	/* NOTE: offset correcting for both pulse length and low pass filtering */
-	float time_correction = time_offset + (lpf_order + 1)/sampling_frequency;
+	float time_correction = time_offset + (lpf_order + 1) / sampling_frequency;
 
 	vec2 sum  = vec2(0);
 	/* NOTE: skip first acquisition in uforces since its garbage */

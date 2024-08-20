@@ -2,9 +2,9 @@
 enum compute_shaders {
 	/* TODO: Probably this should be split up */
 	CS_CUDA_DECODE_AND_DEMOD = 0,
-	CS_HADAMARD              = 1,
-	CS_HERCULES              = 2,
-	CS_LPF                   = 3,
+	CS_DEMOD                 = 1,
+	CS_HADAMARD              = 2,
+	CS_HERCULES              = 3,
 	CS_MIN_MAX               = 4,
 	CS_UFORCES               = 5,
 	CS_LAST
@@ -24,7 +24,7 @@ typedef struct {
 	v2  xdc_min_xy;             /* [m] Min center of transducer elements */
 	v2  xdc_max_xy;             /* [m] Max center of transducer elements */
 	u32 channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
-	u32 lpf_order;              /* Order of Low Pass Filter */
+	i32 lpf_order;              /* Order of Low Pass Filter (-1 if disabled) */
 	f32 speed_of_sound;         /* [m/s] */
 	f32 sampling_frequency;     /* [Hz]  */
 	f32 center_frequency;       /* [Hz]  */

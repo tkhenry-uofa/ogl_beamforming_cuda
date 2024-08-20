@@ -22,7 +22,7 @@ layout(std140, binding = 0) uniform parameters {
 	vec2  xdc_min_xy;             /* [m] Min center of transducer elements */
 	vec2  xdc_max_xy;             /* [m] Max center of transducer elements */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
-	uint  lpf_order;              /* Order of Low Pass Filter */
+	int   lpf_order;              /* Order of Low Pass Filter (-1 if disabled) */
 	float speed_of_sound;         /* [m/s] */
 	float sampling_frequency;     /* [Hz]  */
 	float center_frequency;       /* [Hz]  */
@@ -42,13 +42,18 @@ void main()
 	uint stride = dec_data_dim.x * dec_data_dim.y;
 	uint off    = dec_data_dim.x * channel + stride * acq + time_sample;
 
+	/* NOTE: for calculating full-band I-Q data; needs to be stepped in loop */
+	float arg       = radians(360) * center_frequency * time_sample / sampling_frequency;
+	float arg_delta = radians(360) * center_frequency / sampling_frequency;
+
 	vec2 sum = vec2(0);
 	for (int i = 0; i <= lpf_order; i++) {
 		vec2 data;
 		/* NOTE: make sure data samples come from the same acquisition */
-		if (time_sample > i) data = in_data[off - i];
-		else                 data = vec2(0);
+		if (time_sample >= i) data = in_data[off - i].xx * vec2(cos(arg), sin(arg));
+		else                  data = vec2(0);
 		sum += lpf_coefficients[i / 4][i % 4] * data;
+		arg -= arg_delta;
 	}
 	out_data[off] = sum;
 }
