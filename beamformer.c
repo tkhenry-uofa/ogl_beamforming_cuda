@@ -158,6 +158,7 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
 		break;
+	case CS_HERCULES:
 	case CS_UFORCES:
 		glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
 		glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
