@@ -85,7 +85,7 @@ void main()
 	/* NOTE: for I-Q data phase correction */
 	float iq_time_scale = radians(360) * center_frequency;
 
-	vec2  starting_dist = vec2(image_point.x - xdc_min_xy.x, image_point.z - xdc_min_xy.y);
+	vec2  starting_dist = vec2(image_point.x - xdc_min_xy.x, image_point.z);
 	float dx            = xdc_size.x / float(dec_data_dim.y);
 	float dzsign        = sign(image_point.z - focal_depth);
 
