@@ -25,7 +25,7 @@ void main()
 	float smp    = texelFetch(u_out_data_tex, ivec3(coord.x, coord.y, 0), 0).x;
 	float absmax = max(abs(min_max.y), abs(min_max.x));
 
-	smp = 20 * log(abs(smp) / absmax);
+	smp = 20 * log(abs(smp) / absmax) / log(10);
 	smp = clamp(smp, u_db_cutoff, 0) / u_db_cutoff;
 	smp = 1 - smp;
 
