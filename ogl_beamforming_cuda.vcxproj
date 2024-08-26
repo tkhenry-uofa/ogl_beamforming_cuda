@@ -1,0 +1,464 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{35591836-7c1d-4fd5-9def-7bd78886d82a}</ProjectGuid>
+    <RootNamespace>oglbeamformingcuda</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Makefile</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <NMakeBuildCommandLine>C:\msys64\usr\bin\bash.exe  -c "export MSYSTEM=UCRT64 &amp;&amp; source /etc/profile &amp;&amp; cd - &amp;&amp; ./build_win.sh  "</NMakeBuildCommandLine>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(SolutionDir)$(Platform)\$(Configuration)\</LibraryPath>
+    <IncludePath>$(ProjectDir)external\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="beamformer.h" />
+    <ClInclude Include="beamformer_parameters.h" />
+    <ClInclude Include="external\include\glad.h" />
+    <ClInclude Include="external\include\KHR\khrplatform.h" />
+    <ClInclude Include="external\raylib\examples\models\rlights.h" />
+    <ClInclude Include="external\raylib\examples\others\external\include\glad.h" />
+    <ClInclude Include="external\raylib\examples\others\external\include\glad_gles2.h" />
+    <ClInclude Include="external\raylib\examples\others\external\include\GLFW\glfw3.h" />
+    <ClInclude Include="external\raylib\examples\others\external\include\GLFW\glfw3native.h" />
+    <ClInclude Include="external\raylib\examples\others\reasings.h" />
+    <ClInclude Include="external\raylib\examples\others\resources\audio_data.h" />
+    <ClInclude Include="external\raylib\examples\others\resources\image_data.h" />
+    <ClInclude Include="external\raylib\examples\shaders\rlights.h" />
+    <ClInclude Include="external\raylib\examples\shapes\raygui.h" />
+    <ClInclude Include="external\raylib\examples\shapes\reasings.h" />
+    <ClInclude Include="external\raylib\projects\Notepad++\raylib_npp_parser\raylib_to_parse.h" />
+    <ClInclude Include="external\raylib\projects\VS2019-Android\raylib_android\raylib_android.NativeActivity\android_native_app_glue.h" />
+    <ClInclude Include="external\raylib\src\config.h" />
+    <ClInclude Include="external\raylib\src\external\cgltf.h" />
+    <ClInclude Include="external\raylib\src\external\dirent.h" />
+    <ClInclude Include="external\raylib\src\external\dr_flac.h" />
+    <ClInclude Include="external\raylib\src\external\dr_mp3.h" />
+    <ClInclude Include="external\raylib\src\external\dr_wav.h" />
+    <ClInclude Include="external\raylib\src\external\glad.h" />
+    <ClInclude Include="external\raylib\src\external\glad_gles2.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\deps\getopt.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\deps\glad\gl.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\deps\glad\gles2.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\deps\glad\vulkan.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\deps\mingw\dinput.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\deps\mingw\xinput.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\deps\mingw\_mingw_dxhelper.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\include\GLFW\glfw3.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\include\GLFW\glfw3native.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\cocoa_joystick.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\cocoa_platform.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\cocoa_time.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\internal.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\linux_joystick.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\mappings.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\null_joystick.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\null_platform.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\platform.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\posix_poll.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\posix_thread.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\posix_time.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\win32_joystick.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\win32_platform.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\win32_thread.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\win32_time.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\wl_platform.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\x11_platform.h" />
+    <ClInclude Include="external\raylib\src\external\glfw\src\xkb_unicode.h" />
+    <ClInclude Include="external\raylib\src\external\jar_mod.h" />
+    <ClInclude Include="external\raylib\src\external\jar_xm.h" />
+    <ClInclude Include="external\raylib\src\external\m3d.h" />
+    <ClInclude Include="external\raylib\src\external\miniaudio.h" />
+    <ClInclude Include="external\raylib\src\external\msf_gif.h" />
+    <ClInclude Include="external\raylib\src\external\nanosvg.h" />
+    <ClInclude Include="external\raylib\src\external\nanosvgrast.h" />
+    <ClInclude Include="external\raylib\src\external\par_shapes.h" />
+    <ClInclude Include="external\raylib\src\external\qoa.h" />
+    <ClInclude Include="external\raylib\src\external\qoi.h" />
+    <ClInclude Include="external\raylib\src\external\RGFW.h" />
+    <ClInclude Include="external\raylib\src\external\rl_gputex.h" />
+    <ClInclude Include="external\raylib\src\external\rprand.h" />
+    <ClInclude Include="external\raylib\src\external\sdefl.h" />
+    <ClInclude Include="external\raylib\src\external\sinfl.h" />
+    <ClInclude Include="external\raylib\src\external\stb_image.h" />
+    <ClInclude Include="external\raylib\src\external\stb_image_resize2.h" />
+    <ClInclude Include="external\raylib\src\external\stb_image_write.h" />
+    <ClInclude Include="external\raylib\src\external\stb_perlin.h" />
+    <ClInclude Include="external\raylib\src\external\stb_rect_pack.h" />
+    <ClInclude Include="external\raylib\src\external\stb_truetype.h" />
+    <ClInclude Include="external\raylib\src\external\tinyobj_loader_c.h" />
+    <ClInclude Include="external\raylib\src\external\vox_loader.h" />
+    <ClInclude Include="external\raylib\src\raylib.h" />
+    <ClInclude Include="external\raylib\src\raymath.h" />
+    <ClInclude Include="external\raylib\src\rcamera.h" />
+    <ClInclude Include="external\raylib\src\rgestures.h" />
+    <ClInclude Include="external\raylib\src\rlgl.h" />
+    <ClInclude Include="external\raylib\src\utils.h" />
+    <ClInclude Include="helpers\ogl_beamformer_lib.h" />
+    <ClInclude Include="util.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="beamformer.c" />
+    <ClCompile Include="external\raylib\examples\audio\audio_mixed_processor.c" />
+    <ClCompile Include="external\raylib\examples\audio\audio_module_playing.c" />
+    <ClCompile Include="external\raylib\examples\audio\audio_music_stream.c" />
+    <ClCompile Include="external\raylib\examples\audio\audio_raw_stream.c" />
+    <ClCompile Include="external\raylib\examples\audio\audio_sound_loading.c" />
+    <ClCompile Include="external\raylib\examples\audio\audio_sound_multi.c" />
+    <ClCompile Include="external\raylib\examples\audio\audio_stream_effects.c" />
+    <ClCompile Include="external\raylib\examples\core\core_2d_camera.c" />
+    <ClCompile Include="external\raylib\examples\core\core_2d_camera_mouse_zoom.c" />
+    <ClCompile Include="external\raylib\examples\core\core_2d_camera_platformer.c" />
+    <ClCompile Include="external\raylib\examples\core\core_2d_camera_split_screen.c" />
+    <ClCompile Include="external\raylib\examples\core\core_3d_camera_first_person.c" />
+    <ClCompile Include="external\raylib\examples\core\core_3d_camera_free.c" />
+    <ClCompile Include="external\raylib\examples\core\core_3d_camera_mode.c" />
+    <ClCompile Include="external\raylib\examples\core\core_3d_camera_split_screen.c" />
+    <ClCompile Include="external\raylib\examples\core\core_3d_picking.c" />
+    <ClCompile Include="external\raylib\examples\core\core_automation_events.c" />
+    <ClCompile Include="external\raylib\examples\core\core_basic_screen_manager.c" />
+    <ClCompile Include="external\raylib\examples\core\core_basic_window.c" />
+    <ClCompile Include="external\raylib\examples\core\core_basic_window_web.c" />
+    <ClCompile Include="external\raylib\examples\core\core_custom_frame_control.c" />
+    <ClCompile Include="external\raylib\examples\core\core_custom_logging.c" />
+    <ClCompile Include="external\raylib\examples\core\core_drop_files.c" />
+    <ClCompile Include="external\raylib\examples\core\core_input_gamepad.c" />
+    <ClCompile Include="external\raylib\examples\core\core_input_gamepad_info.c" />
+    <ClCompile Include="external\raylib\examples\core\core_input_gestures.c" />
+    <ClCompile Include="external\raylib\examples\core\core_input_gestures_web.c" />
+    <ClCompile Include="external\raylib\examples\core\core_input_keys.c" />
+    <ClCompile Include="external\raylib\examples\core\core_input_mouse.c" />
+    <ClCompile Include="external\raylib\examples\core\core_input_mouse_wheel.c" />
+    <ClCompile Include="external\raylib\examples\core\core_input_multitouch.c" />
+    <ClCompile Include="external\raylib\examples\core\core_loading_thread.c" />
+    <ClCompile Include="external\raylib\examples\core\core_random_sequence.c" />
+    <ClCompile Include="external\raylib\examples\core\core_random_values.c" />
+    <ClCompile Include="external\raylib\examples\core\core_scissor_test.c" />
+    <ClCompile Include="external\raylib\examples\core\core_smooth_pixelperfect.c" />
+    <ClCompile Include="external\raylib\examples\core\core_storage_values.c" />
+    <ClCompile Include="external\raylib\examples\core\core_vr_simulator.c" />
+    <ClCompile Include="external\raylib\examples\core\core_window_flags.c" />
+    <ClCompile Include="external\raylib\examples\core\core_window_letterbox.c" />
+    <ClCompile Include="external\raylib\examples\core\core_window_should_close.c" />
+    <ClCompile Include="external\raylib\examples\core\core_world_screen.c" />
+    <ClCompile Include="external\raylib\examples\examples_template.c" />
+    <ClCompile Include="external\raylib\examples\models\models_animation.c" />
+    <ClCompile Include="external\raylib\examples\models\models_billboard.c" />
+    <ClCompile Include="external\raylib\examples\models\models_bone_socket.c" />
+    <ClCompile Include="external\raylib\examples\models\models_box_collisions.c" />
+    <ClCompile Include="external\raylib\examples\models\models_cubicmap.c" />
+    <ClCompile Include="external\raylib\examples\models\models_draw_cube_texture.c" />
+    <ClCompile Include="external\raylib\examples\models\models_first_person_maze.c" />
+    <ClCompile Include="external\raylib\examples\models\models_geometric_shapes.c" />
+    <ClCompile Include="external\raylib\examples\models\models_heightmap.c" />
+    <ClCompile Include="external\raylib\examples\models\models_loading.c" />
+    <ClCompile Include="external\raylib\examples\models\models_loading_gltf.c" />
+    <ClCompile Include="external\raylib\examples\models\models_loading_m3d.c" />
+    <ClCompile Include="external\raylib\examples\models\models_loading_vox.c" />
+    <ClCompile Include="external\raylib\examples\models\models_mesh_generation.c" />
+    <ClCompile Include="external\raylib\examples\models\models_mesh_picking.c" />
+    <ClCompile Include="external\raylib\examples\models\models_orthographic_projection.c" />
+    <ClCompile Include="external\raylib\examples\models\models_rlgl_solar_system.c" />
+    <ClCompile Include="external\raylib\examples\models\models_skybox.c" />
+    <ClCompile Include="external\raylib\examples\models\models_waving_cubes.c" />
+    <ClCompile Include="external\raylib\examples\models\models_yaw_pitch_roll.c" />
+    <ClCompile Include="external\raylib\examples\others\easings_testbed.c" />
+    <ClCompile Include="external\raylib\examples\others\embedded_files_loading.c" />
+    <ClCompile Include="external\raylib\examples\others\raylib_opengl_interop.c" />
+    <ClCompile Include="external\raylib\examples\others\raymath_vector_angle.c" />
+    <ClCompile Include="external\raylib\examples\others\rlgl_compute_shader.c" />
+    <ClCompile Include="external\raylib\examples\others\rlgl_standalone.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_basic_lighting.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_basic_pbr.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_custom_uniform.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_deferred_render.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_eratosthenes.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_fog.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_hot_reloading.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_hybrid_render.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_julia_set.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_lightmap.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_mesh_instancing.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_model_shader.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_multi_sample2d.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_palette_switch.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_postprocessing.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_raymarching.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_shadowmap.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_shapes_textures.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_simple_mask.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_spotlight.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_texture_drawing.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_texture_outline.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_texture_tiling.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_texture_waves.c" />
+    <ClCompile Include="external\raylib\examples\shaders\shaders_write_depth.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_basic_shapes.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_bouncing_ball.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_collision_area.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_colors_palette.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_draw_circle_sector.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_draw_rectangle_rounded.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_draw_ring.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_easings_ball_anim.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_easings_box_anim.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_easings_rectangle_array.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_following_eyes.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_lines_bezier.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_logo_raylib.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_logo_raylib_anim.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_rectangle_scaling.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_splines_drawing.c" />
+    <ClCompile Include="external\raylib\examples\shapes\shapes_top_down_lights.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_background_scrolling.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_blend_modes.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_bunnymark.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_draw_tiled.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_fog_of_war.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_gif_player.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_image_channel.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_image_drawing.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_image_generation.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_image_kernel.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_image_loading.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_image_processing.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_image_rotate.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_image_text.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_logo_raylib.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_mouse_painting.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_npatch_drawing.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_particles_blending.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_polygon.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_raw_data.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_sprite_anim.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_sprite_button.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_sprite_explosion.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_srcrec_dstrec.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_svg_loading.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_textured_curve.c" />
+    <ClCompile Include="external\raylib\examples\textures\textures_to_image.c" />
+    <ClCompile Include="external\raylib\examples\text\text_codepoints_loading.c" />
+    <ClCompile Include="external\raylib\examples\text\text_draw_3d.c" />
+    <ClCompile Include="external\raylib\examples\text\text_font_filters.c" />
+    <ClCompile Include="external\raylib\examples\text\text_font_loading.c" />
+    <ClCompile Include="external\raylib\examples\text\text_font_sdf.c" />
+    <ClCompile Include="external\raylib\examples\text\text_font_spritefont.c" />
+    <ClCompile Include="external\raylib\examples\text\text_format_text.c" />
+    <ClCompile Include="external\raylib\examples\text\text_input_box.c" />
+    <ClCompile Include="external\raylib\examples\text\text_raylib_fonts.c" />
+    <ClCompile Include="external\raylib\examples\text\text_rectangle_bounds.c" />
+    <ClCompile Include="external\raylib\examples\text\text_unicode.c" />
+    <ClCompile Include="external\raylib\examples\text\text_writing_anim.c" />
+    <ClCompile Include="external\raylib\parser\raylib_parser.c" />
+    <ClCompile Include="external\raylib\projects\4coder\main.c" />
+    <ClCompile Include="external\raylib\projects\CMake\core_basic_window.c" />
+    <ClCompile Include="external\raylib\projects\CodeBlocks\core_basic_window.c" />
+    <ClCompile Include="external\raylib\projects\Geany\core_basic_window.c" />
+    <ClCompile Include="external\raylib\projects\Notepad++\raylib_npp_parser\raylib_npp_parser.c" />
+    <ClCompile Include="external\raylib\projects\scripts\core_basic_window.c" />
+    <ClCompile Include="external\raylib\projects\VS2019-Android\raylib_android\raylib_android.NativeActivity\android_native_app_glue.c" />
+    <ClCompile Include="external\raylib\projects\VS2019-Android\raylib_android\raylib_android.NativeActivity\main.c" />
+    <ClCompile Include="external\raylib\projects\VSCode\main.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\deps\getopt.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\cocoa_time.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\context.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\egl_context.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\glx_context.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\init.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\input.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\linux_joystick.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\monitor.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\null_init.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\null_joystick.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\null_monitor.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\null_window.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\osmesa_context.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\platform.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\posix_module.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\posix_poll.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\posix_thread.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\posix_time.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\vulkan.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\wgl_context.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_init.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_joystick.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_module.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_monitor.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_thread.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_time.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_window.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\window.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\wl_init.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\wl_monitor.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\wl_window.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\x11_init.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\x11_monitor.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\x11_window.c" />
+    <ClCompile Include="external\raylib\src\external\glfw\src\xkb_unicode.c" />
+    <ClCompile Include="external\raylib\src\external\qoaplay.c" />
+    <ClCompile Include="external\raylib\src\external\stb_vorbis.c" />
+    <ClCompile Include="external\raylib\src\platforms\rcore_android.c" />
+    <ClCompile Include="external\raylib\src\platforms\rcore_desktop_glfw.c" />
+    <ClCompile Include="external\raylib\src\platforms\rcore_desktop_rgfw.c" />
+    <ClCompile Include="external\raylib\src\platforms\rcore_desktop_sdl.c" />
+    <ClCompile Include="external\raylib\src\platforms\rcore_drm.c" />
+    <ClCompile Include="external\raylib\src\platforms\rcore_template.c" />
+    <ClCompile Include="external\raylib\src\platforms\rcore_web.c" />
+    <ClCompile Include="external\raylib\src\raudio.c" />
+    <ClCompile Include="external\raylib\src\rcore.c" />
+    <ClCompile Include="external\raylib\src\rglfw.c" />
+    <ClCompile Include="external\raylib\src\rmodels.c" />
+    <ClCompile Include="external\raylib\src\rshapes.c" />
+    <ClCompile Include="external\raylib\src\rtext.c" />
+    <ClCompile Include="external\raylib\src\rtextures.c" />
+    <ClCompile Include="external\raylib\src\utils.c" />
+    <ClCompile Include="helpers\ogl_beamformer_lib.c" />
+    <ClCompile Include="main.c" />
+    <ClCompile Include="os_unix.c" />
+    <ClCompile Include="os_win32.c" />
+    <ClCompile Include="util.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="external\raylib\examples\examples.rc" />
+    <ResourceCompile Include="external\raylib\src\raylib.dll.rc" />
+    <ResourceCompile Include="external\raylib\src\raylib.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=".gitignore" />
+    <None Include=".gitmodules" />
+    <None Include="build.sh" />
+    <None Include="build_win.sh" />
+    <None Include="external\raylib\src\minshell.html" />
+    <None Include="external\raylib\src\shell.html" />
+    <None Include="LICENSE" />
+    <None Include="shaders\2d_hercules.glsl" />
+    <None Include="shaders\hadamard.glsl" />
+    <None Include="shaders\lpf.glsl" />
+    <None Include="shaders\min_max.glsl" />
+    <None Include="shaders\render.glsl" />
+    <None Include="shaders\uforces.glsl" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
