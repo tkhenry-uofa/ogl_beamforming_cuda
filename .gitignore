@@ -1,6 +1,8 @@
 ogl
+ogl.exe
 *.dll
 *.so
 *.mexa64
 external/lib
 external/include/r*.h
+x64

@@ -140,7 +140,8 @@ set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 
 	for (i32 i = 0; i < stages_count; i++) {
 		switch (stages[i]) {
-		case CS_CUDA_DECODE_AND_DEMOD:
+		case CS_CUDA_DECODE:
+		case CS_CUDA_HILBERT:
 		case CS_DEMOD:
 		case CS_HADAMARD:
 		case CS_HERCULES:
