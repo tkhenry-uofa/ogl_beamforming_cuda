@@ -32,6 +32,13 @@ layout(rg32f, location = 1) uniform image3D   u_out_data_tex;
 
 #define C_SPLINE 0.5
 
+#if 0
+/* NOTE: interpolation is unnecessary if the data has been demodulated and not decimated */
+vec2 cubic(uint ridx, float t)
+{
+	return rf_data[ridx + uint(floor(t))];
+}
+#else
 /* NOTE: See: https://cubic.org/docs/hermite.htm */
 vec2 cubic(uint ridx, float x)
 {
@@ -55,6 +62,7 @@ vec2 cubic(uint ridx, float x)
 	vec4 C2 = vec4(P1.y, P2.y, T1.y, T2.y);
 	return vec2(dot(S, h * C1), dot(S, h * C2));
 }
+#endif
 
 void main()
 {
@@ -97,9 +105,10 @@ void main()
 	uint ridx  = dec_data_dim.y * dec_data_dim.x * uforces;
 	for (uint i = uforces; i < dec_data_dim.z; i++) {
 		uint base_idx = (i - uforces) / 4;
-		uint sub_idx  = (i - uforces) - base_idx * 4;
+		uint sub_idx  = (i - uforces) % 4;
 
-		vec3  focal_point   = vec3(uforces_channels[base_idx][sub_idx] * dx, 0, focal_depth);
+		vec3  focal_point   = vec3(uforces_channels[base_idx][sub_idx] * dx + xdc_min_xy.x,
+		                           0, focal_depth);
 		float transmit_dist = focal_depth + dzsign * distance(image_point, focal_point);
 
 		vec2 rdist = starting_dist;
