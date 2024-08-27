@@ -948,7 +948,6 @@
     <None Include=".gitmodules" />
     <None Include="build.sh" />
     <None Include="LICENSE" />
-    <None Include="build_win.sh" />
     <None Include="shaders\2d_hercules.glsl" />
     <None Include="shaders\hadamard.glsl" />
     <None Include="shaders\lpf.glsl" />

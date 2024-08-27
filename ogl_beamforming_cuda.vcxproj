@@ -453,7 +453,6 @@
     <None Include=".gitignore" />
     <None Include=".gitmodules" />
     <None Include="build.sh" />
-    <None Include="build_win.sh" />
     <None Include="external\raylib\src\minshell.html" />
     <None Include="external\raylib\src\shell.html" />
     <None Include="LICENSE" />
