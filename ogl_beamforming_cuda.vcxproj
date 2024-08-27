@@ -46,7 +46,7 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>Makefile</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -74,6 +74,11 @@
     <NMakeBuildCommandLine>C:\msys64\usr\bin\bash.exe  -c "export MSYSTEM=UCRT64 &amp;&amp; source /etc/profile &amp;&amp; cd - &amp;&amp; ./build_win.sh  "</NMakeBuildCommandLine>
     <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(SolutionDir)$(Platform)\$(Configuration)\</LibraryPath>
     <IncludePath>$(ProjectDir)external\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <IncludePath>$(ProjectDir)external\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(SolutionDir)$(Platform)\$(Configuration)\</LibraryPath>
+    <NMakeBuildCommandLine>C:\msys64\usr\bin\bash.exe  -c "export MSYSTEM=UCRT64 &amp;&amp; source /etc/profile &amp;&amp; cd - &amp;&amp; ./build_win.sh  "</NMakeBuildCommandLine>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -436,6 +441,7 @@
     <ClCompile Include="main.c" />
     <ClCompile Include="os_unix.c" />
     <ClCompile Include="os_win32.c" />
+    <ClCompile Include="ui.c" />
     <ClCompile Include="util.c" />
   </ItemGroup>
   <ItemGroup>
