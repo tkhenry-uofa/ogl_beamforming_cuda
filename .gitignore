@@ -4,3 +4,7 @@ ogl
 *.mexa64
 external/lib
 external/include/r*.h
+
+
+ogl.exe
+x64/
