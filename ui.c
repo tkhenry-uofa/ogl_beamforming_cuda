@@ -343,12 +343,13 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 	uv2 ws = ctx->window_size;
 
 	static s8 labels[CS_LAST] = {
-		[CS_CUDA_DECODE_AND_DEMOD] = s8("CUDA Decoding:"),
 		[CS_HADAMARD]              = s8("Decoding:"),
 		[CS_HERCULES]              = s8("HERCULES:"),
 		[CS_DEMOD]                 = s8("Demodulation:"),
 		[CS_MIN_MAX]               = s8("Min/Max:"),
 		[CS_UFORCES]               = s8("UFORCES:"),
+		[CS_CUDA_DECODE]		   = s8("CUDA Decoding:"),
+		[CS_CUDA_HILBERT]		   = s8("CUDA Hilbert:"),
 	};
 
 	ComputeShaderCtx *cs = &ctx->csctx;

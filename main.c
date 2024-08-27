@@ -58,7 +58,8 @@ do_debug(void)
 /* NOTE: cuda lib stubs */
 INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_stub) {}
 REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_stub) {}
-DECODE_AND_HILBERT_FN(decode_and_hilbert_stub) {}
+CUDA_DECODE_FN(cuda_decode_stub) {}
+CUDA_HILBERT_FN(cuda_hilbert_stub) {}
 
 static void
 gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, const void *userctx)
@@ -211,7 +212,8 @@ main(void)
 			if (!f) f = f##_stub
 		LOOKUP_CUDA_FN(init_cuda_configuration);
 		LOOKUP_CUDA_FN(register_cuda_buffers);
-		LOOKUP_CUDA_FN(decode_and_hilbert);
+		LOOKUP_CUDA_FN(cuda_decode);
+		LOOKUP_CUDA_FN(cuda_hilbert);
 		break;
 	}
 

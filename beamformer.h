@@ -166,11 +166,15 @@ typedef struct {
 typedef INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_fn);
 #define REGISTER_CUDA_BUFFERS_FN(name) void name(u32 *rf_data_ssbos, u32 rf_buffer_count, u32 raw_data_ssbo)
 typedef REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_fn);
-#define DECODE_AND_HILBERT_FN(name) void name(size_t input_offset, u32 output_buffer_idx)
-typedef DECODE_AND_HILBERT_FN(decode_and_hilbert_fn);
+
+#define CUDA_DECODE_FN(name) void name(size_t input_offset, u32 output_buffer_idx)
+typedef CUDA_DECODE_FN(cuda_decode_fn);
+#define CUDA_HILBERT_FN(name) void name(u32 input_buffer_idx, u32 output_buffer_idx)
+typedef CUDA_HILBERT_FN(cuda_hilbert_fn);
 
 static init_cuda_configuration_fn *init_cuda_configuration;
 static register_cuda_buffers_fn   *register_cuda_buffers;
-static decode_and_hilbert_fn      *decode_and_hilbert;
+static cuda_decode_fn			  *cuda_decode;
+static cuda_hilbert_fn			  *cuda_hilbert;
 
 #endif /*_BEAMFORMER_H_ */

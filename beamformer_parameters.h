@@ -1,12 +1,13 @@
 /* See LICENSE for license details. */
 enum compute_shaders {
 	/* TODO: Probably this should be split up */
-	CS_CUDA_DECODE_AND_DEMOD = 0,
-	CS_DEMOD                 = 1,
+	CS_CUDA_DECODE           = 0,
+	CS_CUDA_HILBERT			 = 1,
 	CS_HADAMARD              = 2,
-	CS_HERCULES              = 3,
-	CS_MIN_MAX               = 4,
+	CS_DEMOD                 = 3,
+	CS_HERCULES              = 4,
 	CS_UFORCES               = 5,
+	CS_MIN_MAX               = 6,
 	CS_LAST
 };
 
