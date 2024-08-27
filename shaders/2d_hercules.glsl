@@ -18,7 +18,7 @@ layout(std140, binding = 0) uniform parameters {
 	vec2  xdc_min_xy;             /* [m] Min center of transducer elements */
 	vec2  xdc_max_xy;             /* [m] Max center of transducer elements */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
-	int   lpf_order;              /* Order of Low Pass Filter (-1 if disabled) */
+	uint  lpf_order;              /* Order of Low Pass Filter */
 	float speed_of_sound;         /* [m/s] */
 	float sampling_frequency;     /* [Hz]  */
 	float center_frequency;       /* [Hz]  */
@@ -88,10 +88,11 @@ void main()
 	 *                  \        |z_e - z_i|/
 	 *
 	 * where x,z_e are transducer element positions and x,z_i are image positions. */
-	float apod_arg = 0.5 * radians(360) * output_size.y / output_size.x / abs(image_point.z);
+	float f_num    = output_size.y / output_size.x;
+	float apod_arg = f_num * 0.5 * radians(360) / abs(image_point.z);
 
 	/* NOTE: for I-Q data phase correction */
-	float iq_time_scale = radians(360) * center_frequency;
+	float iq_time_scale = (lpf_order > 0)? radians(360) * center_frequency : 0;
 
 	vec3  starting_dist = vec3(image_point.x - xdc_min_xy.x, image_point.y - xdc_min_xy.y, image_point.z);
 	float dx            = xdc_size.x / float(dec_data_dim.y);
@@ -109,8 +110,7 @@ void main()
 		uint base_idx = (i - uforces) / 4;
 		uint sub_idx  = (i - uforces) % 4;
 
-		vec3  focal_point   = vec3(uforces_channels[base_idx][sub_idx] * dx, 0, focal_depth);
-		float transmit_dist = image_point.z; //+dzsign * distance(image_point, focal_point);
+		float transmit_dist = image_point.z;
 
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float dist = transmit_dist + length(rdist);

@@ -24,7 +24,7 @@ typedef struct {
 	v2  xdc_min_xy;             /* [m] Min center of transducer elements */
 	v2  xdc_max_xy;             /* [m] Max center of transducer elements */
 	u32 channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
-	i32 lpf_order;              /* Order of Low Pass Filter (-1 if disabled) */
+	u32 lpf_order;              /* Order of Low Pass Filter */
 	f32 speed_of_sound;         /* [m/s] */
 	f32 sampling_frequency;     /* [Hz]  */
 	f32 center_frequency;       /* [Hz]  */

@@ -18,7 +18,7 @@ layout(std140, binding = 0) uniform parameters {
 	vec2  xdc_min_xy;             /* [m] Min center of transducer elements */
 	vec2  xdc_max_xy;             /* [m] Max center of transducer elements */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
-	int   lpf_order;              /* Order of Low Pass Filter (-1 if disabled) */
+	uint  lpf_order;              /* Order of Low Pass Filter */
 	float speed_of_sound;         /* [m/s] */
 	float sampling_frequency;     /* [Hz]  */
 	float center_frequency;       /* [Hz]  */
@@ -88,17 +88,18 @@ void main()
 	 *                  \        |z_e - z_i|/
 	 *
 	 * where x,z_e are transducer element positions and x,z_i are image positions. */
-	float apod_arg = 0.5 * radians(360) * output_size.y / output_size.x / abs(image_point.z);
+	float f_num    = output_size.y / output_size.x;
+	float apod_arg = f_num * 0.5 * radians(360) / abs(image_point.z);
 
 	/* NOTE: for I-Q data phase correction */
-	float iq_time_scale = radians(360) * center_frequency;
+	float iq_time_scale = (lpf_order > 0)? radians(360) * center_frequency : 0;
 
 	vec2  starting_dist = vec2(image_point.x - xdc_min_xy.x, image_point.z);
 	float dx            = xdc_size.x / float(dec_data_dim.y);
 	float dzsign        = sign(image_point.z - focal_depth);
 
 	/* NOTE: offset correcting for both pulse length and low pass filtering */
-	float time_correction = time_offset + (lpf_order + 1) / sampling_frequency;
+	float time_correction = time_offset + lpf_order / sampling_frequency;
 
 	vec2 sum   = vec2(0);
 	/* NOTE: skip first acquisition in uforces since its garbage */
