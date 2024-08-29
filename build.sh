@@ -1,14 +1,23 @@
 #!/bin/sh
 cflags="-march=native -std=c11 -O3 -Wall -I./external/include"
+libcflags="$cflags -fPIC -shared"
+ldflags="-lraylib -lm"
 
-ldflags="-lraylib"
 debug=${DEBUG}
 
 cc=${CC:-cc}
 system_raylib=${USE_SYSTEM_RAYLIB:-$debug}
 
 case $(uname -s) in
-Linux*) cflags="$cflags -D_DEFAULT_SOURCE" ;;
+MINGW64*)
+	os="win32"
+	ldflags="$ldflags -lgdi32 -lwinmm"
+	;;
+Linux*)
+	os="unix"
+	cflags="$cflags -D_DEFAULT_SOURCE"
+	libcflags="$libcflags -I/opt/matlab/extern/include"
+	;;
 esac
 
 if [ "$system_raylib" ]; then
@@ -27,33 +36,30 @@ else
 	fi
 fi
 
+# NOTE: this needs to be separate for now in case matlab junk is not available
 case "$1" in
-"win32")
-	ldflags="$ldflags -lgdi32 -lwinmm"
-	${cc} $cflags -o ogl main.c $ldflags
-	;;
-"win32lib")
-	libcflags="$cflags -fPIC -shared"
-	${cc} $libcflags -I'C:/Program Files/MATLAB/R2022a/extern/include' \
-		helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.dll \
-		-L'C:/Program Files/MATLAB/R2022a/extern/lib/win64/microsoft' \
-		-llibmat -llibmex
-	;;
-"lib")
-	libcflags="$cflags -I"/opt/matlab/extern/include" -shared -fPIC"
-	${cc} $libcflags helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.so
-	;;
-*)
-	ldflags="$ldflags -lm"
-	# Hot Reloading/Debugging
-	if [ "$debug" ]; then
-		cflags="$cflags -O0 -ggdb -D_DEBUG -Wno-unused-function"
-		#cflags="$cflags -fsanitize=address,undefined"
-
-		libcflags="$cflags -fPIC"
-		libldflags="$ldflags -shared"
-		${cc} $libcflags beamformer.c -o beamformer.so $libldflags
-	fi
-	${cc} $cflags -o ogl main.c $ldflags
-	;;
+*lib)
+	case "$os" in
+	"win32")
+		${cc} $libcflags -I'C:/Program Files/MATLAB/R2022a/extern/include' \
+			helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.dll \
+			-L'C:/Program Files/MATLAB/R2022a/extern/lib/win64/microsoft' \
+			-llibmat -llibmex
+		;;
+	"unix")
+		${cc} $libcflags helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.so
+		;;
+	esac
 esac
+
+# Hot Reloading/Debugging
+if [ "$debug" ]; then
+	cflags="$cflags -O0 -ggdb -D_DEBUG -Wno-unused-function"
+	#cflags="$cflags -fsanitize=address,undefined"
+
+	libcflags="$cflags -fPIC"
+	libldflags="$ldflags -shared"
+	${cc} $libcflags beamformer.c -o beamformer.so $libldflags
+fi
+
+${cc} $cflags -o ogl main.c $ldflags
