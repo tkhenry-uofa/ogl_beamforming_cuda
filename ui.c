@@ -357,17 +357,32 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 	s8 txt_buf = s8alloc(&arena, 64);
 	v2 pos = {.x = 20, .y = ws.h - 10};
 
+	f32 compute_time_sum = 0;
 	u32 stages = ctx->params->compute_stages_count;
 	for (u32 i = 0; i < stages; i++) {
 		u32 index  = ctx->params->compute_stages[i];
-		v2 txt_fs  = measure_text(ctx->font, labels[index]);
-		pos.y     -= txt_fs.y;
+		pos.y     -= measure_text(ctx->font, labels[index]).y;
 		draw_text(ctx->font, labels[index], pos, 0, colour_from_normalized(FG_COLOUR));
 
-		s8 tmp = txt_buf;
+		s8 tmp  = txt_buf;
 		tmp.len = snprintf((char *)txt_buf.data, txt_buf.len, "%0.02e [s]",
 		                   cs->last_frame_time[index]);
-		txt_fs = measure_text(ctx->font, tmp);
+		v2 txt_fs = measure_text(ctx->font, tmp);
+		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
+		draw_text(ctx->font, tmp, rpos, 0, colour_from_normalized(FG_COLOUR));
+
+		compute_time_sum += cs->last_frame_time[index];
+	}
+
+	{
+		s8 label  = s8("Compute Total:");
+		pos.y    -= measure_text(ctx->font, label).y;
+		draw_text(ctx->font, label, pos, 0, colour_from_normalized(FG_COLOUR));
+
+		s8 tmp  = txt_buf;
+		tmp.len = snprintf((char *)txt_buf.data, txt_buf.len, "%0.02e [s]",
+		                   compute_time_sum);
+		v2 txt_fs = measure_text(ctx->font, tmp);
 		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
 		draw_text(ctx->font, tmp, rpos, 0, colour_from_normalized(FG_COLOUR));
 	}
