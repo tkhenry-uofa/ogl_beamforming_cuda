@@ -56,9 +56,16 @@ enum gl_vendor_ids {
 };
 
 typedef struct {
+	f32 *value;
+	v2   limits;
+	f32  scale;
+	b32  compute;
+} BPModifiableValue;
+
+typedef struct {
 	char buf[64];
+	BPModifiableValue store;
 	i32  buf_len;
-	i32  idx;
 	i32  cursor;
 	f32  cursor_hover_p;
 	f32  cursor_blink_t;

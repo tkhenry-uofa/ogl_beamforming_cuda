@@ -48,7 +48,7 @@ measure_text(Font font, s8 text)
 	return result;
 }
 
-static void
+static v2
 draw_text(Font font, s8 text, v2 pos, f32 rotation, Color colour)
 {
 	rlPushMatrix();
@@ -79,6 +79,15 @@ draw_text(Font font, s8 text, v2 pos, f32 rotation, Color colour)
 			off.x += font.recs[idx].width;
 	}
 	rlPopMatrix();
+	v2 result = {.x = off.x, .y = font.baseSize};
+	return result;
+}
+
+static b32
+bmv_equal(BPModifiableValue *a, BPModifiableValue *b)
+{
+	b32 result = (uintptr_t)a->value == (uintptr_t)b->value;
+	return result;
 }
 
 static void
@@ -188,47 +197,133 @@ do_text_input(BeamformerCtx *ctx, i32 max_disp_chars, Rect r, Color colour)
 	}
 }
 
-struct listing {
-	s8   prefix;
-	s8   suffix;
-	f32  *data;
-	v2   limits;
-	f32  data_scale;
-	b32  editable;
-};
-
 static void
-parse_and_store_text_input(BeamformerCtx *ctx, struct listing *l)
+parse_and_store_text_input(BeamformerCtx *ctx, BPModifiableValue *bmv)
 {
 	f32 new_val = strtof(ctx->is.buf, NULL);
 	/* TODO: allow zero for certain listings only */
-	if (new_val / l->data_scale != *l->data) {
-		*l->data = new_val / l->data_scale;
-		CLAMP(*l->data, l->limits.x, l->limits.y);
-		ctx->flags |= DO_COMPUTE;
-		ctx->params->upload = 1;
+	if (new_val / bmv->scale != *bmv->value) {
+		*bmv->value = new_val / bmv->scale;
+		CLAMP(*bmv->value, bmv->limits.x, bmv->limits.y);
+		if (bmv->compute) {
+			ctx->flags |= DO_COMPUTE;
+			ctx->params->upload = 1;
+		}
 	}
 }
 
 static void
-set_text_input_idx(BeamformerCtx *ctx, i32 idx, struct listing *l, struct listing *last_l, Rect r,
-                   v2 mouse)
+set_text_input_idx(BeamformerCtx *ctx, BPModifiableValue bmv, Rect r, v2 mouse)
 {
-	if (ctx->is.idx != idx && ctx->is.idx != -1)
-		parse_and_store_text_input(ctx, last_l);
+	if (ctx->is.store.value && !bmv_equal(&ctx->is.store, &bmv))
+		parse_and_store_text_input(ctx, &ctx->is.store);
 
-	ctx->is.buf_len = snprintf(ctx->is.buf, ARRAY_COUNT(ctx->is.buf), "%0.02f",
-	                           *l->data * l->data_scale);
-
-	ctx->is.idx    = idx;
+	ctx->is.store  = bmv;
 	ctx->is.cursor = -1;
 
-	if (ctx->is.idx == -1)
+	if (ctx->is.store.value == NULL)
 		return;
+
+	ctx->is.buf_len = snprintf(ctx->is.buf, ARRAY_COUNT(ctx->is.buf), "%0.02f",
+	                           *bmv.value * bmv.scale);
 
 	ASSERT(CheckCollisionPointRec(mouse.rl, r.rl));
 	ctx->is.cursor_hover_p = (mouse.x - r.pos.x) / r.size.w;
 	CLAMP01(ctx->is.cursor_hover_p);
+}
+
+/* NOTE: This is kinda sucks no matter how you spin it. If we want the values to be
+ * left aligned in the center column we need to know the longest prefix length but
+ * without either hardcoding one of the prefixes as the longest one or measuring all
+ * of them we can't know this ahead of time. For now we hardcode this and manually
+ * adjust when needed */
+#define LISTING_LEFT_COLUMN_WIDTH 240.0f
+#define LISTING_LINE_PAD           10.0f
+
+static Rect
+do_value_listing(s8 prefix, s8 suffix, f32 value, Font font, Arena a, Rect r)
+{
+	v2 suffix_s = measure_text(font, suffix);
+	v2 suffix_p = {.x = r.pos.x + r.size.w - suffix_s.w, .y = r.pos.y};
+
+	s8 txt   = s8alloc(&a, 64);
+	txt.len  = snprintf((char *)txt.data, txt.len, "%0.02f", value);
+	v2 txt_p = {.x = r.pos.x + LISTING_LEFT_COLUMN_WIDTH, .y = r.pos.y};
+
+	draw_text(font, prefix, r.pos,    0, colour_from_normalized(FG_COLOUR));
+	draw_text(font, txt,    txt_p,    0, colour_from_normalized(FG_COLOUR));
+	draw_text(font, suffix, suffix_p, 0, colour_from_normalized(FG_COLOUR));
+	r.pos.y  += suffix_s.h + LISTING_LINE_PAD;
+	r.size.y -= suffix_s.h + LISTING_LINE_PAD;
+
+	return r;
+}
+
+static Rect
+do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx *ctx, Arena a,
+                      Rect r, v2 mouse, f32 *hover_t)
+{
+	s8 buf = s8alloc(&a, 64);
+	s8 txt = buf;
+	v2 txt_s;
+	if (bmv_equal(&bmv, &ctx->is.store)) {
+		txt_s = measure_text(ctx->font, (s8){.len = ctx->is.buf_len,
+		                                     .data = (u8 *)ctx->is.buf});
+	} else {
+		txt.len = snprintf((char *)txt.data, buf.len, "%0.02f", *bmv.value * bmv.scale);
+		txt_s   = measure_text(ctx->font, txt);
+	}
+
+	Rect edit_rect = {
+		.pos  = {.x = r.pos.x + LISTING_LEFT_COLUMN_WIDTH, .y = r.pos.y},
+		.size = {.x = txt_s.w + TEXT_BOX_EXTRA_X, .y = txt_s.h}
+	};
+
+	b32 collides = CheckCollisionPointRec(mouse.rl, edit_rect.rl);
+	if (collides && !bmv_equal(&bmv, &ctx->is.store)) *hover_t += TEXT_HOVER_SPEED * ctx->dt;
+	else                                              *hover_t -= TEXT_HOVER_SPEED * ctx->dt;
+	CLAMP01(*hover_t);
+
+	if (collides) {
+		f32 mouse_scroll = GetMouseWheelMove();
+		if (mouse_scroll) {
+			if (bmv_equal(&bmv, &ctx->is.store))
+				set_text_input_idx(ctx, (BPModifiableValue){0}, (Rect){0}, mouse);
+			*bmv.value += mouse_scroll / bmv.scale;
+			CLAMP(*bmv.value, bmv.limits.x, bmv.limits.y);
+			if (bmv.compute) {
+				ctx->flags |= DO_COMPUTE;
+				ctx->params->upload = 1;
+			}
+			txt.len = snprintf((char *)txt.data, buf.len, "%0.02f", *bmv.value * bmv.scale);
+		}
+	}
+
+	if (!collides && bmv_equal(&bmv, &ctx->is.store) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+		set_text_input_idx(ctx, (BPModifiableValue){0}, (Rect){0}, mouse);
+		txt.len = snprintf((char *)txt.data, buf.len, "%0.02f", *bmv.value * bmv.scale);
+	}
+
+	if (collides && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+		set_text_input_idx(ctx, bmv, edit_rect, mouse);
+
+	Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, *hover_t));
+
+	if (!bmv_equal(&bmv, &ctx->is.store)) {
+		draw_text(ctx->font, txt, edit_rect.pos, 0, colour);
+	} else {
+		do_text_input(ctx, 7, edit_rect, colour);
+	}
+
+	v2 suffix_s = measure_text(ctx->font, suffix);
+	v2 suffix_p = {.x = r.pos.x + r.size.w - suffix_s.w, .y = r.pos.y};
+	draw_text(ctx->font, prefix, r.pos,    0, colour_from_normalized(FG_COLOUR));
+	draw_text(ctx->font, suffix, suffix_p, 0, colour_from_normalized(FG_COLOUR));
+
+	r.pos.y  += suffix_s.h + LISTING_LINE_PAD;
+	r.size.y -= suffix_s.h + LISTING_LINE_PAD;
+
+	return r;
 }
 
 static void
@@ -238,99 +333,57 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 
 	f32 minx = bp->output_min_xz.x + 1e-6, maxx = bp->output_max_xz.x - 1e-6;
 	f32 minz = bp->output_min_xz.y + 1e-6, maxz = bp->output_max_xz.y - 1e-6;
-	struct listing listings[] = {
-		{ s8("Sampling Rate:"),    s8("[MHz]"), &bp->sampling_frequency, {{0,    0}},        1e-6, 0 },
-		{ s8("Center Frequency:"), s8("[MHz]"), &bp->center_frequency,   {{0,    100e6}},    1e-6, 1 },
-		{ s8("Speed of Sound:"),   s8("[m/s]"), &bp->speed_of_sound,     {{0,    1e6}},      1,    1 },
-		{ s8("Min X Point:"),      s8("[mm]"),  &bp->output_min_xz.x,    {{-1e3, maxx}},     1e3,  1 },
-		{ s8("Max X Point:"),      s8("[mm]"),  &bp->output_max_xz.x,    {{minx, 1e3}},      1e3,  1 },
-		{ s8("Min Z Point:"),      s8("[mm]"),  &bp->output_min_xz.y,    {{0,    maxz}},     1e3,  1 },
-		{ s8("Max Z Point:"),      s8("[mm]"),  &bp->output_max_xz.y,    {{minz, 1e3}},      1e3,  1 },
-		{ s8("Dynamic Range:"),    s8("[dB]"),  &ctx->fsctx.db,          {{-120, 0}},        1,    1 },
-		{ s8("Y Position:"),       s8("[mm]"),  &bp->off_axis_pos,       {{minx*2, maxx*2}}, 1e3,  1 },
-	};
 
-	static f32 hover_t[ARRAY_COUNT(listings)];
+	Rect draw_r    = r;
+	draw_r.pos.y  += 20;
+	draw_r.pos.x  += 20;
+	draw_r.size.x -= 20;
+	draw_r.size.y -= 20;
 
-	f32 line_pad  = 10;
+	draw_r = do_value_listing(s8("Sampling Frequency:"), s8("[MHz]"),
+	                          bp->sampling_frequency * 1e-6, ctx->font, arena, draw_r);
 
-	v2 pos  = r.pos;
-	pos.y  += 50;
-	pos.x  += 20;
+	static f32 hover_t[8];
+	i32 idx = 0;
 
-	s8 txt = s8alloc(&arena, 64);
-	f32 max_prefix_len = 0;
-	for (i32 i = 0; i < ARRAY_COUNT(listings); i++) {
-		struct listing *l = listings + i;
-		draw_text(ctx->font, l->prefix, pos, 0, colour_from_normalized(FG_COLOUR));
-		v2 prefix_s = measure_text(ctx->font, l->prefix);
-		if (prefix_s.w > max_prefix_len)
-			max_prefix_len = prefix_s.w;
-		pos.y += prefix_s.y + line_pad;
-	}
-	pos.y = 50 + r.pos.y;
+	BPModifiableValue bmv;
+	bmv = (BPModifiableValue){&bp->center_frequency, (v2){.y = 100e6}, 1e-6, 1};
+	draw_r = do_text_input_listing(s8("Center Frequency:"), s8("[MHz]"), bmv, ctx, arena,
+	                               draw_r, mouse, hover_t + idx++);
 
-	for (i32 i = 0; i < ARRAY_COUNT(listings); i++) {
-		struct listing *l = listings + i;
+	bmv = (BPModifiableValue){&bp->speed_of_sound, (v2){.y = 1e6}, 1, 1};
+	draw_r = do_text_input_listing(s8("Speed of Sound:"), s8("[m/s]"), bmv, ctx, arena,
+	                               draw_r, mouse, hover_t + idx++);
 
-		s8 tmp_s = txt;
-		v2 txt_s;
-		if (ctx->is.idx == i) {
-			txt_s = measure_text(ctx->font, (s8){.len = ctx->is.buf_len,
-			                                     .data = (u8 *)ctx->is.buf});
-		} else {
-			tmp_s.len = snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
-			txt_s     = measure_text(ctx->font, tmp_s);
-		}
+	bmv = (BPModifiableValue){&bp->output_min_xz.x, (v2){.x = -1e3, .y = maxx}, 1e3, 1};
+	draw_r = do_text_input_listing(s8("Min X Point:"), s8("[mm]"), bmv, ctx, arena,
+	                               draw_r, mouse, hover_t + idx++);
 
-		Rect edit_rect = {
-			.pos  = {.x = pos.x + max_prefix_len + 15, .y = pos.y},
-			.size = {.x = txt_s.w + TEXT_BOX_EXTRA_X,  .y = txt_s.h}
-		};
+	bmv = (BPModifiableValue){&bp->output_max_xz.x, (v2){.x = minx, .y = 1e3}, 1e3, 1};
+	draw_r = do_text_input_listing(s8("Max X Point:"), s8("[mm]"), bmv, ctx, arena,
+	                               draw_r, mouse, hover_t + idx++);
 
-		b32 collides = CheckCollisionPointRec(mouse.rl, edit_rect.rl);
-		if (collides && l->editable) {
-			f32 mouse_scroll = GetMouseWheelMove();
-			if (mouse_scroll) {
-				*l->data += mouse_scroll / l->data_scale;
-				CLAMP(*l->data, l->limits.x, l->limits.y);
-				ctx->flags |= DO_COMPUTE;
-				ctx->params->upload = 1;
-			}
-		}
+	bmv = (BPModifiableValue){&bp->output_min_xz.y, (v2){.y = maxz}, 1e3, 1};
+	draw_r = do_text_input_listing(s8("Min Z Point:"), s8("[mm]"), bmv, ctx, arena,
+	                               draw_r, mouse, hover_t + idx++);
 
-		if (collides && ctx->is.idx != i && l->editable)
-			hover_t[i] += TEXT_HOVER_SPEED * ctx->dt;
-		else
-			hover_t[i] -= TEXT_HOVER_SPEED * ctx->dt;
-		CLAMP01(hover_t[i]);
+	bmv = (BPModifiableValue){&bp->output_max_xz.y, (v2){.x = minz, .y = 1e3}, 1e3, 1};
+	draw_r = do_text_input_listing(s8("Max Z Point:"), s8("[mm]"), bmv, ctx, arena,
+	                               draw_r, mouse, hover_t + idx++);
 
-		if (!collides && ctx->is.idx == i && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-			set_text_input_idx(ctx, -1, l, l, (Rect){0}, mouse);
-			tmp_s.len = snprintf((char *)txt.data, txt.len, "%0.02f", *l->data * l->data_scale);
-		}
+	bmv = (BPModifiableValue){&bp->off_axis_pos, (v2){.x = minx * 2, .y = maxx * 2}, 1e3, 1};
+	draw_r = do_text_input_listing(s8("Y Position:"), s8("[mm]"), bmv, ctx, arena,
+	                               draw_r, mouse, hover_t + idx++);
 
-		if (collides && l->editable && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-			set_text_input_idx(ctx, i, l, listings + ctx->is.idx, edit_rect, mouse);
+	bmv = (BPModifiableValue){&ctx->fsctx.db, (v2){.x = -120}, 1, 0};
+	draw_r = do_text_input_listing(s8("Dynamic Range:"), s8("[dB]"), bmv, ctx, arena,
+	                               draw_r, mouse, hover_t + idx++);
 
-		Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, hover_t[i]));
+	/* NOTE: if C compilers didn't suck this would be a static assert */
+	ASSERT(idx <= ARRAY_COUNT(hover_t));
 
-		if (ctx->is.idx != i) {
-			draw_text(ctx->font, tmp_s, edit_rect.pos, 0, colour);
-		} else {
-			do_text_input(ctx, 7, edit_rect, colour);
-		}
-
-		v2 suffix_s = measure_text(ctx->font, l->suffix);
-		v2 suffix_p = {.x = r.pos.x + r.size.w - suffix_s.w, .y = pos.y};
-		draw_text(ctx->font, l->suffix, suffix_p, 0, colour_from_normalized(FG_COLOUR));
-		pos.y += txt_s.y + line_pad;
-	}
-
-	if (IsKeyPressed(KEY_ENTER) && ctx->is.idx != -1) {
-		struct listing *l = listings + ctx->is.idx;
-		set_text_input_idx(ctx, -1, l, l, (Rect){0}, mouse);
-	}
+	if (IsKeyPressed(KEY_ENTER) && ctx->is.store.value)
+		set_text_input_idx(ctx, (BPModifiableValue){0}, (Rect){0}, mouse);
 }
 
 
@@ -338,8 +391,6 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 static void
 draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 {
-	DrawFPS(20, 20);
-
 	uv2 ws = ctx->window_size;
 
 	static s8 labels[CS_LAST] = {
