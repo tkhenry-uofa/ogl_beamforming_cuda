@@ -91,8 +91,8 @@ typedef struct {
 	#define DEBUG_EXPORT static
 	#endif
 
-	#define OS_CUDA_LIB_NAME      "./extern/cuda_toolkit.so"
-	#define OS_CUDA_LIB_TEMP_NAME "./extern/cuda_toolkit_temp.so"
+	#define OS_CUDA_LIB_NAME      "./external/cuda_toolkit.so"
+	#define OS_CUDA_LIB_TEMP_NAME "./external/cuda_toolkit_temp.so"
 
 	#define OS_PIPE_NAME "/tmp/beamformer_data_fifo"
 	#define OS_SMEM_NAME "/ogl_beamformer_parameters"
@@ -107,8 +107,8 @@ typedef struct {
 	#define DEBUG_EXPORT static
 	#endif
 
-	#define OS_CUDA_LIB_NAME      "extern/cuda_toolkit.dll"
-	#define OS_CUDA_LIB_TEMP_NAME "extern/cuda_toolkit_temp.dll"
+	#define OS_CUDA_LIB_NAME      "external\\cuda_toolkit.dll"
+	#define OS_CUDA_LIB_TEMP_NAME "external\\cuda_toolkit_temp.dll"
 
 	#define OS_PIPE_NAME "\\\\.\\pipe\\beamformer_data_fifo"
 	#define OS_SMEM_NAME "Local\\ogl_beamformer_parameters"

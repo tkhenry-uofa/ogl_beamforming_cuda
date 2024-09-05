@@ -131,6 +131,15 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 }
 
 static void
+validate_cuda_lib(CudaLib *cl)
+{
+	if (!cl->init_cuda_configuration) cl->init_cuda_configuration = init_cuda_configuration_stub;
+	if (!cl->register_cuda_buffers)   cl->register_cuda_buffers   = register_cuda_buffers_stub;
+	if (!cl->cuda_decode)             cl->cuda_decode             = cuda_decode_stub;
+	if (!cl->cuda_hilbert)            cl->cuda_hilbert            = cuda_hilbert_stub;
+}
+
+static void
 check_and_load_cuda_lib(CudaLib *cl)
 {
 	os_file_stats current = os_get_file_stats(OS_CUDA_LIB_NAME);
@@ -148,10 +157,7 @@ check_and_load_cuda_lib(CudaLib *cl)
 	cl->cuda_decode             = os_lookup_dynamic_symbol(cl->lib, "cuda_decode");
 	cl->cuda_hilbert            = os_lookup_dynamic_symbol(cl->lib, "cuda_hilbert");
 
-	if (!cl->init_cuda_configuration) cl->init_cuda_configuration = init_cuda_configuration_stub;
-	if (!cl->register_cuda_buffers)   cl->register_cuda_buffers   = register_cuda_buffers_stub;
-	if (!cl->cuda_decode)             cl->cuda_decode             = cuda_decode_stub;
-	if (!cl->cuda_hilbert)            cl->cuda_hilbert            = cuda_hilbert_stub;
+	validate_cuda_lib(cl);
 }
 
 int
@@ -203,6 +209,9 @@ main(void)
 		default:  die("Unknown GL Vendor: %s\n", vendor); break;
 		}
 	}
+
+	/* NOTE: make sure function pointers are valid even if we are not using the cuda lib */
+	validate_cuda_lib(&ctx.cuda_lib);
 
 	/* NOTE: set up OpenGL debug logging */
 	glDebugMessageCallback(gl_debug_logger, NULL);
