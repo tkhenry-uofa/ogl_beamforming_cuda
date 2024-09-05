@@ -21,6 +21,7 @@ typedef struct {
 typedef FILETIME os_filetime;
 typedef HANDLE   os_library_handle;
 
+#define ERROR_FILE_STATS (os_file_stats){.timestamp = (os_filetime){0}, .filesize = -1}
 typedef struct {
 	size        filesize;
 	os_filetime timestamp;
@@ -75,15 +76,14 @@ os_get_file_stats(char *fname)
 {
 	HANDLE h = CreateFileA(fname, 0, 0, 0, OPEN_EXISTING, 0, 0);
 	if (h == INVALID_HANDLE_VALUE) {
-		fputs("os_get_file_stats: couldn't open file\n", stderr);
-		return (os_file_stats){0};
+		return ERROR_FILE_STATS;
 	}
 
 	BY_HANDLE_FILE_INFORMATION fileinfo;
 	if (!GetFileInformationByHandle(h, &fileinfo)) {
 		fputs("os_get_file_stats: couldn't get file info\n", stderr);
 		CloseHandle(h);
-		return (os_file_stats){0};
+		return ERROR_FILE_STATS;
 	}
 	CloseHandle(h);
 

@@ -16,6 +16,7 @@ typedef struct timespec os_filetime;
 
 typedef void *os_library_handle;
 
+#define ERROR_FILE_STATS (os_file_stats){.timestamp = (os_filetime){0}, .filesize = -1}
 typedef struct {
 	size        filesize;
 	os_filetime timestamp;
@@ -66,8 +67,7 @@ os_get_file_stats(char *fname)
 	struct stat st;
 
 	if (stat(fname, &st) < 0) {
-		fputs("os_get_file_stats: couldn't stat file\n",stderr);
-		return (os_file_stats){0};
+		return ERROR_FILE_STATS;
 	}
 
 	return (os_file_stats){
