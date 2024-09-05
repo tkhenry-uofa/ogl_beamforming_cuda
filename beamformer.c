@@ -77,10 +77,10 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		break;
 	case GL_VENDOR_NVIDIA:
 		cs->raw_data_arena = os_alloc_arena(cs->raw_data_arena, full_rf_buf_size);
-		register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
-		                      cs->raw_data_ssbo);
-		init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E, bp->channel_mapping,
-		                        bp->channel_offset > 0);
+		ctx->cuda_lib.register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
+		                                    cs->raw_data_ssbo);
+		ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E,
+		                                      bp->channel_mapping, bp->channel_offset > 0);
 		break;
 	}
 
@@ -125,12 +125,12 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_CUDA_DECODE:
-		cuda_decode(csctx->raw_data_index * rf_raw_size, output_ssbo_idx);
+		ctx->cuda_lib.cuda_decode(csctx->raw_data_index * rf_raw_size, output_ssbo_idx);
 		csctx->raw_data_fences[csctx->raw_data_index] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_CUDA_HILBERT:
-		cuda_hilbert(input_ssbo_idx, output_ssbo_idx);
+		ctx->cuda_lib.cuda_hilbert(input_ssbo_idx, output_ssbo_idx);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_DEMOD:

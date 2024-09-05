@@ -11,10 +11,8 @@
 
 #ifdef _DEBUG
 	#define ASSERT(c) do { if (!(c)) asm("int3; nop"); } while (0);
-	#define DEBUG_EXPORT
 #else
 	#define ASSERT(c)
-	#define DEBUG_EXPORT static
 #endif
 
 #define static_assert _Static_assert

@@ -145,11 +145,20 @@ os_remove_shared_memory(char *name)
 }
 
 static os_library_handle
-os_load_library(char *name)
+os_load_library(char *name, char *temp_name)
 {
+	if (temp_name) {
+		if (CopyFile(name, temp_name, 0))
+			name = temp_name;
+	}
+
 	os_library_handle res = LoadLibraryA(name);
 	if (!res)
 		TraceLog(LOG_WARNING, "os_load_library(%s): %d\n", name, GetLastError());
+
+	if (temp_name)
+		DeleteFileA(temp_name);
+
 	return res;
 }
 
@@ -164,10 +173,15 @@ os_lookup_dynamic_symbol(os_library_handle h, char *name)
 	return res;
 }
 
-#ifdef _DEBUG
 static void
-os_close_library(os_library_handle h)
+os_unload_library(os_library_handle h)
 {
 	FreeLibrary(h);
 }
-#endif /* _DEBUG */
+
+static b32
+os_filetime_is_newer(os_filetime a, os_filetime b)
+{
+	b32 result = CompareFileTime(&a, &b) > 0;
+	return result;
+}

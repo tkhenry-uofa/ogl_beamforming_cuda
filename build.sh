@@ -1,5 +1,7 @@
 #!/bin/sh
 cflags="-march=native -std=c11 -O3 -Wall -I./external/include"
+#cflags="${cflags} -fproc-stat-report"
+#cflags="${cflags} -Rpass-missed=.*"
 libcflags="$cflags -fPIC -shared"
 ldflags="-lraylib -lm"
 
@@ -12,11 +14,13 @@ case $(uname -s) in
 MINGW64*)
 	os="win32"
 	ldflags="$ldflags -lgdi32 -lwinmm"
+	libname="beamformer.dll"
 	;;
 Linux*)
 	os="unix"
 	cflags="$cflags -D_DEFAULT_SOURCE"
 	libcflags="$libcflags -I/opt/matlab/extern/include"
+	libname="beamformer.so"
 	;;
 esac
 
@@ -59,7 +63,7 @@ if [ "$debug" ]; then
 
 	libcflags="$cflags -fPIC"
 	libldflags="$ldflags -shared"
-	${cc} $libcflags beamformer.c -o beamformer.so $libldflags
+	${cc} $libcflags beamformer.c -o $libname $libldflags
 fi
 
 ${cc} $cflags -o ogl main.c $ldflags

@@ -1,8 +1,6 @@
 /* See LICENSE for license details. */
 #include "beamformer.h"
 
-static os_library_handle g_cuda_lib_handle;
-
 static char *compute_shader_paths[CS_LAST] = {
 	[CS_HADAMARD] = "shaders/hadamard.glsl",
 	[CS_HERCULES] = "shaders/2d_hercules.glsl",
@@ -17,9 +15,6 @@ static char *compute_shader_paths[CS_LAST] = {
 static void do_debug(void) { }
 
 #else
-#include <time.h>
-
-static char *libname = "./beamformer.so";
 static os_library_handle libhandle;
 
 typedef void do_beamformer_fn(BeamformerCtx *, Arena);
@@ -32,24 +27,16 @@ get_filetime(char *name)
 	return fstats.timestamp;
 }
 
-static b32
-filetime_is_newer(struct timespec a, struct timespec b)
-{
-	return (a.tv_sec - b.tv_sec) + (a.tv_nsec - b.tv_nsec);
-}
-
 static void
 do_debug(void)
 {
 	static os_filetime updated_time;
-	os_filetime test_time = get_filetime(libname);
-	if (filetime_is_newer(test_time, updated_time)) {
-		struct timespec sleep_time = {.tv_sec = 0, .tv_nsec = 100e6};
-		nanosleep(&sleep_time, &sleep_time);
-		os_close_library(libhandle);
-		libhandle     = os_load_library(libname);
+	os_filetime test_time = get_filetime(OS_DEBUG_LIB_NAME);
+	if (os_filetime_is_newer(test_time, updated_time)) {
+		os_unload_library(libhandle);
+		libhandle     = os_load_library(OS_DEBUG_LIB_NAME, OS_DEBUG_LIB_TEMP_NAME);
 		do_beamformer = os_lookup_dynamic_symbol(libhandle, "do_beamformer");
-		updated_time = test_time;
+		updated_time  = test_time;
 	}
 }
 
@@ -150,6 +137,30 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 	}
 }
 
+static void
+check_and_load_cuda_lib(CudaLib *cl)
+{
+	os_file_stats current = os_get_file_stats(OS_CUDA_LIB_NAME);
+	if (!os_filetime_is_newer(current.timestamp, cl->timestamp))
+		return;
+
+	TraceLog(LOG_INFO, "Loading CUDA lib: %s", OS_CUDA_LIB_NAME);
+
+	cl->timestamp = current.timestamp;
+	os_unload_library(cl->lib);
+	cl->lib = os_load_library(OS_CUDA_LIB_NAME, OS_CUDA_LIB_TEMP_NAME);
+
+	cl->init_cuda_configuration = os_lookup_dynamic_symbol(cl->lib, "init_cuda_configuration");
+	cl->register_cuda_buffers   = os_lookup_dynamic_symbol(cl->lib, "register_cuda_buffers");
+	cl->cuda_decode             = os_lookup_dynamic_symbol(cl->lib, "cuda_decode");
+	cl->cuda_hilbert            = os_lookup_dynamic_symbol(cl->lib, "cuda_hilbert");
+
+	if (!cl->init_cuda_configuration) cl->init_cuda_configuration = init_cuda_configuration_stub;
+	if (!cl->register_cuda_buffers)   cl->register_cuda_buffers   = register_cuda_buffers_stub;
+	if (!cl->cuda_decode)             cl->cuda_decode             = cuda_decode_stub;
+	if (!cl->cuda_hilbert)            cl->cuda_hilbert            = cuda_hilbert_stub;
+}
+
 int
 main(void)
 {
@@ -200,22 +211,6 @@ main(void)
 		}
 	}
 
-	switch (ctx.gl_vendor_id) {
-	case GL_VENDOR_AMD:
-	case GL_VENDOR_INTEL:
-		break;
-	case GL_VENDOR_NVIDIA:
-		g_cuda_lib_handle = os_load_library(CUDA_LIB_NAME);
-		#define LOOKUP_CUDA_FN(f) \
-			f = os_lookup_dynamic_symbol(g_cuda_lib_handle, #f); \
-			if (!f) f = f##_stub
-		LOOKUP_CUDA_FN(init_cuda_configuration);
-		LOOKUP_CUDA_FN(register_cuda_buffers);
-		LOOKUP_CUDA_FN(cuda_decode);
-		LOOKUP_CUDA_FN(cuda_hilbert);
-		break;
-	}
-
 	/* NOTE: set up OpenGL debug logging */
 	glDebugMessageCallback(gl_debug_logger, NULL);
 #ifdef _DEBUG
@@ -236,6 +231,8 @@ main(void)
 
 	while(!WindowShouldClose()) {
 		do_debug();
+		if (ctx.gl_vendor_id == GL_VENDOR_NVIDIA)
+			check_and_load_cuda_lib(&ctx.cuda_lib);
 
 		if (ctx.flags & RELOAD_SHADERS) {
 			ctx.flags &= ~RELOAD_SHADERS;

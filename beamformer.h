@@ -83,10 +83,32 @@ typedef struct {
 #if defined(__unix__)
 	#include "os_unix.c"
 
+	#ifdef _DEBUG
+	#define DEBUG_EXPORT
+	#define OS_DEBUG_LIB_NAME      "./beamformer.so"
+	#define OS_DEBUG_LIB_TEMP_NAME "./beamformer_temp.so"
+	#else
+	#define DEBUG_EXPORT static
+	#endif
+
+	#define OS_CUDA_LIB_NAME      "./extern/cuda_toolkit.so"
+	#define OS_CUDA_LIB_TEMP_NAME "./extern/cuda_toolkit_temp.so"
+
 	#define OS_PIPE_NAME "/tmp/beamformer_data_fifo"
 	#define OS_SMEM_NAME "/ogl_beamformer_parameters"
 #elif defined(_WIN32)
 	#include "os_win32.c"
+
+	#ifdef _DEBUG
+	#define DEBUG_EXPORT __declspec(dllexport)
+	#define OS_DEBUG_LIB_NAME      "beamformer.dll"
+	#define OS_DEBUG_LIB_TEMP_NAME "beamformer_temp.dll"
+	#else
+	#define DEBUG_EXPORT static
+	#endif
+
+	#define OS_CUDA_LIB_NAME      "extern/cuda_toolkit.dll"
+	#define OS_CUDA_LIB_TEMP_NAME "extern/cuda_toolkit_temp.dll"
 
 	#define OS_PIPE_NAME "\\\\.\\pipe\\beamformer_data_fifo"
 	#define OS_SMEM_NAME "Local\\ogl_beamformer_parameters"
@@ -95,6 +117,24 @@ typedef struct {
 #endif
 
 #define MAX_FRAMES_IN_FLIGHT 3
+
+#define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims, u32 *channel_mapping, b32 rx_cols)
+typedef INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_fn);
+#define REGISTER_CUDA_BUFFERS_FN(name) void name(u32 *rf_data_ssbos, u32 rf_buffer_count, u32 raw_data_ssbo)
+typedef REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_fn);
+#define CUDA_DECODE_FN(name) void name(size_t input_offset, u32 output_buffer_idx)
+typedef CUDA_DECODE_FN(cuda_decode_fn);
+#define CUDA_HILBERT_FN(name) void name(u32 input_buffer_idx, u32 output_buffer_idx)
+typedef CUDA_HILBERT_FN(cuda_hilbert_fn);
+
+typedef struct {
+	os_library_handle           lib;
+	os_filetime                 timestamp;
+	init_cuda_configuration_fn *init_cuda_configuration;
+	register_cuda_buffers_fn   *register_cuda_buffers;
+	cuda_decode_fn             *cuda_decode;
+	cuda_hilbert_fn            *cuda_hilbert;
+} CudaLib;
 
 typedef struct {
 	u32 programs[CS_LAST];
@@ -164,23 +204,9 @@ typedef struct {
 	os_pipe data_pipe;
 	u32     partial_transfer_count;
 
+	CudaLib cuda_lib;
+
 	BeamformerParametersFull *params;
 } BeamformerCtx;
-
-#define CUDA_LIB_NAME "cuda_toolkit.dll"
-
-#define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims, u32 *channel_mapping, b32 rx_cols)
-typedef INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_fn);
-#define REGISTER_CUDA_BUFFERS_FN(name) void name(u32 *rf_data_ssbos, u32 rf_buffer_count, u32 raw_data_ssbo)
-typedef REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_fn);
-#define CUDA_DECODE_FN(name) void name(size_t input_offset, u32 output_buffer_idx)
-typedef CUDA_DECODE_FN(cuda_decode_fn);
-#define CUDA_HILBERT_FN(name) void name(u32 input_buffer_idx, u32 output_buffer_idx)
-typedef CUDA_HILBERT_FN(cuda_hilbert_fn);
-
-static init_cuda_configuration_fn *init_cuda_configuration;
-static register_cuda_buffers_fn   *register_cuda_buffers;
-static cuda_decode_fn             *cuda_decode;
-static cuda_hilbert_fn            *cuda_hilbert;
 
 #endif /*_BEAMFORMER_H_ */

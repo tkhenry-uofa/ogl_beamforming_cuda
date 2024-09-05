@@ -138,12 +138,50 @@ os_remove_shared_memory(char *name)
 	shm_unlink(name);
 }
 
-static os_library_handle
-os_load_library(char *name)
+/* NOTE: complete garbage because there is no standarized copyfile() in POSix */
+static b32
+os_copy_file(char *name, char *new)
 {
+	b32 result = 0;
+	struct stat sb;
+	if (stat(name, &sb) < 0)
+		return 0;
+
+	i32 fd_old = open(name, O_RDONLY);
+	i32 fd_new = open(new, O_WRONLY|O_TRUNC, sb.st_mode);
+
+	if (fd_old < 0 || fd_new < 0)
+		goto ret;
+	u8 buf[4096];
+	size copied = 0;
+	while (copied != sb.st_size) {
+		size r = read(fd_old, buf, ARRAY_COUNT(buf));
+		if (r < 0) goto ret;
+		size w = write(fd_new, buf, r);
+		if (w < 0) goto ret;
+		copied += w;
+	}
+	result = 1;
+ret:
+	if (fd_old != -1) close(fd_old);
+	if (fd_new != -1) close(fd_new);
+	return result;
+}
+
+static os_library_handle
+os_load_library(char *name, char *temp_name)
+{
+	if (temp_name) {
+		if (os_copy_file(name, temp_name))
+			name = temp_name;
+	}
 	os_library_handle res = dlopen(name, RTLD_NOW|RTLD_LOCAL);
 	if (!res)
 		TraceLog(LOG_WARNING, "os_load_library(%s): %s\n", name, dlerror());
+
+	if (temp_name)
+		unlink(temp_name);
+
 	return res;
 }
 
@@ -158,12 +196,23 @@ os_lookup_dynamic_symbol(os_library_handle h, char *name)
 	return res;
 }
 
-#ifdef _DEBUG
 static void
-os_close_library(os_library_handle h)
+os_unload_library(os_library_handle h)
 {
 	/* NOTE: glibc is buggy gnuware so we need to check this */
 	if (h)
 		dlclose(h);
 }
-#endif /* _DEBUG */
+
+static b32
+os_filetime_is_newer(os_filetime a, os_filetime b)
+{
+	os_filetime result;
+	result.tv_sec  = a.tv_sec - b.tv_sec;
+	result.tv_nsec = a.tv_nsec - b.tv_nsec;
+	if (result.tv_nsec < 0) {
+		result.tv_sec--;
+		result.tv_nsec += 1000000000L;
+	}
+	return result.tv_sec + result.tv_nsec > 0;
+}
