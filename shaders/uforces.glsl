@@ -96,7 +96,7 @@ void main()
 
 	vec2  starting_dist = vec2(image_point.x - xdc_min_xy.x, image_point.z);
 	float dx            = xdc_size.x / float(dec_data_dim.y);
-	float dzsign        = sign(image_point.z - focal_depth);
+	float dzsign        = sign(image_point.z);
 
 	/* NOTE: offset correcting for both pulse length and low pass filtering */
 	float time_correction = time_offset + lpf_order / sampling_frequency;
@@ -108,9 +108,8 @@ void main()
 		uint base_idx = (i - uforces) / 4;
 		uint sub_idx  = (i - uforces) % 4;
 
-		vec3  focal_point   = vec3(uforces_channels[base_idx][sub_idx] * dx + xdc_min_xy.x,
-		                           0, focal_depth);
-		float transmit_dist = focal_depth + dzsign * distance(image_point, focal_point);
+		vec3  focal_point   = vec3(uforces_channels[base_idx][sub_idx] * dx + xdc_min_xy.x, 0, 0);
+		float transmit_dist = dzsign * distance(image_point, focal_point);
 
 		vec2 rdist = starting_dist;
 		for (uint j = 0; j < dec_data_dim.y; j++) {
