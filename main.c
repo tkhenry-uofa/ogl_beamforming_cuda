@@ -20,23 +20,16 @@ static os_library_handle libhandle;
 typedef void do_beamformer_fn(BeamformerCtx *, Arena);
 static do_beamformer_fn *do_beamformer;
 
-static os_filetime
-get_filetime(char *name)
-{
-	os_file_stats fstats = os_get_file_stats(name);
-	return fstats.timestamp;
-}
-
 static void
 do_debug(void)
 {
 	static os_filetime updated_time;
-	os_filetime test_time = get_filetime(OS_DEBUG_LIB_NAME);
-	if (os_filetime_is_newer(test_time, updated_time)) {
+	os_file_stats test_stats = os_get_file_stats(OS_DEBUG_LIB_NAME);
+	if (test_stats.filesize > 32 && os_filetime_is_newer(test_stats.timestamp, updated_time)) {
 		os_unload_library(libhandle);
 		libhandle     = os_load_library(OS_DEBUG_LIB_NAME, OS_DEBUG_LIB_TEMP_NAME);
 		do_beamformer = os_lookup_dynamic_symbol(libhandle, "do_beamformer");
-		updated_time  = test_time;
+		updated_time  = test_stats.timestamp;
 	}
 }
 
@@ -141,7 +134,7 @@ static void
 check_and_load_cuda_lib(CudaLib *cl)
 {
 	os_file_stats current = os_get_file_stats(OS_CUDA_LIB_NAME);
-	if (!os_filetime_is_newer(current.timestamp, cl->timestamp))
+	if (!os_filetime_is_newer(current.timestamp, cl->timestamp) || current.filesize < 32)
 		return;
 
 	TraceLog(LOG_INFO, "Loading CUDA lib: %s", OS_CUDA_LIB_NAME);
