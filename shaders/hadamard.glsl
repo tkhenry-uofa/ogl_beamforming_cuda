@@ -20,9 +20,9 @@ layout(std140, binding = 0) uniform parameters {
 	vec4  lpf_coefficients[16];   /* Low Pass Filter Cofficients */
 	uvec4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
 	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
+	vec4  output_min_coord;       /* [m] Top left corner of output region */
+	vec4  output_max_coord;       /* [m] Bottom right corner of output region */
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */
-	vec2  output_min_xz;          /* [m] Top left corner of output region */
-	vec2  output_max_xz;          /* [m] Bottom right corner of output region */
 	vec2  xdc_min_xy;             /* [m] Min center of transducer elements */
 	vec2  xdc_max_xy;             /* [m] Max center of transducer elements */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
@@ -33,7 +33,6 @@ layout(std140, binding = 0) uniform parameters {
 	float focal_depth;            /* [m]   */
 	float time_offset;            /* pulse length correction time [s]   */
 	uint  uforces;                /* mode is UFORCES (1) or FORCES (0) */
-	float off_axis_pos;           /* Where on the 3rd axis to render the image (Hercules only) */
 };
 
 void main()

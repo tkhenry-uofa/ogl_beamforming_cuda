@@ -6,9 +6,10 @@ static void
 alloc_output_image(BeamformerCtx *ctx)
 {
 	BeamformerParameters *bp = &ctx->params->raw;
-	ctx->out_data_dim.x = ORONE(bp->output_points.x);
-	ctx->out_data_dim.y = ORONE(bp->output_points.y);
-	ctx->out_data_dim.z = ORONE(bp->output_points.z);
+	ctx->out_data_dim.x = round_down_power_of_2(ORONE(bp->output_points.x));
+	ctx->out_data_dim.y = round_down_power_of_2(ORONE(bp->output_points.y));
+	ctx->out_data_dim.z = round_down_power_of_2(ORONE(bp->output_points.z));
+	bp->output_points   = ctx->out_data_dim;
 
 	/* NOTE: allocate storage for beamformed output data;
 	 * this is shared between compute and fragment shaders */
@@ -24,7 +25,8 @@ alloc_output_image(BeamformerCtx *ctx)
 	glTexStorage3D(GL_TEXTURE_3D, ctx->out_texture_mips, GL_RG32F, odim.x, odim.y, odim.z);
 
 	UnloadRenderTexture(ctx->fsctx.output);
-	ctx->fsctx.output = LoadRenderTexture(odim.x, odim.y);
+	/* TODO: select odim.x vs odim.y */
+	ctx->fsctx.output = LoadRenderTexture(odim.x, odim.z);
 	GenTextureMipmaps(&ctx->fsctx.output.texture);
 	//SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_ANISOTROPIC_8X);
 	//SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_TRILINEAR);
@@ -158,7 +160,7 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 			u32 width  = ctx->out_data_dim.x >> i;
 			u32 height = ctx->out_data_dim.y >> i;
 			u32 depth  = ctx->out_data_dim.z >> i;
-			glDispatchCompute(ORONE(width / 32), ORONE(height / 32), ORONE(depth));
+			glDispatchCompute(ORONE(width / 32), ORONE(height), ORONE(depth / 32));
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
 		break;
@@ -166,13 +168,13 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 	case CS_UFORCES:
 		glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
 		glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
-		glBindImageTexture(ctx->out_texture_unit, ctx->out_texture, 0, GL_FALSE, 0,
+		glBindImageTexture(ctx->out_texture_unit, ctx->out_texture, 0, GL_TRUE, 0,
 		                   GL_WRITE_ONLY, GL_RG32F);
 		glUniform1i(csctx->out_data_tex_id, ctx->out_texture_unit);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
 		glDispatchCompute(ORONE(ctx->out_data_dim.x / 32),
-		                  ORONE(ctx->out_data_dim.y / 32),
-		                  ORONE(ctx->out_data_dim.z));
+		                  ctx->out_data_dim.y,
+		                  ORONE(ctx->out_data_dim.z / 32));
 		break;
 	default: ASSERT(0);
 	}

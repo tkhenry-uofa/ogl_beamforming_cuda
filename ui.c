@@ -331,8 +331,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 {
 	BeamformerParameters *bp = &ctx->params->raw;
 
-	f32 minx = bp->output_min_xz.x + 1e-6, maxx = bp->output_max_xz.x - 1e-6;
-	f32 minz = bp->output_min_xz.y + 1e-6, maxz = bp->output_max_xz.y - 1e-6;
+	f32 minx = bp->output_min_coordinate.x + 1e-6, maxx = bp->output_max_coordinate.x - 1e-6;
+	f32 minz = bp->output_min_coordinate.z + 1e-6, maxz = bp->output_max_coordinate.z - 1e-6;
 
 	Rect draw_r    = r;
 	draw_r.pos.y  += 20;
@@ -355,24 +355,20 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	draw_r = do_text_input_listing(s8("Speed of Sound:"), s8("[m/s]"), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&bp->output_min_xz.x, (v2){.x = -1e3, .y = maxx}, 1e3, 1};
+	bmv = (BPModifiableValue){&bp->output_min_coordinate.x, (v2){.x = -1e3, .y = maxx}, 1e3, 1};
 	draw_r = do_text_input_listing(s8("Min X Point:"), s8("[mm]"), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&bp->output_max_xz.x, (v2){.x = minx, .y = 1e3}, 1e3, 1};
+	bmv = (BPModifiableValue){&bp->output_max_coordinate.x, (v2){.x = minx, .y = 1e3}, 1e3, 1};
 	draw_r = do_text_input_listing(s8("Max X Point:"), s8("[mm]"), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&bp->output_min_xz.y, (v2){.y = maxz}, 1e3, 1};
+	bmv = (BPModifiableValue){&bp->output_min_coordinate.z, (v2){.y = maxz}, 1e3, 1};
 	draw_r = do_text_input_listing(s8("Min Z Point:"), s8("[mm]"), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&bp->output_max_xz.y, (v2){.x = minz, .y = 1e3}, 1e3, 1};
+	bmv = (BPModifiableValue){&bp->output_max_coordinate.z, (v2){.x = minz, .y = 1e3}, 1e3, 1};
 	draw_r = do_text_input_listing(s8("Max Z Point:"), s8("[mm]"), bmv, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
-
-	bmv = (BPModifiableValue){&bp->off_axis_pos, (v2){.x = minx * 2, .y = maxx * 2}, 1e3, 1};
-	draw_r = do_text_input_listing(s8("Y Position:"), s8("[mm]"), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
 	bmv = (BPModifiableValue){&ctx->fsctx.db, (v2){.x = -120}, 1, 0};
@@ -479,8 +475,8 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 		Texture *output   = &ctx->fsctx.output.texture;
 
 		v2 output_dim = {
-			.x = bp->output_max_xz.x - bp->output_min_xz.x,
-			.y = bp->output_max_xz.y - bp->output_min_xz.y,
+			.x = bp->output_max_coordinate.x - bp->output_min_coordinate.x,
+			.y = bp->output_max_coordinate.z - bp->output_min_coordinate.z,
 		};
 
 		v2 mouse = { .rl = GetMousePosition() };
@@ -546,13 +542,16 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 				Rect tick_rect       = {.pos = start_pos, .size = vr.size};
 				tick_rect.size.E[!i] = 10 + tick_len + txt_s.x;
 
+				/* TODO: don't do this nonsense; this code will need to get
+				 * split into a seperate function */
+				u32 coord_idx = i == 0? 0 : 2;
 				if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
 					f32 scale[2]   = {0.5e-3, 1e-3};
 					f32 size_delta = GetMouseWheelMove() * scale[i];
 					/* TODO: smooth scroll this? */
-					if (i == 0)
-						bp->output_min_xz.E[i] -= size_delta;
-					bp->output_max_xz.E[i] += size_delta;
+					if (coord_idx== 0)
+						bp->output_min_coordinate.E[coord_idx] -= size_delta;
+					bp->output_max_coordinate.E[coord_idx] += size_delta;
 					if (size_delta) {
 						ctx->flags |= DO_COMPUTE;
 						ctx->params->upload = 1;
@@ -564,7 +563,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 				}
 				CLAMP01(txt_colour_t[i]);
 
-				f32 mm     = bp->output_min_xz.E[i] * 1e3;
+				f32 mm     = bp->output_min_coordinate.E[coord_idx] * 1e3;
 				f32 mm_inc = inc * output_dim.E[i] * 1e3 / vr.size.E[i];
 
 				Color txt_colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR,

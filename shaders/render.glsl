@@ -19,16 +19,19 @@ vec3 hsv2rgb(vec3 hsv)
 void main()
 {
 	ivec3 out_data_dim = textureSize(u_out_data_tex, 0);
-	ivec2 coord  = ivec2(fragTexCoord * out_data_dim.xy);
+
+	/* TODO: select between x and y with potentially a slice if viewing rendered volumes */
+	ivec2 coord  = ivec2(fragTexCoord * vec2(out_data_dim.xz));
 	vec2 min_max = texelFetch(u_out_data_tex, ivec3(0), textureQueryLevels(u_out_data_tex) - 1).xy;
 
-	float smp    = texelFetch(u_out_data_tex, ivec3(coord.x, coord.y, 0), 0).x;
-	float absmax = max(abs(min_max.y), abs(min_max.x));
+	ivec3 smp_coord = ivec3(coord.x, 0, coord.y);
+	float smp       = texelFetch(u_out_data_tex, smp_coord, 0).x;
+	float absmax    = max(abs(min_max.y), abs(min_max.x));
 
 	smp = 20 * log(abs(smp) / absmax) / log(10);
 	smp = clamp(smp, u_db_cutoff, 0) / u_db_cutoff;
 	smp = 1 - smp;
 
-	//v_out_colour = vec4(hsv2rgb(vec3(360 * smp + 120, 0.8, 0.95)), 1);
+	//v_out_colour = vec4(hsv2rgb(vec3(360 * smp, 0.8, 0.95)), 1);
 	v_out_colour = vec4(smp, smp, smp, 1);
 }

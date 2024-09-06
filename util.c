@@ -58,6 +58,13 @@ uv4_equal(uv4 a, uv4 b)
 	return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
 }
 
+static u32
+round_down_power_of_2(u32 a)
+{
+	u32 result = 0x80000000UL >> _lzcnt_u32(a);
+	return result;
+}
+
 static void
 fill_hadamard(i32 *m, u32 dim)
 {

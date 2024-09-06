@@ -3,11 +3,11 @@
 /* NOTE: Does a binary search in 3D for smallest and largest output values */
 
 #version 460 core
-layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 32) in;
 
-layout(rg32f, location = 1) uniform image3D u_out_data_tex;
-layout(rg32f, location = 2) uniform image3D u_mip_view_tex;
-layout(location = 3)        uniform int     u_mip_map = 0;
+layout(rg32f, location = 1) uniform readonly  image3D u_out_data_tex;
+layout(rg32f, location = 2) uniform writeonly image3D u_mip_view_tex;
+layout(location = 3)        uniform int               u_mip_map = 0;
 
 void main()
 {

@@ -18,9 +18,9 @@ typedef struct {
 	f32 lpf_coefficients[64];   /* Low Pass Filter Cofficients */
 	uv4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
 	uv4 output_points;          /* Width * Height * Depth; last element ignored */
+	v4  output_min_coordinate;  /* [m] Back-Top-Left corner of output region (w ignored) */
+	v4  output_max_coordinate;  /* [m] Front-Bottom-Right corner of output region (w ignored)*/
 	uv2 rf_raw_dim;             /* Raw Data Dimensions */
-	v2  output_min_xz;          /* [m] Top left corner of output region */
-	v2  output_max_xz;          /* [m] Bottom right corner of output region */
 	v2  xdc_min_xy;             /* [m] Min center of transducer elements */
 	v2  xdc_max_xy;             /* [m] Max center of transducer elements */
 	u32 channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
@@ -31,5 +31,5 @@ typedef struct {
 	f32 focal_depth;            /* [m]   */
 	f32 time_offset;            /* pulse length correction time [s]   */
 	u32 uforces;                /* mode is UFORCES (1) or FORCES (0) */
-	f32 off_axis_pos;           /* Where on the 3rd axis to render the image (Hercules only)*/
+	f32 _pad[2];
 } BeamformerParameters;
