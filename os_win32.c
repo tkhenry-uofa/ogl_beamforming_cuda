@@ -71,6 +71,24 @@ os_read_file(Arena *a, char *fname, size fsize)
 	return ret;
 }
 
+static b32
+os_write_file(char *fname, s8 raw)
+{
+	if (raw.size > (size)U32_MAX) {
+		fputs("os_write_file: writing files > 4GB is not yet support on win32\n", stderr);
+		return 0;
+	}
+
+	HANDLE h = CreateFileA(fname, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+	if (h == INVALID_HANDLE_VALUE)
+		return  0;
+
+	DWORD wlen = 0;
+	WriteFile(h, raw.data, raw.len, &wlen, 0);
+	CloseHandle(h);
+	return wlen == raw.len;
+}
+
 static os_file_stats
 os_get_file_stats(char *fname)
 {

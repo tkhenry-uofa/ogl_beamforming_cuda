@@ -49,8 +49,6 @@ typedef union {
 
 enum program_flags {
 	RELOAD_SHADERS = 1 << 0,
-	ALLOC_SSBOS    = 1 << 1,
-	ALLOC_OUT_TEX  = 1 << 2,
 	GEN_MIPMAPS    = 1 << 29,
 	DO_COMPUTE     = 1 << 30,
 };
@@ -181,6 +179,7 @@ typedef struct {
 	i32 out_data_tex_id;
 	i32 mip_view_tex_id;
 	i32 mips_level_id;
+	i32 volume_export_pass_id;
 } ComputeShaderCtx;
 
 typedef struct {
@@ -198,10 +197,12 @@ enum export_state {
 };
 
 typedef struct {
-	uv4 volume_dim;
-	u32 rf_data_ssbo;
-	u32 volume_texture;
-	u32 state;
+	Arena volume_buf;
+	uv4   volume_dim;
+	u32   volume_texture;
+	i32   volume_texture_id;
+	u32   output_ssbo;
+	u32   state;
 } ExportCtx;
 
 typedef struct {

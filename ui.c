@@ -526,8 +526,10 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	btn_r.size.h  = ctx->font.baseSize * 1.3;
 	btn_r.size.w *= 0.6;
 	if (do_text_button(ctx, s8("Dump Raw Volume"), btn_r, mouse, hover_t + idx++)) {
-		if (!ctx->export_ctx.state)
-			ctx->export_ctx.state = ES_START;
+		if (!ctx->export_ctx.state) {
+			ctx->export_ctx.state  = ES_START;
+			ctx->flags            |= DO_COMPUTE;
+		}
 	}
 
 	/* NOTE: if C compilers didn't suck this would be a static assert */

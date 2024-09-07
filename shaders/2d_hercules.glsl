@@ -28,6 +28,9 @@ layout(std140, binding = 0) uniform parameters {
 };
 
 layout(rg32f, location = 1) uniform writeonly image3D u_out_data_tex;
+layout(r32f,  location = 2) uniform writeonly image3D u_out_volume_tex;
+
+layout(location = 3) uniform int u_volume_export_pass;
 
 #define C_SPLINE 0.5
 
@@ -67,7 +70,9 @@ void main()
 {
 	vec3  voxel        = vec3(gl_GlobalInvocationID.xyz);
 	ivec3 out_coord    = ivec3(gl_GlobalInvocationID.xyz);
-	ivec3 out_data_dim = imageSize(u_out_data_tex);
+	ivec3 out_data_dim;
+	if (u_volume_export_pass == 0) out_data_dim = imageSize(u_out_data_tex);
+	else                           out_data_dim = imageSize(u_out_volume_tex);
 
 	/* NOTE: Convert pixel to physical coordinates */
 	vec2 xdc_size      = abs(xdc_max_xy - xdc_min_xy);
@@ -101,7 +106,7 @@ void main()
 	vec2 sum   = vec2(0);
 	vec3 rdist = starting_dist;
 
-	int  direction = 1;
+	int  direction = 1 * (u_volume_export_pass ^ 1);
 	uint ridx      = 0;
 	/* NOTE: For Each Acquistion in Raw Data */
 	for (uint i = 0; i < dec_data_dim.z; i++) {
@@ -129,9 +134,10 @@ void main()
 			ridx             += dec_data_dim.x;
 		}
 
-		rdist[direction]         = starting_dist[direction];
-		rdist[(~direction) & 1] -= delta[(~direction) & 1];
+		rdist[direction]      = starting_dist[direction];
+		rdist[direction ^ 1] -= delta[direction ^ 1];
 	}
 	float val = length(sum);
-	imageStore(u_out_data_tex, out_coord, vec4(val, val, 0, 0));
+	if (u_volume_export_pass == 0) imageStore(u_out_data_tex,   out_coord, vec4(val));
+	else                           imageStore(u_out_volume_tex, out_coord, vec4(val));
 }

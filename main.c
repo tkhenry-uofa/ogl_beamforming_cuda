@@ -117,6 +117,11 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		glDeleteShader(shader_id);
 	}
 
+	ctx->export_ctx.volume_texture_id = glGetUniformLocation(csctx->programs[CS_HERCULES],
+	                                                         "u_out_volume_tex");
+	csctx->volume_export_pass_id      = glGetUniformLocation(csctx->programs[CS_HERCULES],
+	                                                         "u_volume_export_pass");
+
 	csctx->out_data_tex_id = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_out_data_tex");
 	csctx->mip_view_tex_id = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_view_tex");
 	csctx->mips_level_id   = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_map");
@@ -168,8 +173,8 @@ main(void)
 	Arena temp_memory = os_alloc_arena((Arena){0}, 8 * MEGABYTE);
 
 	ctx.window_size  = (uv2){.w = 1280, .h = 840};
-	ctx.out_data_dim = (uv4){.x = 256, .y = 1024, .z = 1};
 
+	ctx.out_data_dim          = (uv4){.x = 1, .y = 1, .z = 1};
 	ctx.export_ctx.volume_dim = (uv4){.x = 1, .y = 1, .z = 1};
 
 	SetConfigFlags(FLAG_VSYNC_HINT);
@@ -231,8 +236,6 @@ main(void)
 	/* NOTE: do not DO_COMPUTE on first frame */
 	reload_shaders(&ctx, temp_memory);
 	ctx.flags &= ~DO_COMPUTE;
-
-	ctx.flags |= ALLOC_SSBOS|ALLOC_OUT_TEX;
 
 	while(!WindowShouldClose()) {
 		do_debug();

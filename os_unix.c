@@ -61,6 +61,17 @@ os_read_file(Arena *a, char *fname, size fsize)
 	return ret;
 }
 
+static b32
+os_write_file(char *fname, s8 raw)
+{
+	i32 fd = open(fname, O_WRONLY|O_TRUNC|O_CREAT, 0600);
+	if (fd < 0)
+		return 0;
+	size wlen = write(fd, raw.data, raw.len);
+	close(fd);
+	return wlen == raw.len;
+}
+
 static os_file_stats
 os_get_file_stats(char *fname)
 {

@@ -31,8 +31,6 @@ alloc_output_image(BeamformerCtx *ctx)
 	//SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_ANISOTROPIC_8X);
 	//SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_TRILINEAR);
 	SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_BILINEAR);
-
-	ctx->flags &= ~ALLOC_OUT_TEX;
 }
 
 static void
@@ -94,8 +92,6 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glDeleteBuffers(1, &cs->hadamard_ssbo);
 	glCreateBuffers(1, &cs->hadamard_ssbo);
 	glNamedBufferStorage(cs->hadamard_ssbo, hadamard_elements * sizeof(i32), hadamard, 0);
-
-	ctx->flags &= ~ALLOC_SSBOS;
 }
 
 static void
@@ -166,12 +162,30 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		break;
 	case CS_HERCULES:
 	case CS_UFORCES:
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
+
+		/* NOTE: Do a volume computation before doing the normal display path */
+		if (ctx->export_ctx.state & ES_START) {
+			/* TODO: for large data this must be split over multiple compute calls
+			 * otherwise the GL driver will kill you */
+			ExportCtx *e = &ctx->export_ctx;
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_3D, e->volume_texture);
+			glBindImageTexture(0, e->volume_texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32F);
+			glUniform1i(e->volume_texture_id, 0);
+			glUniform1i(csctx->volume_export_pass_id, 1);
+			glDispatchCompute(ORONE(e->volume_dim.x / 32),
+			                  e->volume_dim.y,
+			                  ORONE(e->volume_dim.z / 32));
+			ctx->export_ctx.state = ES_DONE;
+		}
+
+		glUniform1i(csctx->volume_export_pass_id, 0);
 		glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
 		glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
 		glBindImageTexture(ctx->out_texture_unit, ctx->out_texture, 0, GL_TRUE, 0,
 		                   GL_WRITE_ONLY, GL_RG32F);
 		glUniform1i(csctx->out_data_tex_id, ctx->out_texture_unit);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
 		glDispatchCompute(ORONE(ctx->out_data_dim.x / 32),
 		                  ctx->out_data_dim.y,
 		                  ORONE(ctx->out_data_dim.z / 32));
@@ -220,10 +234,10 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	/* NOTE: Check for and Load RF Data into GPU */
 	if (os_poll_pipe(ctx->data_pipe)) {
 		ComputeShaderCtx *cs = &ctx->csctx;
-		if (!uv4_equal(cs->dec_data_dim, bp->dec_data_dim) || ctx->flags & ALLOC_SSBOS)
+		if (!uv4_equal(cs->dec_data_dim, bp->dec_data_dim))
 			alloc_shader_storage(ctx, arena);
 
-		if (!uv4_equal(ctx->out_data_dim, bp->output_points) || ctx->flags & ALLOC_OUT_TEX)
+		if (!uv4_equal(ctx->out_data_dim, bp->output_points))
 			alloc_output_image(ctx);
 
 		cs->raw_data_index = (cs->raw_data_index + 1) % ARRAY_COUNT(cs->raw_data_fences);
@@ -263,6 +277,15 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			glNamedBufferSubData(ctx->csctx.shared_ubo, 0, sizeof(*bp), bp);
 			ctx->params->upload = 0;
 		}
+
+		if (ctx->export_ctx.state & ES_START) {
+			uv4 edim = ctx->export_ctx.volume_dim;
+			glDeleteTextures(1, &ctx->export_ctx.volume_texture);
+			glCreateTextures(GL_TEXTURE_3D, 1, &ctx->export_ctx.volume_texture);
+			glTextureStorage3D(ctx->export_ctx.volume_texture, 1, GL_R32F,
+			                   edim.x, edim.y, edim.z);
+		}
+
 		u32 stages = ctx->params->compute_stages_count;
 		for (u32 i = 0; i < stages; i++) {
 			do_compute_shader(ctx, ctx->params->compute_stages[i]);
@@ -274,6 +297,19 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		glDeleteSync(ctx->csctx.timer_fences[tidx]);
 		ctx->csctx.timer_fences[tidx] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 		ctx->csctx.timer_index = (tidx + 1) % ARRAY_COUNT(ctx->csctx.timer_fences);
+
+		if (ctx->export_ctx.state & ES_DONE) {
+			ExportCtx *e = &ctx->export_ctx;
+			uv4 dim = e->volume_dim;
+			size volume_out_size = dim.x * dim.y * dim.z * sizeof(f32);
+			e->volume_buf = os_alloc_arena(e->volume_buf, volume_out_size);
+			glGetTextureImage(e->volume_texture, 0, GL_RED, GL_FLOAT, volume_out_size,
+			                  e->volume_buf.beg);
+			s8 raw = {.len = volume_out_size, .data = e->volume_buf.beg};
+			if (!os_write_file("raw_volume.bin", raw))
+				TraceLog(LOG_WARNING, "failed to write output volume\n");
+			ctx->export_ctx.state = 0;
+		}
 	}
 
 	/* NOTE: draw output image texture using render fragment shader */
