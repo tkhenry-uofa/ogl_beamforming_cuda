@@ -2,6 +2,15 @@
 #include "beamformer.h"
 #include "ui.c"
 
+
+static size
+decoded_data_size(ComputeShaderCtx *cs)
+{
+	uv4  dim    = cs->dec_data_dim;
+	size result = 2 * sizeof(f32) * dim.x * dim.y * dim.z;
+	return result;
+}
+
 static void
 alloc_output_image(BeamformerCtx *ctx)
 {
@@ -40,10 +49,10 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	BeamformerParameters *bp = &ctx->params->raw;
 	uv4 dec_data_dim         = bp->dec_data_dim;
 	uv2 rf_raw_dim           = bp->rf_raw_dim;
-	size rf_raw_size         = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
-	size rf_decoded_size     = dec_data_dim.x * dec_data_dim.y * dec_data_dim.z * sizeof(f32) * 2;
-	ctx->csctx.rf_raw_dim    = rf_raw_dim;
 	ctx->csctx.dec_data_dim  = dec_data_dim;
+	ctx->csctx.rf_raw_dim    = rf_raw_dim;
+	size rf_raw_size         = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
+	size rf_decoded_size     = decoded_data_size(cs);
 
 	glDeleteBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
 	glCreateBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
@@ -165,21 +174,37 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
 
 		/* NOTE: Do a volume computation before doing the normal display path */
-		if (ctx->export_ctx.state & ES_START) {
-			/* TODO: for large data this must be split over multiple compute calls
-			 * otherwise the GL driver will kill you */
+		if (ctx->export_ctx.state & (ES_START|ES_COMPUTING)) {
 			ExportCtx *e = &ctx->export_ctx;
+			/* NOTE: on the first frame of compute make a copy of the rf data */
+			if (e->state & ES_START) {
+				size rf_size = decoded_data_size(csctx);
+				e->state &= ~ES_START;
+				glCopyNamedBufferSubData(csctx->rf_data_ssbos[input_ssbo_idx],
+				                         e->rf_data_ssbo, 0, 0, rf_size);
+			}
+
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_3D, e->volume_texture);
 			glBindImageTexture(0, e->volume_texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32F);
 			glUniform1i(e->volume_texture_id, 0);
 			glUniform1i(csctx->volume_export_pass_id, 1);
-			glDispatchCompute(ORONE(e->volume_dim.x / 32),
-			                  e->volume_dim.y,
-			                  ORONE(e->volume_dim.z / 32));
-			ctx->export_ctx.state = ES_DONE;
+
+			e->state |= ES_COMPUTING;
+
+			/* NOTE: We must tile this otherwise GL will kill us for taking too long */
+			/* TODO: this could be based on multiple dimensions */
+			u32 dispatch_count = e->volume_dim.z / 32;
+			uv4 dim_offset = {.z = !!dispatch_count * 32 * e->dispatch_index++};
+			glUniform3iv(csctx->volume_export_dim_offset_id, 1, (i32 *)dim_offset.E);
+			glDispatchCompute(ORONE(e->volume_dim.x / 32), e->volume_dim.y, 1);
+			if (e->dispatch_index >= dispatch_count) {
+				e->dispatch_index = 0;
+				e->state          = ES_DONE;
+			}
 		}
 
+		glUniform3iv(csctx->volume_export_dim_offset_id, 1, (i32 []){0, 0, 0});
 		glUniform1i(csctx->volume_export_pass_id, 0);
 		glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
 		glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
@@ -272,18 +297,22 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		else                     ctx->partial_transfer_count++;
 	}
 
-	if (ctx->flags & DO_COMPUTE) {
+	if (ctx->flags & DO_COMPUTE || ctx->export_ctx.state & ES_COMPUTING) {
 		if (ctx->params->upload) {
 			glNamedBufferSubData(ctx->csctx.shared_ubo, 0, sizeof(*bp), bp);
 			ctx->params->upload = 0;
 		}
 
 		if (ctx->export_ctx.state & ES_START) {
-			uv4 edim = ctx->export_ctx.volume_dim;
-			glDeleteTextures(1, &ctx->export_ctx.volume_texture);
-			glCreateTextures(GL_TEXTURE_3D, 1, &ctx->export_ctx.volume_texture);
-			glTextureStorage3D(ctx->export_ctx.volume_texture, 1, GL_R32F,
-			                   edim.x, edim.y, edim.z);
+			ExportCtx *e = &ctx->export_ctx;
+			uv4 edim = e->volume_dim;
+			glDeleteTextures(1, &e->volume_texture);
+			glCreateTextures(GL_TEXTURE_3D, 1, &e->volume_texture);
+			glTextureStorage3D(e->volume_texture, 1, GL_R32F, edim.x, edim.y, edim.z);
+
+			glDeleteBuffers(1, &e->rf_data_ssbo);
+			glCreateBuffers(1, &e->rf_data_ssbo);
+			glNamedBufferStorage(e->rf_data_ssbo, decoded_data_size(&ctx->csctx), 0, 0);
 		}
 
 		u32 stages = ctx->params->compute_stages_count;

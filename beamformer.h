@@ -180,6 +180,7 @@ typedef struct {
 	i32 mip_view_tex_id;
 	i32 mips_level_id;
 	i32 volume_export_pass_id;
+	i32 volume_export_dim_offset_id;
 } ComputeShaderCtx;
 
 typedef struct {
@@ -201,8 +202,10 @@ typedef struct {
 	uv4   volume_dim;
 	u32   volume_texture;
 	i32   volume_texture_id;
+	u32   rf_data_ssbo;
 	u32   output_ssbo;
 	u32   state;
+	u32   dispatch_index;
 } ExportCtx;
 
 typedef struct {

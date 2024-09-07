@@ -30,7 +30,8 @@ layout(std140, binding = 0) uniform parameters {
 layout(rg32f, location = 1) uniform writeonly image3D u_out_data_tex;
 layout(r32f,  location = 2) uniform writeonly image3D u_out_volume_tex;
 
-layout(location = 3) uniform int u_volume_export_pass;
+layout(location = 3) uniform int   u_volume_export_pass;
+layout(location = 4) uniform ivec3 u_volume_export_dim_offset;
 
 #define C_SPLINE 0.5
 
@@ -68,9 +69,10 @@ vec2 cubic(uint ridx, float x)
 
 void main()
 {
-	vec3  voxel        = vec3(gl_GlobalInvocationID.xyz);
-	ivec3 out_coord    = ivec3(gl_GlobalInvocationID.xyz);
+	vec3  voxel        = vec3(gl_GlobalInvocationID.xyz)  + vec3(u_volume_export_dim_offset);
+	ivec3 out_coord    = ivec3(gl_GlobalInvocationID.xyz) + u_volume_export_dim_offset;
 	ivec3 out_data_dim;
+
 	if (u_volume_export_pass == 0) out_data_dim = imageSize(u_out_data_tex);
 	else                           out_data_dim = imageSize(u_out_volume_tex);
 

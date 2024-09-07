@@ -3,7 +3,7 @@
 
 static char *compute_shader_paths[CS_LAST] = {
 	[CS_HADAMARD] = "shaders/hadamard.glsl",
-	[CS_HERCULES] = "shaders/2d_hercules.glsl",
+	[CS_HERCULES] = "shaders/hercules.glsl",
 	[CS_DEMOD]    = "shaders/demod.glsl",
 	[CS_MIN_MAX]  = "shaders/min_max.glsl",
 	[CS_UFORCES]  = "shaders/uforces.glsl",
@@ -117,10 +117,12 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		glDeleteShader(shader_id);
 	}
 
-	ctx->export_ctx.volume_texture_id = glGetUniformLocation(csctx->programs[CS_HERCULES],
-	                                                         "u_out_volume_tex");
-	csctx->volume_export_pass_id      = glGetUniformLocation(csctx->programs[CS_HERCULES],
-	                                                         "u_volume_export_pass");
+	ctx->export_ctx.volume_texture_id  = glGetUniformLocation(csctx->programs[CS_HERCULES],
+	                                                          "u_out_volume_tex");
+	csctx->volume_export_pass_id       = glGetUniformLocation(csctx->programs[CS_HERCULES],
+	                                                          "u_volume_export_pass");
+	csctx->volume_export_dim_offset_id = glGetUniformLocation(csctx->programs[CS_HERCULES],
+	                                                         "u_volume_export_dim_offset");
 
 	csctx->out_data_tex_id = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_out_data_tex");
 	csctx->mip_view_tex_id = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_view_tex");
