@@ -74,7 +74,7 @@ os_read_file(Arena *a, char *fname, size fsize)
 static b32
 os_write_file(char *fname, s8 raw)
 {
-	if (raw.size > (size)U32_MAX) {
+	if (raw.len > (size)U32_MAX) {
 		fputs("os_write_file: writing files > 4GB is not yet support on win32\n", stderr);
 		return 0;
 	}
