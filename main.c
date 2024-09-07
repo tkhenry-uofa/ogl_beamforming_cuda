@@ -167,13 +167,16 @@ main(void)
 
 	Arena temp_memory = os_alloc_arena((Arena){0}, 8 * MEGABYTE);
 
-	ctx.window_size  = (uv2){.w = 960, .h = 720};
+	ctx.window_size  = (uv2){.w = 1280, .h = 840};
 	ctx.out_data_dim = (uv4){.x = 256, .y = 1024, .z = 1};
+
+	ctx.export_ctx.volume_dim = (uv4){.x = 1, .y = 1, .z = 1};
 
 	SetConfigFlags(FLAG_VSYNC_HINT);
 	InitWindow(ctx.window_size.w, ctx.window_size.h, "OGL Beamformer");
 	/* NOTE: do this after initing so that the window starts out floating in tiling wm */
 	SetWindowState(FLAG_WINDOW_RESIZABLE);
+	SetWindowMinSize(INFO_COLUMN_WIDTH * 2, ctx.window_size.h);
 
 	ctx.font_size    = 32;
 	ctx.font_spacing = 0;

@@ -47,6 +47,12 @@ typedef struct { size len; u8 *data; } s8;
 #define s8(s) (s8){.len = ARRAY_COUNT(s) - 1, .data = (u8 *)s}
 
 typedef union {
+	struct { i32 x, y; };
+	struct { i32 w, h; };
+	i32 E[2];
+} iv2;
+
+typedef union {
 	struct { u32 x, y; };
 	struct { u32 w, h; };
 	u32 E[2];

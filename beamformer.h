@@ -17,10 +17,16 @@
 #define FOCUSED_COLOUR         (v4){.r = 0.86, .g = 0.28, .b = 0.21, .a = 1.0}
 #define HOVERED_COLOUR         (v4){.r = 0.11, .g = 0.50, .b = 0.59, .a = 1.0}
 
+#define INFO_COLUMN_WIDTH      560
 /* NOTE: extra space used for allowing mouse clicks after end of text */
 #define TEXT_BOX_EXTRA_X       10.0f
 
 #define TEXT_HOVER_SPEED       5.0f
+
+#define RECT_BTN_COLOUR        (Color){.r = 0x43, .g = 0x36, .b = 0x3a, .a = 0xff}
+#define RECT_BTN_BORDER_COLOUR (Color){.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xCC}
+#define RECT_BTN_ROUNDNESS     0.3f
+#define RECT_BTN_BORDER_WIDTH  6.0f
 
 typedef union {
 	struct { f32 x, y; };
@@ -55,11 +61,17 @@ enum gl_vendor_ids {
 	GL_VENDOR_NVIDIA,
 };
 
+enum modifiable_value_flags {
+	MV_CAUSES_COMPUTE = 1 << 0,
+	MV_FLOAT          = 1 << 1,
+	MV_INT            = 1 << 2,
+	MV_POWER_OF_TWO   = 1 << 30,
+};
 typedef struct {
-	f32 *value;
-	v2   limits;
-	f32  scale;
-	b32  compute;
+	void *value;
+	u32   flags;
+	f32   scale;
+	union {v2 flimits; iv2 ilimits;};
 } BPModifiableValue;
 
 typedef struct {
@@ -179,6 +191,19 @@ typedef struct {
 	f32             db;
 } FragmentShaderCtx;
 
+enum export_state {
+	ES_START     = (1 <<  0),
+	ES_COMPUTING = (1 <<  1),
+	ES_DONE      = (1 <<  2),
+};
+
+typedef struct {
+	uv4 volume_dim;
+	u32 rf_data_ssbo;
+	u32 volume_texture;
+	u32 state;
+} ExportCtx;
+
 typedef struct {
 	uv2 window_size;
 	u32 flags;
@@ -200,6 +225,7 @@ typedef struct {
 
 	ComputeShaderCtx  csctx;
 	FragmentShaderCtx fsctx;
+	ExportCtx         export_ctx;
 
 	os_pipe data_pipe;
 	u32     partial_transfer_count;
