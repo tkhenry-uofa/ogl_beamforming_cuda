@@ -20,6 +20,7 @@ typedef ptrdiff_t size;
 #endif
 
 typedef struct { f32 x, y; }       v2;
+typedef struct { f32 x, y, z, w; } v4;
 typedef struct { u32 x, y; }       uv2;
 typedef struct { u32 x, y, z, w; } uv4;
 
