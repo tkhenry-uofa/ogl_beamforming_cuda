@@ -28,6 +28,10 @@ layout(std140, binding = 0) uniform parameters {
 };
 
 layout(rg32f, location = 1) writeonly uniform image3D u_out_data_tex;
+layout(r32f,  location = 2) uniform writeonly image3D u_out_volume_tex;
+
+layout(location = 3) uniform int   u_volume_export_pass;
+layout(location = 4) uniform ivec3 u_volume_export_dim_offset;
 
 #define C_SPLINE 0.5
 
