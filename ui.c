@@ -626,6 +626,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 
 		Texture *output   = &ctx->fsctx.output.texture;
 
+		/* TODO: this depends on the direction being rendered (x vs y) */
 		v2 output_dim = {
 			.x = bp->output_max_coordinate.x - bp->output_min_coordinate.x,
 			.y = bp->output_max_coordinate.z - bp->output_min_coordinate.z,
@@ -635,34 +636,38 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 		Rect wr = {.size = {.w = (f32)ctx->window_size.w, .h = (f32)ctx->window_size.h}};
 		Rect lr = wr, rr = wr;
 		lr.size.w = INFO_COLUMN_WIDTH;
+		rr.size.w = wr.size.w - lr.size.w;
+		rr.pos.x  = lr.pos.x  + lr.size.w;
 
 		if (output_dim.x > 1e-6 && output_dim.y > 1e-6) {
 			s8 txt   = s8alloc(&arena, 64);
 			s8 tmp   = txt;
-			tmp.len  = snprintf((char *)txt.data, txt.len, "%+0.01f mm", -88.8f);
+			tmp.len  = snprintf((char *)txt.data, txt.len, "%+0.01f mm", -188.8f);
 			v2 txt_s = measure_text(ctx->font, tmp);
 
-			rr.size.w  = wr.size.w - lr.size.w;
-			rr.pos.x   = lr.pos.x  + lr.size.w;
-
-			rr.pos.x  += 0.07 * rr.size.w;
-			rr.size.w *= 0.86;
+			rr.pos.x  += 0.02 * rr.size.w;
 			rr.pos.y  += 0.02 * rr.size.h;
+			rr.size.w *= 0.96;
 			rr.size.h *= 0.96;
 
 			f32 tick_len = 20;
-			f32 x_pad    = 1.0  * txt_s.x + tick_len + 0.5 * txt_s.y;
-			f32 y_pad    = 1.25 * txt_s.x + tick_len;
+			f32 pad      = 1.2 * txt_s.x + tick_len;
 
 			Rect vr    = rr;
-			vr.size.h -= y_pad;
-			vr.size.w  = vr.size.h * output_dim.w / output_dim.h - x_pad;
-			if (vr.size.w + x_pad > rr.size.w) {
-				vr.size.h = (rr.size.w - x_pad) * output_dim.h / output_dim.w;
-				vr.size.w = vr.size.h * output_dim.w / output_dim.h;
+			vr.pos.x  += 0.5 * txt_s.y;
+			vr.pos.y  += 0.5 * txt_s.y;
+			vr.size.h  = rr.size.h - pad;
+			vr.size.w  = rr.size.w - pad;
+
+			f32 aspect = output_dim.h / output_dim.w;
+			if (rr.size.h < (vr.size.w * aspect) + pad) {
+				vr.size.w = vr.size.h / aspect;
+			} else {
+				vr.size.h = vr.size.w * aspect;
 			}
-			vr.pos.x += (rr.size.w - (vr.size.w + x_pad) + txt_s.h) / 2;
-			vr.pos.y += (rr.size.h - (vr.size.h + y_pad) + txt_s.h) / 2;
+			vr.pos.x += (rr.size.w - (vr.size.w + pad)) / 2;
+			vr.pos.y += (rr.size.h - (vr.size.h + pad)) / 2;
+
 			Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
 			NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
 			DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
@@ -733,14 +738,6 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 					txt_pos.E[i]   += inc;
 					mm             += mm_inc;
 				}
-			}
-
-			/* TODO: this should be removed */
-			f32 desired_width = lr.size.w + vr.size.w;
-			if (desired_width > ctx->window_size.w) {
-				ctx->window_size.w = desired_width;
-				SetWindowSize(ctx->window_size.w, ctx->window_size.h);
-				SetWindowMinSize(desired_width, 720);
 			}
 		}
 
