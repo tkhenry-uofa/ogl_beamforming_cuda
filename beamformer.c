@@ -111,7 +111,13 @@ do_volume_computation_step(BeamformerCtx *ctx, enum compute_shaders shader)
 
 	b32 done = 0;
 
-	/* TODO: volume computation running timer */
+	/* NOTE: we start this elsewhere on the first dispatch so that we can include
+	 * times such as decoding/demodulation/etc. */
+	if (!(e->state & ES_TIMER_ACTIVE)) {
+		glQueryCounter(e->timer_ids[0], GL_TIMESTAMP);
+		e->state |= ES_TIMER_ACTIVE;
+	}
+
 	glUseProgram(cs->programs[shader]);
 	glBindBufferBase(GL_UNIFORM_BUFFER, 0, cs->shared_ubo);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, e->rf_data_ssbo);
@@ -129,10 +135,13 @@ do_volume_computation_step(BeamformerCtx *ctx, enum compute_shaders shader)
 	glUniform3iv(cs->volume_export_dim_offset_id, 1, (i32 *)dim_offset.E);
 	glDispatchCompute(ORONE(e->volume_dim.x / 32), e->volume_dim.y, 1);
 	if (e->dispatch_index >= dispatch_count) {
-		e->dispatch_index = 0;
-		e->state          = 0;
-		done              = 1;
+		e->dispatch_index  = 0;
+		e->state          &= ~ES_COMPUTING;
+		done               = 1;
 	}
+
+	glQueryCounter(e->timer_ids[1], GL_TIMESTAMP);
+
 	return done;
 }
 
@@ -205,8 +214,9 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 	case CS_UFORCES:
 		if (ctx->export_ctx.state & ES_START) {
 			/* NOTE: on the first frame of compute make a copy of the rf data */
-			size rf_size          = decoded_data_size(csctx);
-			ctx->export_ctx.state = ES_COMPUTING;
+			size rf_size           = decoded_data_size(csctx);
+			ctx->export_ctx.state &= ~ES_START;
+			ctx->export_ctx.state |= ES_COMPUTING;
 			glCopyNamedBufferSubData(csctx->rf_data_ssbos[input_ssbo_idx],
 			                         ctx->export_ctx.rf_data_ssbo, 0, 0, rf_size);
 		}
@@ -230,8 +240,19 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 }
 
 static void
-check_compute_timers(ComputeShaderCtx *cs, BeamformerParametersFull *bp)
+check_compute_timers(ComputeShaderCtx *cs, ExportCtx *e, BeamformerParametersFull *bp)
 {
+	/* NOTE: volume generation running timer */
+	if (e->state & ES_TIMER_ACTIVE) {
+		u64 start_ns = 0, end_ns = 0;
+		glGetQueryObjectui64v(e->timer_ids[0], GL_QUERY_RESULT, &start_ns);
+		glGetQueryObjectui64v(e->timer_ids[1], GL_QUERY_RESULT, &end_ns);
+		u64 elapsed_ns = end_ns - start_ns;
+		e->runtime    += (f32)elapsed_ns * 1e-9;
+		e->state      &= ~ES_TIMER_ACTIVE;
+	}
+
+	/* NOTE: main timers for display portion of the program */
 	u32 last_idx = (cs->timer_index - 1) % ARRAY_COUNT(cs->timer_fences);
 	if (!cs->timer_fences[last_idx])
 		return;
@@ -261,7 +282,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	}
 
 	/* NOTE: Store the compute time for the last frame. */
-	check_compute_timers(&ctx->csctx, ctx->params);
+	check_compute_timers(&ctx->csctx, &ctx->export_ctx, ctx->params);
 
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
@@ -308,7 +329,13 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	/* NOTE: we are starting a volume computation on this frame so make some space */
 	if (ctx->export_ctx.state & ES_START) {
 		ExportCtx *e = &ctx->export_ctx;
-		uv4 edim = e->volume_dim;
+		e->runtime   = 0;
+		uv4 edim     = e->volume_dim;
+
+		/* NOTE: get a timestamp here which will include decoding/demodulating/etc. */
+		glQueryCounter(e->timer_ids[0], GL_TIMESTAMP);
+		e->state |= ES_TIMER_ACTIVE;
+
 		glDeleteTextures(1, &e->volume_texture);
 		glCreateTextures(GL_TEXTURE_3D, 1, &e->volume_texture);
 		glTextureStorage3D(e->volume_texture, 1, GL_R32F, edim.x, edim.y, edim.z);
@@ -341,10 +368,10 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		/* TODO: this could probably be adapted to do FORCES as well */
 		b32 done = do_volume_computation_step(ctx, CS_HERCULES);
 		if (done) {
-			ExportCtx *e = &ctx->export_ctx;
-			uv4 dim = e->volume_dim;
+			ExportCtx *e         = &ctx->export_ctx;
+			uv4 dim              = e->volume_dim;
 			size volume_out_size = dim.x * dim.y * dim.z * sizeof(f32);
-			e->volume_buf = os_alloc_arena(e->volume_buf, volume_out_size);
+			e->volume_buf        = os_alloc_arena(e->volume_buf, volume_out_size);
 			glGetTextureImage(e->volume_texture, 0, GL_RED, GL_FLOAT, volume_out_size,
 			                  e->volume_buf.beg);
 			s8 raw = {.len = volume_out_size, .data = e->volume_buf.beg};

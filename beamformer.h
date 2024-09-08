@@ -192,14 +192,16 @@ typedef struct {
 } FragmentShaderCtx;
 
 enum export_state {
-	ES_START     = (1 <<  0),
-	ES_COMPUTING = (1 <<  1),
-	ES_DONE      = (1 <<  2),
+	ES_START        = (1 <<  0),
+	ES_COMPUTING    = (1 <<  1),
+	ES_TIMER_ACTIVE = (1 <<  2),
 };
 
 typedef struct {
 	Arena volume_buf;
 	uv4   volume_dim;
+	u32   timer_ids[2];
+	f32   runtime;
 	u32   volume_texture;
 	i32   volume_texture_id;
 	u32   rf_data_ssbo;

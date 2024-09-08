@@ -573,14 +573,14 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 		compute_time_sum += cs->last_frame_time[index];
 	}
 
-	{
-		s8 label  = s8("Compute Total:");
-		pos.y    -= measure_text(ctx->font, label).y;
-		draw_text(ctx->font, label, pos, 0, colour_from_normalized(FG_COLOUR));
+	static s8 totals[2] = {s8("Compute Total:"), s8("Volume Total:")};
+	f32 times[2]        = {compute_time_sum, ctx->export_ctx.runtime};
+	for (u32 i = 0; i < ARRAY_COUNT(totals); i++) {
+		pos.y    -= measure_text(ctx->font, totals[i]).y;
+		draw_text(ctx->font, totals[i], pos, 0, colour_from_normalized(FG_COLOUR));
 
 		s8 tmp  = txt_buf;
-		tmp.len = snprintf((char *)txt_buf.data, txt_buf.len, "%0.02e [s]",
-		                   compute_time_sum);
+		tmp.len = snprintf((char *)txt_buf.data, txt_buf.len, "%0.02e [s]", times[i]);
 		v2 txt_fs = measure_text(ctx->font, tmp);
 		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
 		draw_text(ctx->font, tmp, rpos, 0, colour_from_normalized(FG_COLOUR));
