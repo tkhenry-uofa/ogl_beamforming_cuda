@@ -298,7 +298,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 	}
 
 	if (ctx->flags & DO_COMPUTE || ctx->export_ctx.state & ES_COMPUTING) {
-		if (ctx->params->upload) {
+		if (ctx->params->upload && !(ctx->export_ctx.state & ES_COMPUTING)) {
 			glNamedBufferSubData(ctx->csctx.shared_ubo, 0, sizeof(*bp), bp);
 			ctx->params->upload = 0;
 		}
