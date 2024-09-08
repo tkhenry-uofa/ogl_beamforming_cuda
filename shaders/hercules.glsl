@@ -85,6 +85,10 @@ void main()
 		output_min_coord.z + voxel.z * output_size.z / out_data_dim.z
 	);
 
+	/* TODO: off_axis_position */
+	if (u_volume_export_pass == 0)
+		image_point.y = 0;
+
 	/* NOTE: used for constant F# dynamic receive apodization. This is implemented as:
 	 *
 	 *                  /        |x_e - x_i|\

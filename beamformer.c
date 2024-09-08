@@ -103,6 +103,39 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glNamedBufferStorage(cs->hadamard_ssbo, hadamard_elements * sizeof(i32), hadamard, 0);
 }
 
+static b32
+do_volume_computation_step(BeamformerCtx *ctx, enum compute_shaders shader)
+{
+	ComputeShaderCtx *cs = &ctx->csctx;
+	ExportCtx        *e  = &ctx->export_ctx;
+
+	b32 done = 0;
+
+	/* TODO: volume computation running timer */
+	glUseProgram(cs->programs[shader]);
+	glBindBufferBase(GL_UNIFORM_BUFFER, 0, cs->shared_ubo);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, e->rf_data_ssbo);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_3D, e->volume_texture);
+	glBindImageTexture(0, e->volume_texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32F);
+	glUniform1i(e->volume_texture_id, 0);
+	glUniform1i(cs->volume_export_pass_id, 1);
+
+	/* NOTE: We must tile this otherwise GL will kill us for taking too long */
+	/* TODO: this could be based on multiple dimensions */
+	u32 dispatch_count = e->volume_dim.z / 32;
+	uv4 dim_offset = {.z = !!dispatch_count * 32 * e->dispatch_index++};
+	glUniform3iv(cs->volume_export_dim_offset_id, 1, (i32 *)dim_offset.E);
+	glDispatchCompute(ORONE(e->volume_dim.x / 32), e->volume_dim.y, 1);
+	if (e->dispatch_index >= dispatch_count) {
+		e->dispatch_index = 0;
+		e->state          = 0;
+		done              = 1;
+	}
+	return done;
+}
+
 static void
 do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 {
@@ -113,7 +146,6 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 	glBeginQuery(GL_TIME_ELAPSED, csctx->timer_ids[csctx->timer_index][shader]);
 
 	glUseProgram(csctx->programs[shader]);
-
 	glBindBufferBase(GL_UNIFORM_BUFFER, 0, csctx->shared_ubo);
 
 	u32 output_ssbo_idx = !csctx->last_output_ssbo_index;
@@ -171,39 +203,15 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		break;
 	case CS_HERCULES:
 	case CS_UFORCES:
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
-
-		/* NOTE: Do a volume computation before doing the normal display path */
-		if (ctx->export_ctx.state & (ES_START|ES_COMPUTING)) {
-			ExportCtx *e = &ctx->export_ctx;
+		if (ctx->export_ctx.state & ES_START) {
 			/* NOTE: on the first frame of compute make a copy of the rf data */
-			if (e->state & ES_START) {
-				size rf_size = decoded_data_size(csctx);
-				e->state &= ~ES_START;
-				glCopyNamedBufferSubData(csctx->rf_data_ssbos[input_ssbo_idx],
-				                         e->rf_data_ssbo, 0, 0, rf_size);
-			}
-
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_3D, e->volume_texture);
-			glBindImageTexture(0, e->volume_texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32F);
-			glUniform1i(e->volume_texture_id, 0);
-			glUniform1i(csctx->volume_export_pass_id, 1);
-
-			e->state |= ES_COMPUTING;
-
-			/* NOTE: We must tile this otherwise GL will kill us for taking too long */
-			/* TODO: this could be based on multiple dimensions */
-			u32 dispatch_count = e->volume_dim.z / 32;
-			uv4 dim_offset = {.z = !!dispatch_count * 32 * e->dispatch_index++};
-			glUniform3iv(csctx->volume_export_dim_offset_id, 1, (i32 *)dim_offset.E);
-			glDispatchCompute(ORONE(e->volume_dim.x / 32), e->volume_dim.y, 1);
-			if (e->dispatch_index >= dispatch_count) {
-				e->dispatch_index = 0;
-				e->state          = ES_DONE;
-			}
+			size rf_size          = decoded_data_size(csctx);
+			ctx->export_ctx.state = ES_COMPUTING;
+			glCopyNamedBufferSubData(csctx->rf_data_ssbos[input_ssbo_idx],
+			                         ctx->export_ctx.rf_data_ssbo, 0, 0, rf_size);
 		}
 
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
 		glUniform3iv(csctx->volume_export_dim_offset_id, 1, (i32 []){0, 0, 0});
 		glUniform1i(csctx->volume_export_pass_id, 0);
 		glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
@@ -297,22 +305,23 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		else                     ctx->partial_transfer_count++;
 	}
 
-	if (ctx->flags & DO_COMPUTE || ctx->export_ctx.state & ES_COMPUTING) {
+	/* NOTE: we are starting a volume computation on this frame so make some space */
+	if (ctx->export_ctx.state & ES_START) {
+		ExportCtx *e = &ctx->export_ctx;
+		uv4 edim = e->volume_dim;
+		glDeleteTextures(1, &e->volume_texture);
+		glCreateTextures(GL_TEXTURE_3D, 1, &e->volume_texture);
+		glTextureStorage3D(e->volume_texture, 1, GL_R32F, edim.x, edim.y, edim.z);
+
+		glDeleteBuffers(1, &e->rf_data_ssbo);
+		glCreateBuffers(1, &e->rf_data_ssbo);
+		glNamedBufferStorage(e->rf_data_ssbo, decoded_data_size(&ctx->csctx), 0, 0);
+	}
+
+	if (ctx->flags & DO_COMPUTE || ctx->export_ctx.state & ES_START) {
 		if (ctx->params->upload && !(ctx->export_ctx.state & ES_COMPUTING)) {
 			glNamedBufferSubData(ctx->csctx.shared_ubo, 0, sizeof(*bp), bp);
 			ctx->params->upload = 0;
-		}
-
-		if (ctx->export_ctx.state & ES_START) {
-			ExportCtx *e = &ctx->export_ctx;
-			uv4 edim = e->volume_dim;
-			glDeleteTextures(1, &e->volume_texture);
-			glCreateTextures(GL_TEXTURE_3D, 1, &e->volume_texture);
-			glTextureStorage3D(e->volume_texture, 1, GL_R32F, edim.x, edim.y, edim.z);
-
-			glDeleteBuffers(1, &e->rf_data_ssbo);
-			glCreateBuffers(1, &e->rf_data_ssbo);
-			glNamedBufferStorage(e->rf_data_ssbo, decoded_data_size(&ctx->csctx), 0, 0);
 		}
 
 		u32 stages = ctx->params->compute_stages_count;
@@ -326,8 +335,12 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		glDeleteSync(ctx->csctx.timer_fences[tidx]);
 		ctx->csctx.timer_fences[tidx] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 		ctx->csctx.timer_index = (tidx + 1) % ARRAY_COUNT(ctx->csctx.timer_fences);
+	}
 
-		if (ctx->export_ctx.state & ES_DONE) {
+	if (ctx->export_ctx.state & ES_COMPUTING) {
+		/* TODO: this could probably be adapted to do FORCES as well */
+		b32 done = do_volume_computation_step(ctx, CS_HERCULES);
+		if (done) {
 			ExportCtx *e = &ctx->export_ctx;
 			uv4 dim = e->volume_dim;
 			size volume_out_size = dim.x * dim.y * dim.z * sizeof(f32);
@@ -337,7 +350,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			s8 raw = {.len = volume_out_size, .data = e->volume_buf.beg};
 			if (!os_write_file("raw_volume.bin", raw))
 				TraceLog(LOG_WARNING, "failed to write output volume\n");
-			ctx->export_ctx.state = 0;
 		}
 	}
 
@@ -347,6 +359,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		BeginShaderMode(ctx->fsctx.shader);
 			FragmentShaderCtx *fs = &ctx->fsctx;
 			glUseProgram(fs->shader.id);
+			glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
+			glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
 			glUniform1i(fs->out_data_tex_id, ctx->out_texture_unit);
 			glUniform1f(fs->db_cutoff_id, fs->db);
 			DrawTexture(fs->output.texture, 0, 0, WHITE);
