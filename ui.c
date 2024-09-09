@@ -406,6 +406,41 @@ do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx
 	return r;
 }
 
+static Rect
+do_text_toggle_listing(s8 prefix, s8 text0, s8 text1, i32 *toggle, b32 causes_compute,
+                       BeamformerCtx *ctx, Rect r, v2 mouse, f32 *hover_t)
+{
+	v2 txt_s;
+	if (*toggle) txt_s = measure_text(ctx->font, text1);
+	else         txt_s = measure_text(ctx->font, text0);
+
+	Rect edit_rect = {
+		.pos  = {.x = r.pos.x + LISTING_LEFT_COLUMN_WIDTH, .y = r.pos.y},
+		.size = {.x = txt_s.w + TEXT_BOX_EXTRA_X, .y = txt_s.h}
+	};
+
+	b32 collides = CheckCollisionPointRec(mouse.rl, edit_rect.rl);
+	if (collides) *hover_t += TEXT_HOVER_SPEED * ctx->dt;
+	else          *hover_t -= TEXT_HOVER_SPEED * ctx->dt;
+	CLAMP01(*hover_t);
+
+	b32 pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
+	if (collides && (pressed || GetMouseWheelMove())) {
+		*toggle = !(*toggle);
+		if (causes_compute)
+			ctx->flags |= DO_COMPUTE;
+	}
+
+	Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, *hover_t));
+	draw_text(ctx->font, prefix, r.pos, 0, colour_from_normalized(FG_COLOUR));
+	draw_text(ctx->font, *toggle? text1: text0, edit_rect.pos, 0, colour);
+
+	r.pos.y  += txt_s.h + LISTING_LINE_PAD;
+	r.size.y -= txt_s.h + LISTING_LINE_PAD;
+
+	return r;
+}
+
 static b32
 do_text_button(BeamformerCtx *ctx, s8 text, Rect r, v2 mouse, f32 *hover_t)
 {
@@ -458,7 +493,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	draw_r = do_value_listing(s8("Sampling Frequency:"), s8("[MHz]"),
 	                          bp->sampling_frequency * 1e-6, ctx->font, arena, draw_r);
 
-	static f32 hover_t[11];
+	static f32 hover_t[13];
 	i32 idx = 0;
 
 	BPModifiableValue bmv;
@@ -492,13 +527,21 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	draw_r = do_text_input_listing(s8("Max Axial Point:"), s8("[mm]"), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
+	bmv = (BPModifiableValue){&bp->off_axis_pos, MV_FLOAT|MV_CAUSES_COMPUTE, 1e3,
+	                          .flimits = (v2){.x = -1, .y = 1}};
+	draw_r = do_text_input_listing(s8("Off Axis Position:"), s8("[mm]"), bmv, ctx, arena,
+	                               draw_r, mouse, hover_t + idx++);
+
+	draw_r = do_text_toggle_listing(s8("Beamform Plane:"), s8("XZ"), s8("YZ"),&bp->beamform_plane,
+	                                1, ctx, draw_r, mouse, hover_t + idx++);
+
 	bmv = (BPModifiableValue){&ctx->fsctx.db, MV_FLOAT|MV_GEN_MIPMAPS, 1,
 	                          .flimits = (v2){.x = -120}};
 	draw_r = do_text_input_listing(s8("Dynamic Range:"), s8("[dB]"), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	draw_r.pos.y  += 4 * LISTING_LINE_PAD;
-	draw_r.size.y -= 4 * LISTING_LINE_PAD;
+	draw_r.pos.y  += 2 * LISTING_LINE_PAD;
+	draw_r.size.y -= 2 * LISTING_LINE_PAD;
 
 	bmv = (BPModifiableValue){&ctx->export_ctx.volume_dim.x, MV_INT|MV_POWER_OF_TWO, 1,
 	                          .ilimits = (iv2){.x = 1, .y = 2048}};

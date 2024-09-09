@@ -25,6 +25,8 @@ layout(std140, binding = 0) uniform parameters {
 	float focal_depth;            /* [m]   */
 	float time_offset;            /* pulse length correction time [s]   */
 	uint  uforces;                /* mode is UFORCES (1) or FORCES (0) */
+	float off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */
+	int   beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 };
 
 layout(rg32f, location = 1) uniform writeonly image3D u_out_data_tex;
@@ -81,9 +83,8 @@ void main()
 	vec4 output_size   = abs(output_max_coord - output_min_coord);
 	vec3 image_point   = output_min_coord.xyz + voxel * output_size.xyz / out_data_dim.xyz;
 
-	/* TODO: off_axis_position */
 	if (u_volume_export_pass == 0)
-		image_point.y = 0;
+		image_point.y = off_axis_pos;
 
 	/* NOTE: used for constant F# dynamic receive apodization. This is implemented as:
 	 *
@@ -108,7 +109,7 @@ void main()
 	vec2 sum   = vec2(0);
 	vec3 rdist = starting_dist;
 
-	int  direction = 1 * (u_volume_export_pass ^ 1);
+	int  direction = beamform_plane * (u_volume_export_pass ^ 1);
 	uint ridx      = 0;
 	/* NOTE: For Each Acquistion in Raw Data */
 	for (uint i = 0; i < dec_data_dim.z; i++) {

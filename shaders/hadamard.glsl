@@ -33,6 +33,8 @@ layout(std140, binding = 0) uniform parameters {
 	float focal_depth;            /* [m]   */
 	float time_offset;            /* pulse length correction time [s]   */
 	uint  uforces;                /* mode is UFORCES (1) or FORCES (0) */
+	float off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */
+	int   beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 };
 
 void main()

@@ -31,5 +31,6 @@ typedef struct {
 	f32 focal_depth;            /* [m]   */
 	f32 time_offset;            /* pulse length correction time [s]   */
 	u32 uforces;                /* mode is UFORCES (1) or FORCES (0) */
-	f32 _pad[2];
+	f32 off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */
+	i32 beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 } BeamformerParameters;
