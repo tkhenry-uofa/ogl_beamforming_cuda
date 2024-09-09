@@ -63,6 +63,7 @@ enum modifiable_value_flags {
 	MV_CAUSES_COMPUTE = 1 << 0,
 	MV_FLOAT          = 1 << 1,
 	MV_INT            = 1 << 2,
+	MV_GEN_MIPMAPS    = 1 << 29,
 	MV_POWER_OF_TWO   = 1 << 30,
 };
 typedef struct {

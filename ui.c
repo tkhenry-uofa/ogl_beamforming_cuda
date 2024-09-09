@@ -134,19 +134,19 @@ bmv_scaled_value(BPModifiableValue *a)
 	return result;
 }
 
-static b32
-bmv_store_value(BPModifiableValue *bmv, f32 new_val, b32 from_scroll)
+static void
+bmv_store_value(BeamformerCtx *ctx, BPModifiableValue *bmv, f32 new_val, b32 from_scroll)
 {
 	if (bmv->flags & MV_FLOAT) {
 		f32 *value = bmv->value;
 		if (new_val / bmv->scale == *value)
-			return 0;
+			return;
 		*value = new_val / bmv->scale;
 		CLAMP(*value, bmv->flimits.x, bmv->flimits.y);
 	} else if (bmv->flags & MV_INT && bmv->flags & MV_POWER_OF_TWO) {
 		i32 *value = bmv->value;
 		if (new_val == *value)
-			return 0;
+			return;
 		if (from_scroll && new_val > *value) *value <<= 1;
 		else                                 *value = round_down_power_of_2(new_val);
 		CLAMP(*value, bmv->ilimits.x, bmv->ilimits.y);
@@ -154,11 +154,16 @@ bmv_store_value(BPModifiableValue *bmv, f32 new_val, b32 from_scroll)
 		ASSERT(bmv->flags & MV_INT);
 		i32 *value = bmv->value;
 		if (new_val / bmv->scale == *value)
-			return 0;
+			return;
 		*value = new_val / bmv->scale;
 		CLAMP(*value, bmv->ilimits.x, bmv->ilimits.y);
 	}
-	return 1;
+	if (bmv->flags & MV_CAUSES_COMPUTE) {
+		ctx->flags |= DO_COMPUTE;
+		ctx->params->upload = 1;
+	}
+	if (bmv->flags & MV_GEN_MIPMAPS)
+		ctx->flags |= GEN_MIPMAPS;
 }
 
 static s8
@@ -288,21 +293,12 @@ do_text_input(BeamformerCtx *ctx, i32 max_disp_chars, Rect r, Color colour)
 }
 
 static void
-parse_and_store_text_input(BeamformerCtx *ctx, BPModifiableValue *bmv)
-{
-	f32 new_val = strtof(ctx->is.buf, NULL);
-	b32 changed = bmv_store_value(bmv, new_val, 0);
-	if (changed && bmv->flags & MV_CAUSES_COMPUTE) {
-		ctx->flags |= DO_COMPUTE;
-		ctx->params->upload = 1;
-	}
-}
-
-static void
 set_text_input_idx(BeamformerCtx *ctx, BPModifiableValue bmv, Rect r, v2 mouse)
 {
-	if (ctx->is.store.value && !bmv_equal(&ctx->is.store, &bmv))
-		parse_and_store_text_input(ctx, &ctx->is.store);
+	if (ctx->is.store.value && !bmv_equal(&ctx->is.store, &bmv)) {
+		f32 new_val = strtof(ctx->is.buf, NULL);
+		bmv_store_value(ctx, &ctx->is.store, new_val, 0);
+	}
 
 	ctx->is.store  = bmv;
 	ctx->is.cursor = -1;
@@ -378,11 +374,7 @@ do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx
 			if (bmv_active)
 				set_text_input_idx(ctx, (BPModifiableValue){0}, (Rect){0}, mouse);
 			f32 old_val = bmv_scaled_value(&bmv);
-			b32 changed = bmv_store_value(&bmv, old_val + mouse_scroll, 1);
-			if (changed && bmv.flags & MV_CAUSES_COMPUTE) {
-				ctx->flags |= DO_COMPUTE;
-				ctx->params->upload = 1;
-			}
+			bmv_store_value(ctx, &bmv, old_val + mouse_scroll, 1);
 			txt = bmv_sprint(&bmv, buf);
 		}
 	}
@@ -500,7 +492,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	draw_r = do_text_input_listing(s8("Max Axial Point:"), s8("[mm]"), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&ctx->fsctx.db, MV_FLOAT, 1, .flimits = (v2){.x = -120}};
+	bmv = (BPModifiableValue){&ctx->fsctx.db, MV_FLOAT|MV_GEN_MIPMAPS, 1,
+	                          .flimits = (v2){.x = -120}};
 	draw_r = do_text_input_listing(s8("Dynamic Range:"), s8("[dB]"), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
