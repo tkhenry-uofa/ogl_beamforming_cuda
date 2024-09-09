@@ -76,11 +76,7 @@ void main()
 	/* NOTE: Convert voxel to physical coordinates */
 	vec2 xdc_size      = abs(xdc_max_xy - xdc_min_xy);
 	vec4 output_size   = abs(output_max_coord - output_min_coord);
-	vec3 image_point   = vec3(
-		output_min_coord.x + voxel.x * output_size.x / out_data_dim.x,
-		output_min_coord.y + voxel.y * output_size.y / out_data_dim.y,
-		output_min_coord.z + voxel.z * output_size.z / out_data_dim.z
-	);
+	vec3 image_point   = output_min_coord.xyz + voxel * output_size.xyz / out_data_dim.xyz;
 
 	/* NOTE: used for constant F# dynamic receive apodization. This is implemented as:
 	 *
