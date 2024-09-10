@@ -407,12 +407,12 @@ do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx
 }
 
 static Rect
-do_text_toggle_listing(s8 prefix, s8 text0, s8 text1, i32 *toggle, b32 causes_compute,
+do_text_toggle_listing(s8 prefix, s8 text0, s8 text1, b32 toggle, BPModifiableValue bmv,
                        BeamformerCtx *ctx, Rect r, v2 mouse, f32 *hover_t)
 {
 	v2 txt_s;
-	if (*toggle) txt_s = measure_text(ctx->font, text1);
-	else         txt_s = measure_text(ctx->font, text0);
+	if (toggle) txt_s = measure_text(ctx->font, text1);
+	else        txt_s = measure_text(ctx->font, text0);
 
 	Rect edit_rect = {
 		.pos  = {.x = r.pos.x + LISTING_LEFT_COLUMN_WIDTH, .y = r.pos.y},
@@ -426,14 +426,13 @@ do_text_toggle_listing(s8 prefix, s8 text0, s8 text1, i32 *toggle, b32 causes_co
 
 	b32 pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
 	if (collides && (pressed || GetMouseWheelMove())) {
-		*toggle = !(*toggle);
-		if (causes_compute)
-			ctx->flags |= DO_COMPUTE;
+		toggle = !toggle;
+		bmv_store_value(ctx, &bmv, toggle, 0);
 	}
 
 	Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, *hover_t));
 	draw_text(ctx->font, prefix, r.pos, 0, colour_from_normalized(FG_COLOUR));
-	draw_text(ctx->font, *toggle? text1: text0, edit_rect.pos, 0, colour);
+	draw_text(ctx->font, toggle? text1: text0, edit_rect.pos, 0, colour);
 
 	r.pos.y  += txt_s.h + LISTING_LINE_PAD;
 	r.size.y -= txt_s.h + LISTING_LINE_PAD;
@@ -532,8 +531,10 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	draw_r = do_text_input_listing(s8("Off Axis Position:"), s8("[mm]"), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	draw_r = do_text_toggle_listing(s8("Beamform Plane:"), s8("XZ"), s8("YZ"),&bp->beamform_plane,
-	                                1, ctx, draw_r, mouse, hover_t + idx++);
+	bmv = (BPModifiableValue){&bp->beamform_plane, MV_INT|MV_CAUSES_COMPUTE, 1,
+	                          .ilimits = (iv2){.y = 1}};
+	draw_r = do_text_toggle_listing(s8("Beamform Plane:"), s8("XZ"), s8("YZ"), bp->beamform_plane,
+	                                bmv, ctx, draw_r, mouse, hover_t + idx++);
 
 	bmv = (BPModifiableValue){&ctx->fsctx.db, MV_FLOAT|MV_GEN_MIPMAPS, 1,
 	                          .flimits = (v2){.x = -120}};
