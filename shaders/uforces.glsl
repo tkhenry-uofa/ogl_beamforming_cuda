@@ -80,6 +80,9 @@ void main()
 	vec4 output_size   = abs(output_max_coord - output_min_coord);
 	vec3 image_point   = output_min_coord.xyz + voxel * output_size.xyz / out_data_dim.xyz;
 
+	/* TODO: fix the math so that the image plane can be aritrary */
+	image_point.y = 0;
+
 	/* NOTE: used for constant F# dynamic receive apodization. This is implemented as:
 	 *
 	 *                  /        |x_e - x_i|\

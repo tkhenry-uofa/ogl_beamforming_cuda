@@ -37,6 +37,9 @@ layout(location = 4) uniform ivec3 u_volume_export_dim_offset;
 
 #define C_SPLINE 0.5
 
+#define TX_ROWS 0
+#define TX_COLS 1
+
 #if 0
 /* NOTE: interpolation is unnecessary if the data has been demodulated and not decimated */
 vec2 cubic(uint ridx, float t)
@@ -99,15 +102,30 @@ void main()
 	/* NOTE: for I-Q data phase correction */
 	float iq_time_scale = (lpf_order > 0)? radians(360) * center_frequency : 0;
 
-	vec3  starting_dist = vec3(image_point.x - xdc_min_xy.x, image_point.y - xdc_min_xy.y, image_point.z);
-	vec3  delta         = vec3(xdc_size.x / float(dec_data_dim.y), xdc_size.y / float(dec_data_dim.y), 0);
+	vec3  starting_dist = image_point - vec3(xdc_min_xy.x, xdc_min_xy.y, 0);
+	vec3  delta         = vec3(xdc_size.x, xdc_size.y, 0) / vec3(dec_data_dim.y);
 	float dzsign        = sign(image_point.z - focal_depth);
 
 	/* NOTE: offset correcting for both pulse length and low pass filtering */
-	float time_correction = time_offset + (lpf_order + 1) / sampling_frequency;
+	float time_correction = time_offset + lpf_order / sampling_frequency;
 
 	vec2 sum   = vec2(0);
 	vec3 rdist = starting_dist;
+
+	/* TODO: pass this in (there is a problem in that it depends on the orientation
+	 * of the array relative to the target/subject). */
+	int   transmit_orientation = TX_ROWS;
+	float transmit_dist;
+	if (isinf(focal_depth)) {
+		/* NOTE: plane wave */
+		transmit_dist = image_point.z;
+	} else {
+		/* NOTE: cylindrical diverging wave */
+		if (transmit_orientation == TX_ROWS)
+			transmit_dist = length(vec2(image_point.y, image_point.z - focal_depth));
+		else
+			transmit_dist = length(vec2(image_point.x, image_point.z - focal_depth));
+	}
 
 	int  direction = beamform_plane * (u_volume_export_pass ^ 1);
 	uint ridx      = 0;
@@ -115,8 +133,6 @@ void main()
 	for (uint i = 0; i < dec_data_dim.z; i++) {
 		uint base_idx = (i - uforces) / 4;
 		uint sub_idx  = (i - uforces) % 4;
-
-		float transmit_dist = image_point.z;
 
 		/* NOTE: For Each Virtual Source */
 		for (uint j = 0; j < dec_data_dim.y; j++) {
