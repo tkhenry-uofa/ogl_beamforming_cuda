@@ -30,7 +30,6 @@ mem_move(char *src, char *dest, size n)
 }
 
 #define alloc(a, t, n)  (t *)alloc_(a, sizeof(t), _Alignof(t), n)
-__attribute((malloc, alloc_size(4, 2), alloc_align(3)))
 static void *
 alloc_(Arena *a, size len, size align, size count)
 {
