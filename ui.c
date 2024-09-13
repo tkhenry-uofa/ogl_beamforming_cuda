@@ -320,7 +320,7 @@ set_text_input_idx(BeamformerCtx *ctx, BPModifiableValue bmv, Rect r, v2 mouse)
  * of them we can't know this ahead of time. For now we hardcode this and manually
  * adjust when needed */
 #define LISTING_LEFT_COLUMN_WIDTH 270.0f
-#define LISTING_LINE_PAD           10.0f
+#define LISTING_LINE_PAD           6.0f
 
 static Rect
 do_value_listing(s8 prefix, s8 suffix, f32 value, Font font, Arena a, Rect r)
@@ -680,7 +680,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 			s8 txt   = s8alloc(&arena, 64);
 			s8 tmp   = txt;
 			tmp.len  = snprintf((char *)txt.data, txt.len, "%+0.01f mm", -188.8f);
-			v2 txt_s = measure_text(ctx->font, tmp);
+			v2 txt_s = measure_text(ctx->small_font, tmp);
 
 			rr.pos.x  += 0.02 * rr.size.w;
 			rr.pos.y  += 0.02 * rr.size.h;
@@ -719,7 +719,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 
 			static f32 txt_colour_t[2];
 			for (u32 i = 0; i < 2; i++) {
-				u32 line_count   = vr.size.E[i] / txt_s.h;
+				u32 line_count   = vr.size.E[i] / (1.5 * txt_s.h);
 				f32 inc          = vr.size.E[i] / line_count;
 				v2 start_pos     = vr.pos;
 				start_pos.E[!i] += vr.size.E[!i];
@@ -769,7 +769,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 					DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(FG_COLOUR));
 					s8 tmp = txt;
 					tmp.len = snprintf((char *)txt.data, txt.len, fmt[i], mm);
-					draw_text(ctx->font, tmp, txt_pos, rot[i], txt_colour);
+					draw_text(ctx->small_font, tmp, txt_pos, rot[i], txt_colour);
 					start_pos.E[i] += inc;
 					end_pos.E[i]   += inc;
 					txt_pos.E[i]   += inc;

@@ -185,9 +185,9 @@ main(void)
 	SetWindowState(FLAG_WINDOW_RESIZABLE);
 	SetWindowMinSize(INFO_COLUMN_WIDTH * 2, ctx.window_size.h);
 
-	ctx.font_size    = 32;
-	ctx.font_spacing = 0;
-	ctx.font         = LoadFontEx("assets/IBMPlexSans-Bold.ttf", ctx.font_size, 0, 0);
+	/* TODO: build these into the binary */
+	ctx.font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
+	ctx.small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 22, 0, 0);
 
 	ctx.is.cursor_blink_t = 1;
 

@@ -219,9 +219,8 @@ typedef struct {
 	f32 dt;
 
 	/* UI Theming */
-	Font  font;
-	u32   font_size;
-	u32   font_spacing;
+	Font font;
+	Font small_font;
 
 	InputState is;
 
