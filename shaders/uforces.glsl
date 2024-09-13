@@ -10,13 +10,14 @@ layout(std140, binding = 0) uniform parameters {
 	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
 	vec4  lpf_coefficients[16];   /* Low Pass Filter Cofficients */
+	vec4  xdc_origin;             /* [m] Corner of transducer being treated as origin */
+	vec4  xdc_corner1;            /* [m] Corner of transducer along first axis (arbitrary) */
+	vec4  xdc_corner2;            /* [m] Corner of transducer along second axis (arbitrary) */
 	uvec4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
 	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
 	vec4  output_min_coord;       /* [m] Top left corner of output region */
 	vec4  output_max_coord;       /* [m] Bottom right corner of output region */
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */
-	vec2  xdc_min_xy;             /* [m] Min center of transducer elements */
-	vec2  xdc_max_xy;             /* [m] Max center of transducer elements */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	uint  lpf_order;              /* Order of Low Pass Filter */
 	float speed_of_sound;         /* [m/s] */
@@ -37,7 +38,7 @@ layout(location = 4) uniform ivec3 u_volume_export_dim_offset;
 
 #define C_SPLINE 0.5
 
-#if 0
+#if 1
 /* NOTE: interpolation is unnecessary if the data has been demodulated and not decimated */
 vec2 cubic(uint ridx, float t)
 {
@@ -76,7 +77,11 @@ void main()
 	ivec3 out_data_dim = imageSize(u_out_data_tex);
 
 	/* NOTE: Convert voxel to physical coordinates */
-	vec2 xdc_size      = abs(xdc_max_xy - xdc_min_xy);
+	vec4 xdc_size      = xdc_corner1 + xdc_corner2 - xdc_origin;
+	vec3 edge1         = xdc_corner1.xyz - xdc_origin.xyz;
+	vec3 edge2         = xdc_corner2.xyz - xdc_origin.xyz;
+	vec3 xdc_normal    = cross(edge2, edge1);
+	xdc_normal        /= length(xdc_normal);
 	vec4 output_size   = abs(output_max_coord - output_min_coord);
 	vec3 image_point   = output_min_coord.xyz + voxel * output_size.xyz / out_data_dim.xyz;
 
@@ -90,14 +95,18 @@ void main()
 	 *                  \        |z_e - z_i|/
 	 *
 	 * where x,z_e are transducer element positions and x,z_i are image positions. */
-	float f_num    = output_size.z / output_size.x;
+	float f_num    = 0.5; //output_size.z / output_size.x;
 	float apod_arg = f_num * 0.5 * radians(360) / abs(image_point.z);
 
 	/* NOTE: for I-Q data phase correction */
 	float iq_time_scale = (lpf_order > 0)? radians(360) * center_frequency : 0;
 
-	vec2  starting_dist = vec2(image_point.x - xdc_min_xy.x, image_point.z);
-	float dx            = xdc_size.x / float(dec_data_dim.y);
+	/* NOTE: lerp along a line from one edge of the xdc to the other in the imaging plane */
+	vec3 delta     = edge1 / float(dec_data_dim.y);
+	vec3 xdc_start = xdc_origin.xyz;
+	xdc_start.y   += edge2.y / 2;
+
+	vec3 starting_point = image_point - xdc_start;
 
 	/* NOTE: offset correcting for both pulse length and low pass filtering */
 	float time_correction = time_offset + lpf_order / sampling_frequency;
@@ -109,10 +118,9 @@ void main()
 		uint base_idx = (i - uforces) / 4;
 		uint sub_idx  = (i - uforces) % 4;
 
-		vec3  focal_point   = vec3(uforces_channels[base_idx][sub_idx] * dx + xdc_min_xy.x, 0, 0);
+		vec3  focal_point   = uforces_channels[base_idx][sub_idx] * delta + xdc_start;
 		float transmit_dist = distance(image_point, focal_point);
-
-		vec2 rdist = starting_dist;
+		vec3 rdist = starting_point;
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float dist = transmit_dist + length(rdist);
 			float time = dist / speed_of_sound + time_correction;
@@ -124,7 +132,7 @@ void main()
 			vec2 p   = cubic(ridx, time * sampling_frequency);
 			p       *= vec2(cos(iq_time_scale * time), sin(iq_time_scale * time));
 			sum     += p * a;
-			rdist.x -= dx;
+			rdist   -= delta;
 			ridx    += dec_data_dim.x;
 		}
 	}

@@ -36,8 +36,18 @@ typedef union {
 } v2;
 
 typedef union {
+	struct { f32 x, y, z; };
+	struct { f32 w, h, d; };
+	f32 E[3];
+	Vector3 rl;
+} v3;
+
+typedef union {
 	struct { f32 x, y, z, w; };
 	struct { f32 r, g, b, a; };
+	struct { v3 xyz; f32 _1; };
+	struct { f32 _2; v3 yzw; };
+	struct { v2 xy, zw; };
 	f32 E[4];
 	Vector4 rl;
 } v4;
