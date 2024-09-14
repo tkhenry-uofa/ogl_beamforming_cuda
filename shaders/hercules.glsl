@@ -108,9 +108,9 @@ void main()
 	float iq_time_scale = (lpf_order > 0)? radians(360) * center_frequency : 0;
 
 	/* NOTE: lerp along a line from one edge of the xdc to the other in the imaging plane */
-	vec3 delta     = edge1 / float(dec_data_dim.y);
-	vec3 xdc_start = xdc_origin.xyz;
-	xdc_start.y   += edge2.y / 2;
+	vec3 delta      = edge1 / float(dec_data_dim.y);
+	vec3 xdc_start  = xdc_origin.xyz;
+	xdc_start      += edge2 / 2;
 
 	vec3 starting_point = image_point - xdc_start;
 
