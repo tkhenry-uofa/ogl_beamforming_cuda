@@ -55,9 +55,11 @@ void main()
 	/* NOTE: offsets for storing the results in the output data */
 	uint out_off = dec_data_dim.x * dec_data_dim.y * acq + dec_data_dim.x * channel + time_sample;
 
-	uint ch_base_idx = (channel + channel_offset) / 4;
-	uint ch_sub_idx  = (channel + channel_offset) - ch_base_idx * 4;
-	uint rf_channel  = channel_mapping[ch_base_idx][ch_sub_idx];
+	/* NOTE: channel mapping is stored as u16s so we must do this to extract the final value */
+	uint ch_array_idx = ((channel + channel_offset) / 8);
+	uint ch_vec_idx   = ((channel + channel_offset) % 8) / 2;
+	uint ch_elem_lfs  = ((channel + channel_offset) & 1u) * 16;
+	uint rf_channel   = (channel_mapping[ch_array_idx][ch_vec_idx] << ch_elem_lfs) >> 16;
 
 	/* NOTE: stride is the number of samples between acquistions; off is the
 	 * index of the first acquisition for this channel and time sample  */

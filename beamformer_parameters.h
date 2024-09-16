@@ -13,7 +13,7 @@ enum compute_shaders {
 /* NOTE: This struct follows the OpenGL std140 layout. DO NOT modify unless you have
  * read and understood the rules, particulary with regards to _member alignment_ */
 typedef struct {
-	u32 channel_mapping[256];   /* Transducer Channel to Verasonics Channel */
+	u16 channel_mapping[512];   /* Transducer Channel to Verasonics Channel */
 	u32 uforces_channels[128];  /* Channels used for virtual UFORCES elements */
 	f32 lpf_coefficients[64];   /* Low Pass Filter Cofficients */
 	v4  xdc_origin;             /* [m] Corner of transducer being treated as origin */
