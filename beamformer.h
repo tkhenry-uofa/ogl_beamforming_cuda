@@ -36,13 +36,6 @@ typedef union {
 } v2;
 
 typedef union {
-	struct { f32 x, y, z; };
-	struct { f32 w, h, d; };
-	f32 E[3];
-	Vector3 rl;
-} v3;
-
-typedef union {
 	struct { f32 x, y, z, w; };
 	struct { f32 r, g, b, a; };
 	struct { v3 xyz; f32 _1; };
@@ -51,6 +44,12 @@ typedef union {
 	f32 E[4];
 	Vector4 rl;
 } v4;
+
+typedef union {
+	struct { v3 x, y, z; };
+	v3  c[3];
+	f32 E[9];
+} m3;
 
 typedef union {
 	struct { v2 pos, size; };
@@ -187,11 +186,13 @@ typedef struct {
 
 	uv4 dec_data_dim;
 	uv2 rf_raw_dim;
+
 	i32 out_data_tex_id;
 	i32 mip_view_tex_id;
 	i32 mips_level_id;
 	i32 volume_export_pass_id;
 	i32 volume_export_dim_offset_id;
+	i32 xdc_transform_id;
 } ComputeShaderCtx;
 
 typedef struct {

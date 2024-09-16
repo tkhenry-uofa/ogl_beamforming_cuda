@@ -103,6 +103,29 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glNamedBufferStorage(cs->hadamard_ssbo, hadamard_elements * sizeof(i32), hadamard, 0);
 }
 
+static m3
+observation_direction_to_xdc_space(v3 direction, BeamformerParameters *bp, u32 idx)
+{
+	/* TODO: multiple xdc support */
+	(void)idx;
+
+	v3 edge1      = sub_v3(bp->xdc_corner1.xyz, bp->xdc_origin.xyz);
+	v3 edge2      = sub_v3(bp->xdc_corner2.xyz, bp->xdc_origin.xyz);
+	v3 xdc_normal = cross(edge1, edge2);
+	xdc_normal.z  = ABS(xdc_normal.z);
+
+	v3 e1 = normalize_v3(sub_v3(xdc_normal, direction));
+	v3 e2 = {.y = 1};
+	v3 e3 = normalize_v3(cross(e2, e1));
+
+	m3 result = {
+		.c[0] = (v3){.x = e3.x, .y = e2.x, .z = e1.x},
+		.c[1] = (v3){.x = e3.y, .y = e2.y, .z = e1.y},
+		.c[2] = (v3){.x = e3.z, .y = e2.z, .z = e1.z},
+	};
+	return result;
+}
+
 static b32
 do_volume_computation_step(BeamformerCtx *ctx, enum compute_shaders shader)
 {
@@ -224,14 +247,20 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
 		glUniform3iv(csctx->volume_export_dim_offset_id, 1, (i32 []){0, 0, 0});
 		glUniform1i(csctx->volume_export_pass_id, 0);
-		glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
-		glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
-		glBindImageTexture(ctx->out_texture_unit, ctx->out_texture, 0, GL_TRUE, 0,
-		                   GL_WRITE_ONLY, GL_RG32F);
-		glUniform1i(csctx->out_data_tex_id, ctx->out_texture_unit);
-		glDispatchCompute(ORONE(ctx->out_data_dim.x / 32),
-		                  ctx->out_data_dim.y,
-		                  ORONE(ctx->out_data_dim.z / 32));
+
+		{
+			BeamformerParameters *bp = &ctx->params->raw;
+			m3 xdc_transform = observation_direction_to_xdc_space((v3){.z = 1}, bp, 0);
+			glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
+			glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
+			glBindImageTexture(ctx->out_texture_unit, ctx->out_texture, 0, GL_TRUE, 0,
+			                   GL_WRITE_ONLY, GL_RG32F);
+			glUniform1i(csctx->out_data_tex_id, ctx->out_texture_unit);
+			glUniformMatrix3fv(csctx->xdc_transform_id, 1, GL_FALSE, xdc_transform.E);
+			glDispatchCompute(ORONE(ctx->out_data_dim.x / 32),
+			                  ctx->out_data_dim.y,
+			                  ORONE(ctx->out_data_dim.z / 32));
+		}
 		break;
 	default: ASSERT(0);
 	}

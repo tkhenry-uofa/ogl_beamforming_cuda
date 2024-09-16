@@ -64,6 +64,12 @@ typedef union {
 	u32 E[4];
 } uv4;
 
+typedef union {
+	struct { f32 x, y, z; };
+	struct { f32 w, h, d; };
+	f32 E[3];
+} v3;
+
 #include "util.c"
 
 #endif /* _UTIL_H_ */

@@ -35,6 +35,7 @@ layout(r32f,  location = 2) uniform writeonly image3D u_out_volume_tex;
 
 layout(location = 3) uniform int   u_volume_export_pass;
 layout(location = 4) uniform ivec3 u_volume_export_dim_offset;
+layout(location = 5) uniform mat3  u_xdc_transform;
 
 #define C_SPLINE 0.5
 
@@ -73,26 +74,32 @@ vec2 cubic(uint ridx, float x)
 }
 #endif
 
-void main()
+vec3 calc_image_point(vec3 voxel)
 {
-	vec3  voxel        = vec3(gl_GlobalInvocationID.xyz)  + vec3(u_volume_export_dim_offset);
-	ivec3 out_coord    = ivec3(gl_GlobalInvocationID.xyz) + u_volume_export_dim_offset;
 	ivec3 out_data_dim;
-
 	if (u_volume_export_pass == 0) out_data_dim = imageSize(u_out_data_tex);
 	else                           out_data_dim = imageSize(u_out_volume_tex);
 
-	/* NOTE: Convert pixel to physical coordinates */
-	vec4 xdc_size      = xdc_corner1 + xdc_corner2 - xdc_origin;
-	vec3 edge1         = xdc_corner1.xyz - xdc_origin.xyz;
-	vec3 edge2         = xdc_corner2.xyz - xdc_origin.xyz;
-	vec3 xdc_normal    = cross(edge2, edge1);
-	xdc_normal        /= length(xdc_normal);
 	vec4 output_size   = abs(output_max_coord - output_min_coord);
 	vec3 image_point   = output_min_coord.xyz + voxel * output_size.xyz / out_data_dim.xyz;
 
 	if (u_volume_export_pass == 0)
 		image_point.y = off_axis_pos;
+
+	/* NOTE: move the image point into xdc space */
+	image_point = u_xdc_transform * image_point;
+	return image_point;
+}
+
+void main()
+{
+	vec3  voxel        = vec3(gl_GlobalInvocationID.xyz)  + vec3(u_volume_export_dim_offset);
+	ivec3 out_coord    = ivec3(gl_GlobalInvocationID.xyz) + u_volume_export_dim_offset;
+
+	/* NOTE: Convert pixel to physical coordinates */
+	vec3 edge1         = xdc_corner1.xyz - xdc_origin.xyz;
+	vec3 edge2         = xdc_corner2.xyz - xdc_origin.xyz;
+	vec3 image_point   = calc_image_point(voxel);
 
 	/* NOTE: used for constant F# dynamic receive apodization. This is implemented as:
 	 *
@@ -101,7 +108,7 @@ void main()
 	 *                  \        |z_e - z_i|/
 	 *
 	 * where x,z_e are transducer element positions and x,z_i are image positions. */
-	float f_num    = output_size.z / output_size.x;
+	float f_num    = 0.5;
 	float apod_arg = f_num * 0.5 * radians(360) / abs(image_point.z);
 
 	/* NOTE: for I-Q data phase correction */

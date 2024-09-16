@@ -123,6 +123,8 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 	                                                          "u_volume_export_pass");
 	csctx->volume_export_dim_offset_id = glGetUniformLocation(csctx->programs[CS_HERCULES],
 	                                                         "u_volume_export_dim_offset");
+	csctx->xdc_transform_id            = glGetUniformLocation(csctx->programs[CS_UFORCES],
+	                                                          "u_xdc_transform");
 
 	csctx->out_data_tex_id = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_out_data_tex");
 	csctx->mip_view_tex_id = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_view_tex");

@@ -64,6 +64,43 @@ round_down_power_of_2(u32 a)
 	return result;
 }
 
+static v3
+cross(v3 a, v3 b)
+{
+	v3 result = {
+		.x = a.y * b.z - a.z * b.y,
+		.y = a.z * b.x - a.x * b.z,
+		.z = a.x * b.y - a.y * b.x,
+	};
+	return result;
+}
+
+static v3
+sub_v3(v3 a, v3 b)
+{
+	v3 result = {
+		.x = a.x - b.x,
+		.y = a.y - b.y,
+		.z = a.z - b.z,
+	};
+	return result;
+}
+
+static f32
+length_v3(v3 a)
+{
+	f32 result = a.x * a.x + a.y * a.y + a.z * a.z;
+	return result;
+}
+
+static v3
+normalize_v3(v3 a)
+{
+	f32 length = length_v3(a);
+	v3 result = {.x = a.x / length, .y = a.y / length, .z = a.z / length};
+	return result;
+}
+
 static void
 fill_hadamard(i32 *m, u32 dim)
 {
