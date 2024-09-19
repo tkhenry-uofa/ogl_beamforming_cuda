@@ -10,14 +10,15 @@ layout(std140, binding = 0) uniform parameters {
 	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
 	vec4  lpf_coefficients[16];   /* Low Pass Filter Cofficients */
-	vec4  xdc_origin;             /* [m] Corner of transducer being treated as origin */
-	vec4  xdc_corner1;            /* [m] Corner of transducer along first axis (arbitrary) */
-	vec4  xdc_corner2;            /* [m] Corner of transducer along second axis (arbitrary) */
+	vec4  xdc_origin[4];          /* [m] Corner of transducer being treated as origin */
+	vec4  xdc_corner1[4];         /* [m] Corner of transducer along first axis (arbitrary) */
+	vec4  xdc_corner2[4];         /* [m] Corner of transducer along second axis (arbitrary) */
 	uvec4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
 	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
 	vec4  output_min_coord;       /* [m] Top left corner of output region */
 	vec4  output_max_coord;       /* [m] Bottom right corner of output region */
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */
+	uint  array_count;            /* Number of Arrays (4 max) */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	uint  lpf_order;              /* Order of Low Pass Filter */
 	float speed_of_sound;         /* [m/s] */
@@ -31,11 +32,11 @@ layout(std140, binding = 0) uniform parameters {
 };
 
 layout(rg32f, location = 1) writeonly uniform image3D u_out_data_tex;
-layout(r32f,  location = 2) uniform writeonly image3D u_out_volume_tex;
 
-layout(location = 3) uniform int   u_volume_export_pass;
-layout(location = 4) uniform ivec3 u_volume_export_dim_offset;
-layout(location = 5) uniform mat3  u_xdc_transform;
+layout(location = 2) uniform int   u_volume_export_pass;
+layout(location = 3) uniform ivec3 u_volume_export_dim_offset;
+layout(location = 4) uniform mat3  u_xdc_transform;
+layout(location = 5) uniform int   u_xdc_index;
 
 #define C_SPLINE 0.5
 
@@ -91,8 +92,8 @@ void main()
 	ivec3 out_coord    = ivec3(gl_GlobalInvocationID);
 
 	/* NOTE: Convert voxel to physical coordinates */
-	vec3 edge1         = xdc_corner1.xyz - xdc_origin.xyz;
-	vec3 edge2         = xdc_corner2.xyz - xdc_origin.xyz;
+	vec3 edge1         = xdc_corner1[u_xdc_index].xyz - xdc_origin[u_xdc_index].xyz;
+	vec3 edge2         = xdc_corner2[u_xdc_index].xyz - xdc_origin[u_xdc_index].xyz;
 	vec3 image_point   = calc_image_point(voxel);
 
 	/* NOTE: used for constant F# dynamic receive apodization. This is implemented as:
@@ -110,7 +111,7 @@ void main()
 
 	/* NOTE: lerp along a line from one edge of the xdc to the other in the imaging plane */
 	vec3 delta      = edge1 / float(dec_data_dim.y);
-	vec3 xdc_start  = xdc_origin.xyz;
+	vec3 xdc_start  = xdc_origin[u_xdc_index].xyz;
 	xdc_start      += edge2 / 2;
 
 	vec3 starting_point = image_point - xdc_start;
@@ -119,8 +120,10 @@ void main()
 	float time_correction = time_offset + lpf_order / sampling_frequency;
 
 	vec2 sum   = vec2(0);
+	/* NOTE: skip over channels corresponding to other arrays */
+	uint ridx  = u_xdc_index * (dec_data_dim.y / array_count) * dec_data_dim.x * dec_data_dim.z;
 	/* NOTE: skip first acquisition in uforces since its garbage */
-	uint ridx  = dec_data_dim.y * dec_data_dim.x * uforces;
+	ridx      += dec_data_dim.y * dec_data_dim.x * uforces;
 	for (uint i = uforces; i < dec_data_dim.z; i++) {
 		uint base_idx = (i - uforces) / 4;
 		uint sub_idx  = (i - uforces) % 4;

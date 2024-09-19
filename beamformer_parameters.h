@@ -6,7 +6,8 @@ enum compute_shaders {
 	CS_HADAMARD              = 3,
 	CS_HERCULES              = 4,
 	CS_MIN_MAX               = 5,
-	CS_UFORCES               = 6,
+	CS_SUM                   = 6,
+	CS_UFORCES               = 7,
 	CS_LAST
 };
 
@@ -16,14 +17,15 @@ typedef struct {
 	u16 channel_mapping[512];   /* Transducer Channel to Verasonics Channel */
 	u32 uforces_channels[128];  /* Channels used for virtual UFORCES elements */
 	f32 lpf_coefficients[64];   /* Low Pass Filter Cofficients */
-	v4  xdc_origin;             /* [m] Corner of transducer being treated as origin */
-	v4  xdc_corner1;            /* [m] Corner of transducer along first axis (arbitrary) */
-	v4  xdc_corner2;            /* [m] Corner of transducer along second axis (arbitrary) */
+	v4  xdc_origin[4];          /* [m] Corner of transducer being treated as origin */
+	v4  xdc_corner1[4];         /* [m] Corner of transducer along first axis (arbitrary) */
+	v4  xdc_corner2[4];         /* [m] Corner of transducer along second axis (arbitrary) */
 	uv4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
 	uv4 output_points;          /* Width * Height * Depth; last element ignored */
 	v4  output_min_coordinate;  /* [m] Back-Top-Left corner of output region (w ignored) */
 	v4  output_max_coordinate;  /* [m] Front-Bottom-Right corner of output region (w ignored)*/
 	uv2 rf_raw_dim;             /* Raw Data Dimensions */
+	u32 array_count;            /* Number of Arrays (4 max) */
 	u32 channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	u32 lpf_order;              /* Order of Low Pass Filter */
 	f32 speed_of_sound;         /* [m/s] */

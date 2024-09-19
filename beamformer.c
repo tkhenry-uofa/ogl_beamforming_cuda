@@ -2,7 +2,6 @@
 #include "beamformer.h"
 #include "ui.c"
 
-
 static size
 decoded_data_size(ComputeShaderCtx *cs)
 {
@@ -27,11 +26,13 @@ alloc_output_image(BeamformerCtx *ctx)
 	/* TODO: does this actually matter or is 0 fine? */
 	ctx->out_texture_unit = 0;
 	ctx->out_texture_mips = _tzcnt_u32(max_dim) + 1;
-	glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
-	glDeleteTextures(1, &ctx->out_texture);
-	glGenTextures(1, &ctx->out_texture);
-	glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
-	glTexStorage3D(GL_TEXTURE_3D, ctx->out_texture_mips, GL_RG32F, odim.x, odim.y, odim.z);
+	glActiveTexture(GL_TEXTURE0);
+	glDeleteTextures(ARRAY_COUNT(ctx->out_textures), ctx->out_textures);
+	glGenTextures(ARRAY_COUNT(ctx->out_textures), ctx->out_textures);
+	for (u32 i = 0; i < ARRAY_COUNT(ctx->out_textures); i++) {
+		glBindTexture(GL_TEXTURE_3D, ctx->out_textures[i]);
+		glTexStorage3D(GL_TEXTURE_3D, ctx->out_texture_mips, GL_RG32F, odim.x, odim.y, odim.z);
+	}
 
 	UnloadRenderTexture(ctx->fsctx.output);
 	/* TODO: select odim.x vs odim.y */
@@ -104,13 +105,10 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 }
 
 static m3
-observation_direction_to_xdc_space(v3 direction, BeamformerParameters *bp, u32 idx)
+observation_direction_to_xdc_space(v3 direction, v3 origin, v3 corner1, v3 corner2)
 {
-	/* TODO: multiple xdc support */
-	(void)idx;
-
-	v3 edge1      = sub_v3(bp->xdc_corner1.xyz, bp->xdc_origin.xyz);
-	v3 edge2      = sub_v3(bp->xdc_corner2.xyz, bp->xdc_origin.xyz);
+	v3 edge1      = sub_v3(corner1, origin);
+	v3 edge2      = sub_v3(corner2, origin);
 	v3 xdc_normal = cross(edge1, edge2);
 	xdc_normal.z  = ABS(xdc_normal.z);
 
@@ -148,7 +146,7 @@ do_volume_computation_step(BeamformerCtx *ctx, enum compute_shaders shader)
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_3D, e->volume_texture);
 	glBindImageTexture(0, e->volume_texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32F);
-	glUniform1i(e->volume_texture_id, 0);
+	glUniform1i(cs->out_data_tex_id, 0);
 	glUniform1i(cs->volume_export_pass_id, 1);
 
 	/* NOTE: We must tile this otherwise GL will kill us for taking too long */
@@ -174,6 +172,7 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 	ComputeShaderCtx *csctx = &ctx->csctx;
 	uv2  rf_raw_dim         = ctx->params->raw.rf_raw_dim;
 	size rf_raw_size        = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
+	u32  sum_count          = ARRAY_COUNT(ctx->out_textures); /* TODO: ctx->params->raw.frame_average_count */
 
 	glBeginQuery(GL_TIME_ELAPSED, csctx->timer_ids[csctx->timer_index][shader]);
 
@@ -212,16 +211,15 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		                  ORONE(csctx->dec_data_dim.z));
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
-	case CS_MIN_MAX:
-		glBindImageTexture(ctx->out_texture_unit, ctx->out_texture, 0, GL_FALSE, 0,
+	case CS_MIN_MAX: {
+		u32 texture = ctx->out_textures[ctx->out_texture_index];
+		glBindImageTexture(ctx->out_texture_unit, texture, 0, GL_FALSE, 0,
 		                   GL_WRITE_ONLY, GL_RG32F);
 		glUniform1i(csctx->out_data_tex_id, ctx->out_texture_unit);
 		for (u32 i = 1; i < ctx->out_texture_mips; i++) {
 			u32 otu = ctx->out_texture_unit;
-			glBindImageTexture(otu + 1, ctx->out_texture, i - 1,
-			                   GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
-			glBindImageTexture(otu + 2, ctx->out_texture, i,
-			                   GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+			glBindImageTexture(otu + 1, texture, i - 1, GL_FALSE, 0, GL_READ_ONLY,  GL_RG32F);
+			glBindImageTexture(otu + 2, texture, i - 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
 			glUniform1i(csctx->out_data_tex_id, otu + 1);
 			glUniform1i(csctx->mip_view_tex_id, otu + 2);
 			glUniform1i(csctx->mips_level_id, i);
@@ -232,7 +230,7 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 			glDispatchCompute(ORONE(width / 32), ORONE(height), ORONE(depth / 32));
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
-		break;
+	} break;
 	case CS_HERCULES:
 	case CS_UFORCES:
 		if (ctx->export_ctx.state & ES_START) {
@@ -248,20 +246,50 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		glUniform3iv(csctx->volume_export_dim_offset_id, 1, (i32 []){0, 0, 0});
 		glUniform1i(csctx->volume_export_pass_id, 0);
 
-		{
+		glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
+		for (u32 i = 0; i < ctx->params->raw.array_count; i++) {
 			BeamformerParameters *bp = &ctx->params->raw;
-			m3 xdc_transform = observation_direction_to_xdc_space((v3){.z = 1}, bp, 0);
-			glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
-			glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
-			glBindImageTexture(ctx->out_texture_unit, ctx->out_texture, 0, GL_TRUE, 0,
+			u32 tex_idx = (ctx->out_texture_index + i) % ARRAY_COUNT(ctx->out_textures);
+			u32 texture = ctx->out_textures[tex_idx];
+			m3 xdc_transform = observation_direction_to_xdc_space((v3){.z = 1},
+			                                                      bp->xdc_origin[i].xyz,
+			                                                      bp->xdc_corner1[i].xyz,
+			                                                      bp->xdc_corner2[i].xyz);
+			glBindTexture(GL_TEXTURE_3D, texture);
+			glBindImageTexture(ctx->out_texture_unit, texture, 0, GL_TRUE, 0,
 			                   GL_WRITE_ONLY, GL_RG32F);
 			glUniform1i(csctx->out_data_tex_id, ctx->out_texture_unit);
+			glUniform1i(csctx->xdc_index_id, i);
 			glUniformMatrix3fv(csctx->xdc_transform_id, 1, GL_FALSE, xdc_transform.E);
 			glDispatchCompute(ORONE(ctx->out_data_dim.x / 32),
 			                  ctx->out_data_dim.y,
 			                  ORONE(ctx->out_data_dim.z / 32));
 		}
-		break;
+		if (ctx->params->raw.array_count == 1)
+			break;
+		/* TODO: we can't use this as a ring buffer yet since we need to keep a fixed
+		 * index for output display */
+		//ctx->out_texture_index = (ctx->out_texture_index + ctx->params->raw.array_count)
+		//                         % ARRAY_COUNT(ctx->out_textures);
+		sum_count = ctx->params->raw.array_count;
+		/* NOTE: FALLTHROUGH; sum implicit when beamforming mulitple arrays */
+	case CS_SUM: {
+		u32 otu = 0;
+		/* TODO: extra "display" texture to always sum into */
+		u32 out_texture = ctx->out_textures[ctx->out_texture_index];
+		glBindImageTexture(otu, out_texture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RG32F);
+		glUniform1i(csctx->sum_out_img_id, otu);
+		for (u32 i = ctx->out_texture_index + 1; i < sum_count; i++) {
+			u32 tex_idx = i % ARRAY_COUNT(ctx->out_textures);
+			u32 in_texture = ctx->out_textures[tex_idx];
+			glBindImageTexture(otu + 1, in_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+			glUniform1i(csctx->sum_in_img_id, otu + 1);
+			glDispatchCompute(ORONE(ctx->out_data_dim.x / 32),
+			                  ctx->out_data_dim.y,
+			                  ORONE(ctx->out_data_dim.z / 32));
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		}
+	} break;
 	default: ASSERT(0);
 	}
 
@@ -416,7 +444,8 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			FragmentShaderCtx *fs = &ctx->fsctx;
 			glUseProgram(fs->shader.id);
 			glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
-			glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
+			/* TODO: seperate display texture */
+			glBindTexture(GL_TEXTURE_3D, ctx->out_textures[ctx->out_texture_index]);
 			glUniform1i(fs->out_data_tex_id, ctx->out_texture_unit);
 			glUniform1f(fs->db_cutoff_id, fs->db);
 			DrawTexture(fs->output.texture, 0, 0, WHITE);

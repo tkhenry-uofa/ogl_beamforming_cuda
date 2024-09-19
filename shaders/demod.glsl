@@ -14,14 +14,15 @@ layout(std140, binding = 0) uniform parameters {
 	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
 	vec4  lpf_coefficients[16];   /* Low Pass Filter Cofficients */
-	vec4  xdc_origin;             /* [m] Corner of transducer being treated as origin */
-	vec4  xdc_corner1;            /* [m] Corner of transducer along first axis (arbitrary) */
-	vec4  xdc_corner2;            /* [m] Corner of transducer along second axis (arbitrary) */
+	vec4  xdc_origin[4];          /* [m] Corner of transducer being treated as origin */
+	vec4  xdc_corner1[4];         /* [m] Corner of transducer along first axis (arbitrary) */
+	vec4  xdc_corner2[4];         /* [m] Corner of transducer along second axis (arbitrary) */
 	uvec4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
 	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
 	vec4  output_min_coord;       /* [m] Top left corner of output region */
 	vec4  output_max_coord;       /* [m] Bottom right corner of output region */
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */
+	uint  array_count;            /* Number of Arrays (4 max) */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	uint  lpf_order;              /* Order of Low Pass Filter */
 	float speed_of_sound;         /* [m/s] */

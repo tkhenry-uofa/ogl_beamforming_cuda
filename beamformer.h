@@ -193,6 +193,10 @@ typedef struct {
 	i32 volume_export_pass_id;
 	i32 volume_export_dim_offset_id;
 	i32 xdc_transform_id;
+	i32 xdc_index_id;
+
+	i32 sum_out_img_id;
+	i32 sum_in_img_id;
 } ComputeShaderCtx;
 
 typedef struct {
@@ -215,9 +219,7 @@ typedef struct {
 	u32   timer_ids[2];
 	f32   runtime;
 	u32   volume_texture;
-	i32   volume_texture_id;
 	u32   rf_data_ssbo;
-	u32   output_ssbo;
 	u32   state;
 	u32   dispatch_index;
 } ExportCtx;
@@ -236,7 +238,10 @@ typedef struct {
 	InputState is;
 
 	uv4 out_data_dim;
-	u32 out_texture;
+	/* NOTE: circular buffer of output textures; useful for multi array or averaging */
+	/* TODO: support averaging for multi array imaging */
+	u32 out_textures[4];
+	u32 out_texture_index;
 	u32 out_texture_unit;
 	u32 out_texture_mips;
 

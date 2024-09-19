@@ -6,6 +6,7 @@ static char *compute_shader_paths[CS_LAST] = {
 	[CS_HERCULES] = "shaders/hercules.glsl",
 	[CS_DEMOD]    = "shaders/demod.glsl",
 	[CS_MIN_MAX]  = "shaders/min_max.glsl",
+	[CS_SUM]      = "shaders/sum.glsl",
 	[CS_UFORCES]  = "shaders/uforces.glsl",
 };
 
@@ -117,18 +118,21 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		glDeleteShader(shader_id);
 	}
 
-	ctx->export_ctx.volume_texture_id  = glGetUniformLocation(csctx->programs[CS_HERCULES],
-	                                                          "u_out_volume_tex");
 	csctx->volume_export_pass_id       = glGetUniformLocation(csctx->programs[CS_HERCULES],
 	                                                          "u_volume_export_pass");
 	csctx->volume_export_dim_offset_id = glGetUniformLocation(csctx->programs[CS_HERCULES],
 	                                                         "u_volume_export_dim_offset");
 	csctx->xdc_transform_id            = glGetUniformLocation(csctx->programs[CS_UFORCES],
 	                                                          "u_xdc_transform");
+	csctx->xdc_index_id                = glGetUniformLocation(csctx->programs[CS_UFORCES],
+	                                                          "u_xdc_index");
 
 	csctx->out_data_tex_id = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_out_data_tex");
 	csctx->mip_view_tex_id = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_view_tex");
 	csctx->mips_level_id   = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_map");
+
+	csctx->sum_out_img_id = glGetUniformLocation(csctx->programs[CS_SUM], "u_sum_out_img");
+	csctx->sum_in_img_id  = glGetUniformLocation(csctx->programs[CS_SUM], "u_sum_in_img");
 
 	Shader updated_fs = LoadShader(NULL, "shaders/render.glsl");
 	if (updated_fs.id != rlGetShaderIdDefault()) {

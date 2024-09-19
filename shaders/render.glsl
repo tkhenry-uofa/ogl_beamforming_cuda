@@ -25,7 +25,7 @@ void main()
 	vec2 min_max = texelFetch(u_out_data_tex, ivec3(0), textureQueryLevels(u_out_data_tex) - 1).xy;
 
 	ivec3 smp_coord = ivec3(coord.x, 0, coord.y);
-	float smp       = texelFetch(u_out_data_tex, smp_coord, 0).x;
+	float smp       = length(texelFetch(u_out_data_tex, smp_coord, 0).xy);
 	float absmax    = max(abs(min_max.y), abs(min_max.x));
 
 	smp = 20 * log(abs(smp) / absmax) / log(10);
