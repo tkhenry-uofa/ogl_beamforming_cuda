@@ -141,22 +141,20 @@ bmv_store_value(BeamformerCtx *ctx, BPModifiableValue *bmv, f32 new_val, b32 fro
 		f32 *value = bmv->value;
 		if (new_val / bmv->scale == *value)
 			return;
-		*value = new_val / bmv->scale;
-		CLAMP(*value, bmv->flimits.x, bmv->flimits.y);
+		*value = CLAMP(new_val / bmv->scale, bmv->flimits.x, bmv->flimits.y);
 	} else if (bmv->flags & MV_INT && bmv->flags & MV_POWER_OF_TWO) {
 		i32 *value = bmv->value;
 		if (new_val == *value)
 			return;
 		if (from_scroll && new_val > *value) *value <<= 1;
 		else                                 *value = round_down_power_of_2(new_val);
-		CLAMP(*value, bmv->ilimits.x, bmv->ilimits.y);
+		*value = CLAMP(*value, bmv->ilimits.x, bmv->ilimits.y);
 	} else {
 		ASSERT(bmv->flags & MV_INT);
 		i32 *value = bmv->value;
 		if (new_val / bmv->scale == *value)
 			return;
-		*value = new_val / bmv->scale;
-		CLAMP(*value, bmv->ilimits.x, bmv->ilimits.y);
+		*value = CLAMP(new_val / bmv->scale, bmv->ilimits.x, bmv->ilimits.y);
 	}
 	if (bmv->flags & MV_CAUSES_COMPUTE) {
 		ctx->flags |= DO_COMPUTE;
@@ -310,8 +308,7 @@ set_text_input_idx(BeamformerCtx *ctx, BPModifiableValue bmv, Rect r, v2 mouse)
 	ctx->is.buf_len = ibuf.len;
 
 	ASSERT(CheckCollisionPointRec(mouse.rl, r.rl));
-	ctx->is.cursor_hover_p = (mouse.x - r.pos.x) / r.size.w;
-	CLAMP01(ctx->is.cursor_hover_p);
+	ctx->is.cursor_hover_p = CLAMP01((mouse.x - r.pos.x) / r.size.w);
 }
 
 /* NOTE: This is kinda sucks no matter how you spin it. If we want the values to be
@@ -366,7 +363,7 @@ do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx
 	b32 collides = CheckCollisionPointRec(mouse.rl, edit_rect.rl);
 	if (collides && !bmv_active) *hover_t += TEXT_HOVER_SPEED * ctx->dt;
 	else                         *hover_t -= TEXT_HOVER_SPEED * ctx->dt;
-	CLAMP01(*hover_t);
+	*hover_t = CLAMP01(*hover_t);
 
 	if (collides) {
 		f32 mouse_scroll = GetMouseWheelMove();
@@ -422,7 +419,7 @@ do_text_toggle_listing(s8 prefix, s8 text0, s8 text1, b32 toggle, BPModifiableVa
 	b32 collides = CheckCollisionPointRec(mouse.rl, edit_rect.rl);
 	if (collides) *hover_t += TEXT_HOVER_SPEED * ctx->dt;
 	else          *hover_t -= TEXT_HOVER_SPEED * ctx->dt;
-	CLAMP01(*hover_t);
+	*hover_t = CLAMP01(*hover_t);
 
 	b32 pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
 	if (collides && (pressed || GetMouseWheelMove())) {
@@ -450,7 +447,7 @@ do_text_button(BeamformerCtx *ctx, s8 text, Rect r, v2 mouse, f32 *hover_t)
 
 	if (hovered) *hover_t += TEXT_HOVER_SPEED * ctx->dt;
 	else         *hover_t -= TEXT_HOVER_SPEED * ctx->dt;
-	CLAMP01(*hover_t);
+	*hover_t = CLAMP01(*hover_t);
 
 	f32 param  = lerp(1, 1.04, *hover_t);
 	v2  bscale = (v2){
@@ -639,14 +636,14 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 		pos.y += 120 * ctx->dt * scale.y;
 
 		if (pos.x > (ws.w - ts[txt_idx].x) || pos.x < 0) {
-			txt_idx = !txt_idx;
-			CLAMP(pos.x, 0, ws.w - ts[txt_idx].x);
+			txt_idx  = !txt_idx;
+			pos.x    = CLAMP(pos.x, 0, ws.w - ts[txt_idx].x);
 			scale.x *= -1.0;
 		}
 
 		if (pos.y > (ws.h - ts[txt_idx].y) || pos.y < 0) {
-			txt_idx = !txt_idx;
-			CLAMP(pos.y, 0, ws.h - ts[txt_idx].y);
+			txt_idx  = !txt_idx;
+			pos.y    = CLAMP(pos.y, 0, ws.h - ts[txt_idx].y);
 			scale.y *= -1.0;
 		}
 
@@ -713,8 +710,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 			/* NOTE: check mouse wheel for adjusting dynamic range of image */
 			if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
 				f32 delta = GetMouseWheelMove();
-				ctx->fsctx.db += delta;
-				CLAMP(ctx->fsctx.db, -120, 0);
+				ctx->fsctx.db = CLAMP(ctx->fsctx.db + delta, -120, 0);
 				if (delta) ctx->flags |= GEN_MIPMAPS;
 			}
 
@@ -756,7 +752,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 				} else {
 					txt_colour_t[i] -= TEXT_HOVER_SPEED * ctx->dt;
 				}
-				CLAMP01(txt_colour_t[i]);
+				txt_colour_t[i] = CLAMP01(txt_colour_t[i]);
 
 				f32 mm     = bp->output_min_coordinate.E[coord_idx] * 1e3;
 				f32 mm_inc = inc * output_dim.E[i] * 1e3 / vr.size.E[i];
