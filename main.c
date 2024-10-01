@@ -127,12 +127,9 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 	csctx->xdc_index_id                = glGetUniformLocation(csctx->programs[CS_UFORCES],
 	                                                          "u_xdc_index");
 
-	csctx->out_data_tex_id = glGetUniformLocation(csctx->programs[CS_UFORCES], "u_out_data_tex");
-	csctx->mip_view_tex_id = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_view_tex");
 	csctx->mips_level_id   = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_map");
 
-	csctx->sum_out_img_id = glGetUniformLocation(csctx->programs[CS_SUM], "u_sum_out_img");
-	csctx->sum_in_img_id  = glGetUniformLocation(csctx->programs[CS_SUM], "u_sum_in_img");
+	csctx->sum_prescale_id = glGetUniformLocation(csctx->programs[CS_SUM], "u_prescale");
 
 	Shader updated_fs = LoadShader(NULL, "shaders/render.glsl");
 	if (updated_fs.id != rlGetShaderIdDefault()) {

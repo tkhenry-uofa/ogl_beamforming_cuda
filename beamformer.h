@@ -164,6 +164,14 @@ typedef struct {
 	GLsync timer_fences[MAX_FRAMES_IN_FLIGHT];
 	f32    last_frame_time[CS_LAST];
 
+	/* NOTE: circular buffer of textures for averaging.
+	 * Only allocated up to configured frame average count */
+	u32 sum_textures[16];
+	u32 sum_texture_index;
+
+	/* NOTE: array output textures. Only allocated up to configured array count */
+	u32 array_textures[4];
+
 	/* NOTE: the raw_data_ssbo is allocated at 3x the required size to allow for tiled
 	 * transfers when the GPU is running behind the CPU. It is not mapped on NVIDIA because
 	 * their drivers _will_ store the buffer in the system memory. This doesn't happen
@@ -187,16 +195,13 @@ typedef struct {
 	uv4 dec_data_dim;
 	uv2 rf_raw_dim;
 
-	i32 out_data_tex_id;
-	i32 mip_view_tex_id;
 	i32 mips_level_id;
 	i32 volume_export_pass_id;
 	i32 volume_export_dim_offset_id;
 	i32 xdc_transform_id;
 	i32 xdc_index_id;
 
-	i32 sum_out_img_id;
-	i32 sum_in_img_id;
+	i32 sum_prescale_id;
 } ComputeShaderCtx;
 
 typedef struct {
@@ -238,10 +243,7 @@ typedef struct {
 	InputState is;
 
 	uv4 out_data_dim;
-	/* NOTE: circular buffer of output textures; useful for multi array or averaging */
-	/* TODO: support averaging for multi array imaging */
-	u32 out_textures[4];
-	u32 out_texture_index;
+	u32 out_texture;
 	u32 out_texture_unit;
 	u32 out_texture_mips;
 

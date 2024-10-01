@@ -14,7 +14,7 @@ layout(std140, binding = 0) uniform parameters {
 	vec4  xdc_corner1[4];         /* [m] Corner of transducer along first axis (arbitrary) */
 	vec4  xdc_corner2[4];         /* [m] Corner of transducer along second axis (arbitrary) */
 	uvec4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
-	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
+	uvec4 output_points;          /* Width * Height * Depth * (Frame Average Count) */
 	vec4  output_min_coord;       /* [m] Top left corner of output region */
 	vec4  output_max_coord;       /* [m] Bottom right corner of output region */
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */
@@ -31,7 +31,7 @@ layout(std140, binding = 0) uniform parameters {
 	int   beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 };
 
-layout(rg32f, location = 1) uniform writeonly image3D u_out_data_tex;
+layout(rg32f, binding = 0) writeonly uniform image3D u_out_data_tex;
 
 layout(location = 2) uniform int   u_volume_export_pass;
 layout(location = 3) uniform ivec3 u_volume_export_dim_offset;
@@ -94,7 +94,7 @@ void main()
 	vec3  voxel        = vec3(gl_GlobalInvocationID.xyz)  + vec3(u_volume_export_dim_offset);
 	ivec3 out_coord    = ivec3(gl_GlobalInvocationID.xyz) + u_volume_export_dim_offset;
 
-	/* NOTE: Convert pixel to physical coordinates */
+	/* NOTE: Convert voxel to physical coordinates */
 	vec3 edge1         = xdc_corner1[u_xdc_index].xyz - xdc_origin[u_xdc_index].xyz;
 	vec3 edge2         = xdc_corner2[u_xdc_index].xyz - xdc_origin[u_xdc_index].xyz;
 	vec3 image_point   = calc_image_point(voxel);
@@ -167,6 +167,5 @@ void main()
 		rdist[direction]      = starting_point[direction];
 		rdist[direction ^ 1] -= delta[direction ^ 1];
 	}
-	float val = length(sum);
-	imageStore(u_out_data_tex, out_coord, vec4(val));
+	imageStore(u_out_data_tex, out_coord, vec4(length(sum)));
 }

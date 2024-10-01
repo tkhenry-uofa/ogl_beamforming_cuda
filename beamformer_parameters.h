@@ -21,7 +21,7 @@ typedef struct {
 	v4  xdc_corner1[4];         /* [m] Corner of transducer along first axis (arbitrary) */
 	v4  xdc_corner2[4];         /* [m] Corner of transducer along second axis (arbitrary) */
 	uv4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
-	uv4 output_points;          /* Width * Height * Depth; last element ignored */
+	uv4 output_points;          /* Width * Height * Depth * (Frame Average Count) */
 	v4  output_min_coordinate;  /* [m] Back-Top-Left corner of output region (w ignored) */
 	v4  output_max_coordinate;  /* [m] Front-Bottom-Right corner of output region (w ignored)*/
 	uv2 rf_raw_dim;             /* Raw Data Dimensions */
@@ -36,4 +36,5 @@ typedef struct {
 	u32 uforces;                /* mode is UFORCES (1) or FORCES (0) */
 	f32 off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */
 	i32 beamform_plane;         /* Plane to Beamform in 2D HERCULES */
+	f32 _pad[3];
 } BeamformerParameters;

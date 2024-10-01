@@ -18,7 +18,7 @@ layout(std140, binding = 0) uniform parameters {
 	vec4  xdc_corner1[4];         /* [m] Corner of transducer along first axis (arbitrary) */
 	vec4  xdc_corner2[4];         /* [m] Corner of transducer along second axis (arbitrary) */
 	uvec4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
-	uvec4 output_points;          /* Width * Height * Depth; last element ignored */
+	uvec4 output_points;          /* Width * Height * Depth * (Frame Average Count) */
 	vec4  output_min_coord;       /* [m] Top left corner of output region */
 	vec4  output_max_coord;       /* [m] Bottom right corner of output region */
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */
