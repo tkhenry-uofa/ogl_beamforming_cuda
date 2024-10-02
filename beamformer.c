@@ -184,6 +184,9 @@ do_volume_computation_step(BeamformerCtx *ctx, enum compute_shaders shader)
 static void
 do_sum_shader(ComputeShaderCtx *cs, u32 *in_textures, u32 in_texture_count, u32 out_texture, uv4 out_data_dim)
 {
+	/* NOTE: zero output before summing */
+	glClearTexImage(out_texture, 0, GL_RED, GL_FLOAT, 0);
+
 	glBindImageTexture(0, out_texture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RG32F);
 	glUniform1f(cs->sum_prescale_id, 1 / (f32)in_texture_count);
 	for (u32 i = 0; i < in_texture_count; i++) {
