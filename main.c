@@ -58,6 +58,55 @@ gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, co
 	fputc('\n', stderr);
 }
 
+static void
+get_gl_params(GLParams *gl)
+{
+	const u8 *vendor = glGetString(GL_VENDOR);
+	if (!vendor)
+		die("Failed to determine GL Vendor\n");
+	switch (vendor[0]) {
+	case 'A': gl->vendor_id = GL_VENDOR_AMD;          break;
+	case 'I': gl->vendor_id = GL_VENDOR_INTEL;        break;
+	case 'N': gl->vendor_id = GL_VENDOR_NVIDIA;       break;
+	default:  die("Unknown GL Vendor: %s\n", vendor); break;
+	}
+
+	glGetIntegerv(GL_MAJOR_VERSION,                 &gl->version_major);
+	glGetIntegerv(GL_MINOR_VERSION,                 &gl->version_minor);
+	glGetIntegerv(GL_MAX_TEXTURE_SIZE,              &gl->max_2d_texture_dim);
+	glGetIntegerv(GL_MAX_3D_TEXTURE_SIZE,           &gl->max_3d_texture_dim);
+	glGetIntegerv(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &gl->max_ssbo_size);
+	glGetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE,        &gl->max_ubo_size);
+}
+
+static void
+validate_gl_requirements(GLParams *gl)
+{
+	ASSERT(gl->max_ubo_size >= sizeof(BeamformerParameters));
+	if (gl->version_major < 4 || (gl->version_major == 4 && gl->version_minor < 5))
+		die("Only OpenGL Versions 4.5 or newer are supported!\n");
+}
+
+static void
+dump_gl_params(GLParams *gl)
+{
+	(void)gl;
+#ifdef _DEBUG
+	fputs("---- GL Parameters ----\n", stdout);
+	switch (gl->vendor_id) {
+	case GL_VENDOR_AMD:    fputs("Vendor: AMD\n",    stdout); break;
+	case GL_VENDOR_INTEL:  fputs("Vendor: Intel\n",  stdout); break;
+	case GL_VENDOR_NVIDIA: fputs("Vendor: nVidia\n", stdout); break;
+	}
+	printf("Version: %d.%d\n", gl->version_major, gl->version_minor);
+	printf("Max 1D/2D Texture Dimension: %d\n", gl->max_2d_texture_dim);
+	printf("Max 3D Texture Dimension: %d\n", gl->max_3d_texture_dim);
+	printf("Max SSBO Size: %d\n", gl->max_ssbo_size);
+	printf("Max UBO Size: %d\n", gl->max_ubo_size);
+	fputs("-----------------------\n", stdout);
+#endif
+}
+
 static u32
 compile_shader(Arena a, u32 type, s8 shader)
 {
@@ -188,6 +237,11 @@ main(void)
 	SetWindowState(FLAG_WINDOW_RESIZABLE);
 	SetWindowMinSize(INFO_COLUMN_WIDTH * 2, ctx.window_size.h);
 
+	/* NOTE: Gather information about the GPU */
+	get_gl_params(&ctx.gl);
+	dump_gl_params(&ctx.gl);
+	validate_gl_requirements(&ctx.gl);
+
 	/* TODO: build these into the binary */
 	ctx.font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
 	ctx.small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 22, 0, 0);
@@ -209,19 +263,6 @@ main(void)
 	ctx.params->compute_stages[2]    = CS_UFORCES;
 	ctx.params->compute_stages[3]    = CS_MIN_MAX;
 	ctx.params->compute_stages_count = 4;
-
-	/* NOTE: Determine which graphics vendor we are running on */
-	{
-		const u8 *vendor = glGetString(GL_VENDOR);
-		if (!vendor)
-			die("Failed to determine GL Vendor\n");
-		switch (vendor[0]) {
-		case 'A': ctx.gl_vendor_id = GL_VENDOR_AMD;       break;
-		case 'I': ctx.gl_vendor_id = GL_VENDOR_INTEL;     break;
-		case 'N': ctx.gl_vendor_id = GL_VENDOR_NVIDIA;    break;
-		default:  die("Unknown GL Vendor: %s\n", vendor); break;
-		}
-	}
 
 	/* NOTE: make sure function pointers are valid even if we are not using the cuda lib */
 	validate_cuda_lib(&ctx.cuda_lib);
@@ -245,7 +286,7 @@ main(void)
 
 	while(!WindowShouldClose()) {
 		do_debug();
-		if (ctx.gl_vendor_id == GL_VENDOR_NVIDIA)
+		if (ctx.gl.vendor_id == GL_VENDOR_NVIDIA)
 			check_and_load_cuda_lib(&ctx.cuda_lib);
 
 		if (ctx.flags & RELOAD_SHADERS) {

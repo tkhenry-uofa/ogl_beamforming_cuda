@@ -16,9 +16,10 @@ alloc_output_image(BeamformerCtx *ctx)
 	BeamformerParameters *bp = &ctx->params->raw;
 	ComputeShaderCtx *cs     = &ctx->csctx;
 
-	ctx->out_data_dim.x = round_down_power_of_2(ORONE(bp->output_points.x));
-	ctx->out_data_dim.y = round_down_power_of_2(ORONE(bp->output_points.y));
-	ctx->out_data_dim.z = round_down_power_of_2(ORONE(bp->output_points.z));
+	u32 max_3d_dim      = ctx->gl.max_3d_texture_dim;
+	ctx->out_data_dim.x = CLAMP(round_down_power_of_2(ORONE(bp->output_points.x)), 1, max_3d_dim);
+	ctx->out_data_dim.y = CLAMP(round_down_power_of_2(ORONE(bp->output_points.y)), 1, max_3d_dim);
+	ctx->out_data_dim.z = CLAMP(round_down_power_of_2(ORONE(bp->output_points.z)), 1, max_3d_dim);
 	ctx->out_data_dim.w = CLAMP(bp->output_points.w, 0, ARRAY_COUNT(cs->sum_textures));
 	bp->output_points   = ctx->out_data_dim;
 
@@ -75,7 +76,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glCreateBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
 
 	i32 storage_flags = GL_DYNAMIC_STORAGE_BIT;
-	switch (ctx->gl_vendor_id) {
+	switch (ctx->gl.vendor_id) {
 	case GL_VENDOR_INTEL:
 	case GL_VENDOR_AMD:
 		if (cs->raw_data_ssbo)
@@ -95,7 +96,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		glNamedBufferStorage(cs->rf_data_ssbos[i], rf_decoded_size, 0, 0);
 
 	i32 map_flags = GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT|GL_MAP_UNSYNCHRONIZED_BIT;
-	switch (ctx->gl_vendor_id) {
+	switch (ctx->gl.vendor_id) {
 	case GL_VENDOR_INTEL:
 	case GL_VENDOR_AMD:
 		cs->raw_data_arena.beg = glMapNamedBufferRange(cs->raw_data_ssbo, 0,
@@ -402,7 +403,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			ctx->partial_transfer_count++;
 		} else {
 			ctx->flags |= DO_COMPUTE;
-			switch (ctx->gl_vendor_id) {
+			switch (ctx->gl.vendor_id) {
 			case GL_VENDOR_INTEL:
 				/* TODO: intel complains about this buffer being busy even with
 				 * MAP_UNSYNCHRONIZED_BIT */

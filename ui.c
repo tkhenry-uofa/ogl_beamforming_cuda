@@ -542,17 +542,17 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	draw_r.size.y -= 2 * LISTING_LINE_PAD;
 
 	bmv = (BPModifiableValue){&ctx->export_ctx.volume_dim.x, MV_INT|MV_POWER_OF_TWO, 1,
-	                          .ilimits = (iv2){.x = 1, .y = 2048}};
+	                          .ilimits = (iv2){.x = 1, .y = ctx->gl.max_3d_texture_dim}};
 	draw_r = do_text_input_listing(s8("Export Dimension X:"), s8(""), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
 	bmv = (BPModifiableValue){&ctx->export_ctx.volume_dim.y, MV_INT|MV_POWER_OF_TWO, 1,
-	                          .ilimits = (iv2){.x = 1, .y = 2048}};
+	                          .ilimits = (iv2){.x = 1, .y = ctx->gl.max_3d_texture_dim}};
 	draw_r = do_text_input_listing(s8("Export Dimension Y:"), s8(""), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
 	bmv = (BPModifiableValue){&ctx->export_ctx.volume_dim.z, MV_INT|MV_POWER_OF_TWO, 1,
-	                          .ilimits = (iv2){.x = 1, .y = 2048}};
+	                          .ilimits = (iv2){.x = 1, .y = ctx->gl.max_3d_texture_dim}};
 	draw_r = do_text_input_listing(s8("Export Dimension Z:"), s8(""), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 

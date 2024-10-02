@@ -230,9 +230,20 @@ typedef struct {
 } ExportCtx;
 
 typedef struct {
+	enum gl_vendor_ids vendor_id;
+	i32  version_major;
+	i32  version_minor;
+	i32  max_2d_texture_dim;
+	i32  max_3d_texture_dim;
+	i32  max_ssbo_size;
+	i32  max_ubo_size;
+} GLParams;
+
+typedef struct {
+	GLParams gl;
+
 	uv2 window_size;
 	u32 flags;
-	enum gl_vendor_ids gl_vendor_id;
 
 	f32 dt;
 
