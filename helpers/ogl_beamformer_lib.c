@@ -49,8 +49,9 @@ os_write_to_pipe(os_pipe p, void *data, size len)
 {
 	size written = 0, w = 0;
 	do {
-		written += w;
-		w = write(p.file, data, len);
+		if (w != -1)
+			written += w;
+		w = write(p.file, data + written, len - written);
 	} while(written != len && w != 0);
 	return written;
 }
@@ -162,10 +163,12 @@ set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 void
 send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim)
 {
-	g_pipe = os_open_named_pipe(pipe_name);
 	if (g_pipe.file == OS_INVALID_FILE) {
-		mexErrMsgIdAndTxt("ogl_beamformer:pipe_error", "failed to open pipe");
-		return;
+		g_pipe = os_open_named_pipe(pipe_name);
+		if (g_pipe.file == OS_INVALID_FILE) {
+			mexErrMsgIdAndTxt("ogl_beamformer:pipe_error", "failed to open pipe");
+			return;
+		}
 	}
 
 	check_shared_memory(shm_name);
@@ -177,8 +180,6 @@ send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim)
 		mexWarnMsgIdAndTxt("ogl_beamformer:write_error",
 		                   "failed to write full data to pipe: wrote: %ld", written);
 	g_bp->upload = 1;
-
-	os_close_pipe(g_pipe);
 }
 
 void

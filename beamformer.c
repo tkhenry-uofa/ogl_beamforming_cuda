@@ -408,10 +408,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 				                     rf_raw_size, rf_data_buf);
 			}
 		}
-		/* NOTE: close and reopen the pipe to avoid stale data */
-		/* TODO: performance!! */
-		os_close_named_pipe(ctx->data_pipe);
-		ctx->data_pipe = os_open_named_pipe(OS_PIPE_NAME);
 	}
 
 	/* NOTE: we are starting a volume computation on this frame so make some space */
