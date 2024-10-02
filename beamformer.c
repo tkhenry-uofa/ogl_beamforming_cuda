@@ -27,7 +27,6 @@ alloc_output_image(BeamformerCtx *ctx)
 	 * this is shared between compute and fragment shaders */
 	uv4 odim    = ctx->out_data_dim;
 	u32 max_dim = MAX(odim.x, MAX(odim.y, odim.z));
-	ctx->out_texture_unit = 0;
 	ctx->out_texture_mips = _tzcnt_u32(max_dim) + 1;
 
 	glActiveTexture(GL_TEXTURE0);
@@ -160,8 +159,6 @@ do_volume_computation_step(BeamformerCtx *ctx, enum compute_shaders shader)
 	glBindBufferBase(GL_UNIFORM_BUFFER, 0, cs->shared_ubo);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, e->rf_data_ssbo);
 
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_3D, e->volume_texture);
 	glBindImageTexture(0, e->volume_texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32F);
 	glUniform1i(cs->volume_export_pass_id, 1);
 
@@ -274,7 +271,6 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		glUniform3iv(csctx->volume_export_dim_offset_id, 1, (i32 []){0, 0, 0});
 		glUniform1i(csctx->volume_export_pass_id, 0);
 
-		glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
 		for (u32 i = 0; i < bp->array_count; i++) {
 			u32 texture;
 			if (bp->array_count == 1) {
@@ -291,9 +287,7 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 			                                                      bp->xdc_origin[i].xyz,
 			                                                      bp->xdc_corner1[i].xyz,
 			                                                      bp->xdc_corner2[i].xyz);
-			glBindTexture(GL_TEXTURE_3D, texture);
-			glBindImageTexture(ctx->out_texture_unit, texture, 0, GL_TRUE, 0,
-			                   GL_WRITE_ONLY, GL_RG32F);
+			glBindImageTexture(0, texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
 			glUniform1i(csctx->xdc_index_id, i);
 			glUniformMatrix3fv(csctx->xdc_transform_id, 1, GL_FALSE, xdc_transform.E);
 			glDispatchCompute(ORONE(ctx->out_data_dim.x / 32),
@@ -480,9 +474,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		BeginShaderMode(ctx->fsctx.shader);
 			FragmentShaderCtx *fs = &ctx->fsctx;
 			glUseProgram(fs->shader.id);
-			glActiveTexture(GL_TEXTURE0 + ctx->out_texture_unit);
-			glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
-			glUniform1i(fs->out_data_tex_id, ctx->out_texture_unit);
+			glBindTextureUnit(0, ctx->out_texture);
 			glUniform1f(fs->db_cutoff_id, fs->db);
 			DrawTexture(fs->output.texture, 0, 0, WHITE);
 		EndShaderMode();

@@ -183,9 +183,8 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 	Shader updated_fs = LoadShader(NULL, "shaders/render.glsl");
 	if (updated_fs.id != rlGetShaderIdDefault()) {
 		UnloadShader(ctx->fsctx.shader);
-		ctx->fsctx.shader          = updated_fs;
-		ctx->fsctx.out_data_tex_id = GetShaderLocation(updated_fs, "u_out_data_tex");
-		ctx->fsctx.db_cutoff_id    = GetShaderLocation(updated_fs, "u_db_cutoff");
+		ctx->fsctx.shader       = updated_fs;
+		ctx->fsctx.db_cutoff_id = GetShaderLocation(updated_fs, "u_db_cutoff");
 	}
 }
 

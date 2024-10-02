@@ -4,8 +4,8 @@
 in  vec2 fragTexCoord;
 out vec4 v_out_colour;
 
-layout(location = 1) uniform sampler3D u_out_data_tex;
-layout(location = 2) uniform float     u_db_cutoff = -60;
+layout(binding = 0)  uniform sampler3D u_out_data_tex;
+layout(location = 1) uniform float     u_db_cutoff = -60;
 
 /* input:  h [0,360] | s,v [0, 1] *
  * output: rgb [0,1]              */

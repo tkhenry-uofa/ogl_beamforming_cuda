@@ -207,7 +207,6 @@ typedef struct {
 typedef struct {
 	Shader          shader;
 	RenderTexture2D output;
-	i32             out_data_tex_id;
 	i32             db_cutoff_id;
 	f32             db;
 } FragmentShaderCtx;
@@ -255,7 +254,6 @@ typedef struct {
 
 	uv4 out_data_dim;
 	u32 out_texture;
-	u32 out_texture_unit;
 	u32 out_texture_mips;
 
 	ComputeShaderCtx  csctx;
