@@ -297,13 +297,16 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 			                  ORONE(ctx->out_data_dim.z / 32));
 		}
 		if (bp->array_count > 1) {
-			if (ctx->out_data_dim.w > 0)
+			glUseProgram(csctx->programs[CS_SUM]);
+			glBindBufferBase(GL_UNIFORM_BUFFER, 0, csctx->shared_ubo);
+			if (ctx->out_data_dim.w > 0) {
 				do_sum_shader(csctx, csctx->array_textures, bp->array_count,
 				              csctx->sum_textures[csctx->sum_texture_index],
 				              ctx->out_data_dim);
-			else
+			} else {
 				do_sum_shader(csctx, csctx->array_textures, bp->array_count,
 				              ctx->out_texture, ctx->out_data_dim);
+			}
 		}
 	} break;
 	case CS_SUM: {
