@@ -113,10 +113,10 @@ os_get_file_stats(char *fname)
 	};
 }
 
-/* NOTE: win32 doesn't pollute the filesystem so no need to waste the user's time */
 static void
 os_close_named_pipe(os_pipe p)
 {
+	CloseHandle(p.file);
 }
 
 static os_pipe

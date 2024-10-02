@@ -398,18 +398,25 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 		void *rf_data_buf = cs->raw_data_arena.beg + raw_index * rf_raw_size;
 		size rlen         = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
-		switch (ctx->gl_vendor_id) {
-		case GL_VENDOR_INTEL:
-			/* TODO: intel complains about this buffer being busy even with
-			 * MAP_UNSYNCHRONIZED_BIT */
-		case GL_VENDOR_AMD:
-			break;
-		case GL_VENDOR_NVIDIA:
-			glNamedBufferSubData(cs->raw_data_ssbo, raw_index * rf_raw_size,
-			                     rf_raw_size, rf_data_buf);
+		if (rlen != rf_raw_size) {
+			ctx->partial_transfer_count++;
+		} else {
+			ctx->flags |= DO_COMPUTE;
+			switch (ctx->gl_vendor_id) {
+			case GL_VENDOR_INTEL:
+				/* TODO: intel complains about this buffer being busy even with
+				 * MAP_UNSYNCHRONIZED_BIT */
+			case GL_VENDOR_AMD:
+				break;
+			case GL_VENDOR_NVIDIA:
+				glNamedBufferSubData(cs->raw_data_ssbo, raw_index * rf_raw_size,
+				                     rf_raw_size, rf_data_buf);
+			}
 		}
-		if (rlen == rf_raw_size) ctx->flags |= DO_COMPUTE;
-		else                     ctx->partial_transfer_count++;
+		/* NOTE: close and reopen the pipe to avoid stale data */
+		/* TODO: performance!! */
+		os_close_named_pipe(ctx->data_pipe);
+		ctx->data_pipe = os_open_named_pipe(OS_PIPE_NAME);
 	}
 
 	/* NOTE: we are starting a volume computation on this frame so make some space */
