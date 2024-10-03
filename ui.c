@@ -311,6 +311,16 @@ set_text_input_idx(BeamformerCtx *ctx, BPModifiableValue bmv, Rect r, v2 mouse)
 	ctx->is.cursor_hover_p = CLAMP01((mouse.x - r.pos.x) / r.size.w);
 }
 
+static b32
+hover_text(v2 mouse, Rect text_rect, f32 dt, f32 *hover_t, b32 can_advance)
+{
+	b32 hovering = CheckCollisionPointRec(mouse.rl, text_rect.rl);
+	if (hovering && can_advance) *hover_t += TEXT_HOVER_SPEED * dt;
+	else                         *hover_t -= TEXT_HOVER_SPEED * dt;
+	*hover_t = CLAMP01(*hover_t);
+	return hovering;
+}
+
 /* NOTE: This is kinda sucks no matter how you spin it. If we want the values to be
  * left aligned in the center column we need to know the longest prefix length but
  * without either hardcoding one of the prefixes as the longest one or measuring all
@@ -360,12 +370,8 @@ do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx
 		.size = {.x = txt_s.w + TEXT_BOX_EXTRA_X, .y = txt_s.h}
 	};
 
-	b32 collides = CheckCollisionPointRec(mouse.rl, edit_rect.rl);
-	if (collides && !bmv_active) *hover_t += TEXT_HOVER_SPEED * ctx->dt;
-	else                         *hover_t -= TEXT_HOVER_SPEED * ctx->dt;
-	*hover_t = CLAMP01(*hover_t);
-
-	if (collides) {
+	b32 hovering = hover_text(mouse, edit_rect, ctx->dt, hover_t, !bmv_active);
+	if (hovering) {
 		f32 mouse_scroll = GetMouseWheelMove();
 		if (mouse_scroll) {
 			if (bmv_active)
@@ -376,12 +382,12 @@ do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx
 		}
 	}
 
-	if (!collides && bmv_equal(&bmv, &ctx->is.store) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+	if (!hovering && bmv_equal(&bmv, &ctx->is.store) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
 		set_text_input_idx(ctx, (BPModifiableValue){0}, (Rect){0}, mouse);
 		txt = bmv_sprint(&bmv, buf);
 	}
 
-	if (collides && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+	if (hovering && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
 		set_text_input_idx(ctx, bmv, edit_rect, mouse);
 
 	Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, *hover_t));
@@ -416,13 +422,10 @@ do_text_toggle_listing(s8 prefix, s8 text0, s8 text1, b32 toggle, BPModifiableVa
 		.size = {.x = txt_s.w + TEXT_BOX_EXTRA_X, .y = txt_s.h}
 	};
 
-	b32 collides = CheckCollisionPointRec(mouse.rl, edit_rect.rl);
-	if (collides) *hover_t += TEXT_HOVER_SPEED * ctx->dt;
-	else          *hover_t -= TEXT_HOVER_SPEED * ctx->dt;
-	*hover_t = CLAMP01(*hover_t);
+	b32 hovering = hover_text(mouse, edit_rect, ctx->dt, hover_t, 1);
 
 	b32 pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
-	if (collides && (pressed || GetMouseWheelMove())) {
+	if (hovering && (pressed || GetMouseWheelMove())) {
 		toggle = !toggle;
 		bmv_store_value(ctx, &bmv, toggle, 0);
 	}
@@ -440,14 +443,10 @@ do_text_toggle_listing(s8 prefix, s8 text0, s8 text1, b32 toggle, BPModifiableVa
 static b32
 do_text_button(BeamformerCtx *ctx, s8 text, Rect r, v2 mouse, f32 *hover_t)
 {
-	b32 hovered  = CheckCollisionPointRec(mouse.rl, r.rl);
+	b32 hovering = hover_text(mouse, r, ctx->dt, hover_t, 1);
 	b32 pressed  = 0;
-	pressed     |= (hovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT));
-	pressed     |= (hovered && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT));
-
-	if (hovered) *hover_t += TEXT_HOVER_SPEED * ctx->dt;
-	else         *hover_t -= TEXT_HOVER_SPEED * ctx->dt;
-	*hover_t = CLAMP01(*hover_t);
+	pressed     |= (hovering && IsMouseButtonPressed(MOUSE_BUTTON_LEFT));
+	pressed     |= (hovering && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT));
 
 	f32 param  = lerp(1, 1.04, *hover_t);
 	v2  bscale = (v2){
@@ -457,7 +456,7 @@ do_text_button(BeamformerCtx *ctx, s8 text, Rect r, v2 mouse, f32 *hover_t)
 	Rect sr    = scale_rect_centered(r, (v2){.x = param, .y = param});
 	Rect sb    = scale_rect_centered(r, bscale);
 	DrawRectangleRounded(sb.rl, RECT_BTN_ROUNDNESS, 0, RECT_BTN_BORDER_COLOUR);
-	DrawRectangleRounded(sr.rl,  RECT_BTN_ROUNDNESS, 0, RECT_BTN_COLOUR);
+	DrawRectangleRounded(sr.rl, RECT_BTN_ROUNDNESS, 0, RECT_BTN_COLOUR);
 
 	v2 tpos   = center_align_text_in_rect(r, text, ctx->font);
 	v2 spos   = {.x = tpos.x + 1.75, .y = tpos.y + 2};
@@ -736,7 +735,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 				/* TODO: don't do this nonsense; this code will need to get
 				 * split into a seperate function */
 				u32 coord_idx = i == 0? 0 : 2;
-				if (CheckCollisionPointRec(mouse.rl, tick_rect.rl)) {
+				if (hover_text(mouse, tick_rect, ctx->dt, txt_colour_t + i, 1)) {
 					f32 scale[2]   = {0.5e-3, 1e-3};
 					f32 size_delta = GetMouseWheelMove() * scale[i];
 					/* TODO: smooth scroll this? */
@@ -747,12 +746,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 						ctx->flags |= DO_COMPUTE;
 						ctx->params->upload = 1;
 					}
-
-					txt_colour_t[i] += TEXT_HOVER_SPEED * ctx->dt;
-				} else {
-					txt_colour_t[i] -= TEXT_HOVER_SPEED * ctx->dt;
 				}
-				txt_colour_t[i] = CLAMP01(txt_colour_t[i]);
 
 				f32 mm     = bp->output_min_coordinate.E[coord_idx] * 1e3;
 				f32 mm_inc = inc * output_dim.E[i] * 1e3 / vr.size.E[i];
