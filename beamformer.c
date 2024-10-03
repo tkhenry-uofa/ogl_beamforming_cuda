@@ -23,7 +23,7 @@ alloc_output_image(BeamformerCtx *ctx)
 	ctx->out_data_dim.x = CLAMP(round_down_power_of_2(ORONE(bp->output_points.x)), 1, max_3d_dim);
 	ctx->out_data_dim.y = CLAMP(round_down_power_of_2(ORONE(bp->output_points.y)), 1, max_3d_dim);
 	ctx->out_data_dim.z = CLAMP(round_down_power_of_2(ORONE(bp->output_points.z)), 1, max_3d_dim);
-	ctx->out_data_dim.w = CLAMP(bp->output_points.w, 0, ARRAY_COUNT(cs->sum_textures));
+	ctx->out_data_dim.w = CLAMP(bp->output_points.w, 1, ARRAY_COUNT(cs->sum_textures));
 	bp->output_points   = ctx->out_data_dim;
 
 	/* NOTE: allocate storage for beamformed output data;
@@ -39,10 +39,12 @@ alloc_output_image(BeamformerCtx *ctx)
 	glTexStorage3D(GL_TEXTURE_3D, ctx->out_texture_mips, GL_RG32F, odim.x, odim.y, odim.z);
 
 	glDeleteTextures(ARRAY_COUNT(cs->sum_textures), cs->sum_textures);
-	glGenTextures(odim.w, cs->sum_textures);
-	for (u32 i = 0; i < odim.w; i++) {
-		glBindTexture(GL_TEXTURE_3D, cs->sum_textures[i]);
-		glTexStorage3D(GL_TEXTURE_3D, ctx->out_texture_mips, GL_RG32F, odim.x, odim.y, odim.z);
+	if (odim.w > 1) {
+		glGenTextures(odim.w, cs->sum_textures);
+		for (u32 i = 0; i < odim.w; i++) {
+			glBindTexture(GL_TEXTURE_3D, cs->sum_textures[i]);
+			glTexStorage3D(GL_TEXTURE_3D, ctx->out_texture_mips, GL_RG32F, odim.x, odim.y, odim.z);
+		}
 	}
 
 	bp->array_count = CLAMP(bp->array_count, 1, ARRAY_COUNT(cs->array_textures));
@@ -277,7 +279,7 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		for (u32 i = 0; i < bp->array_count; i++) {
 			u32 texture;
 			if (bp->array_count == 1) {
-				if (ctx->out_data_dim.w > 0) {
+				if (ctx->out_data_dim.w > 1) {
 					texture = csctx->sum_textures[csctx->sum_texture_index];
 				} else {
 					texture = ctx->out_texture;
@@ -300,19 +302,15 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		if (bp->array_count > 1) {
 			glUseProgram(csctx->programs[CS_SUM]);
 			glBindBufferBase(GL_UNIFORM_BUFFER, 0, csctx->shared_ubo);
-			if (ctx->out_data_dim.w > 0) {
-				do_sum_shader(csctx, csctx->array_textures, bp->array_count,
-				              csctx->sum_textures[csctx->sum_texture_index],
-				              ctx->out_data_dim);
-			} else {
-				do_sum_shader(csctx, csctx->array_textures, bp->array_count,
-				              ctx->out_texture, ctx->out_data_dim);
-			}
+			u32 out;
+			if (ctx->out_data_dim.w > 1) out = csctx->sum_textures[csctx->sum_texture_index];
+			else                         out = ctx->out_texture;
+			do_sum_shader(csctx, csctx->array_textures, bp->array_count, out, ctx->out_data_dim);
 		}
 	} break;
 	case CS_SUM: {
 		u32 frame_count = ctx->out_data_dim.w;
-		if (frame_count) {
+		if (frame_count > 1) {
 			do_sum_shader(csctx, csctx->sum_textures, frame_count, ctx->out_texture, ctx->out_data_dim);
 			csctx->sum_texture_index = (csctx->sum_texture_index + 1) % frame_count;
 		}

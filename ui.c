@@ -5,8 +5,10 @@ static void
 ui_start_compute(BeamformerCtx *ctx)
 {
 	ctx->flags |= DO_COMPUTE;
-	for (u32 i = 0; i < ctx->params->raw.output_points.w; i++)
-		glClearTexImage(ctx->csctx.sum_textures[i], 0, GL_RED, GL_FLOAT, 0);
+	if (ctx->params->raw.output_points.w > 1) {
+		for (u32 i = 0; i < ctx->params->raw.output_points.w; i++)
+			glClearTexImage(ctx->csctx.sum_textures[i], 0, GL_RED, GL_FLOAT, 0);
+	}
 	ctx->params->upload = 1;
 }
 
