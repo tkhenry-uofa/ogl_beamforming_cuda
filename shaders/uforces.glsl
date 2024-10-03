@@ -146,5 +146,5 @@ void main()
 			ridx    += dec_data_dim.x;
 		}
 	}
-	imageStore(u_out_data_tex, out_coord, vec4(length(sum)));
+	imageStore(u_out_data_tex, out_coord, vec4(sum.x, sum.y, 0, 0));
 }

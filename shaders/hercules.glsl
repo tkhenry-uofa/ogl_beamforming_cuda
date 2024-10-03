@@ -167,5 +167,5 @@ void main()
 		rdist[direction]      = starting_point[direction];
 		rdist[direction ^ 1] -= delta[direction ^ 1];
 	}
-	imageStore(u_out_data_tex, out_coord, vec4(length(sum)));
+	imageStore(u_out_data_tex, out_coord, vec4(sum.x, sum.y, 0, 0));
 }
