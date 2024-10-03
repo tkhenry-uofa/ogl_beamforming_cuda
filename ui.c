@@ -1,6 +1,15 @@
 /* See LICENSE for license details. */
 #include "beamformer.h"
 
+static void
+ui_start_compute(BeamformerCtx *ctx)
+{
+	ctx->flags |= DO_COMPUTE;
+	for (u32 i = 0; i < ctx->params->raw.output_points.w; i++)
+		glClearTexImage(ctx->csctx.sum_textures[i], 0, GL_RED, GL_FLOAT, 0);
+	ctx->params->upload = 1;
+}
+
 static Color
 colour_from_normalized(v4 rgba)
 {
@@ -156,10 +165,8 @@ bmv_store_value(BeamformerCtx *ctx, BPModifiableValue *bmv, f32 new_val, b32 fro
 			return;
 		*value = CLAMP(new_val / bmv->scale, bmv->ilimits.x, bmv->ilimits.y);
 	}
-	if (bmv->flags & MV_CAUSES_COMPUTE) {
-		ctx->flags |= DO_COMPUTE;
-		ctx->params->upload = 1;
-	}
+	if (bmv->flags & MV_CAUSES_COMPUTE)
+		ui_start_compute(ctx);
 	if (bmv->flags & MV_GEN_MIPMAPS)
 		ctx->flags |= GEN_MIPMAPS;
 }
@@ -742,10 +749,8 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 					if (coord_idx== 0)
 						bp->output_min_coordinate.E[coord_idx] -= size_delta;
 					bp->output_max_coordinate.E[coord_idx] += size_delta;
-					if (size_delta) {
-						ctx->flags |= DO_COMPUTE;
-						ctx->params->upload = 1;
-					}
+					if (size_delta)
+						ui_start_compute(ctx);
 				}
 
 				f32 mm     = bp->output_min_coordinate.E[coord_idx] * 1e3;
