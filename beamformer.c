@@ -185,13 +185,14 @@ do_volume_computation_step(BeamformerCtx *ctx, enum compute_shaders shader)
 }
 
 static void
-do_sum_shader(ComputeShaderCtx *cs, u32 *in_textures, u32 in_texture_count, u32 out_texture, uv4 out_data_dim)
+do_sum_shader(ComputeShaderCtx *cs, u32 *in_textures, u32 in_texture_count, f32 in_scale,
+              u32 out_texture, uv4 out_data_dim)
 {
 	/* NOTE: zero output before summing */
 	glClearTexImage(out_texture, 0, GL_RED, GL_FLOAT, 0);
 
 	glBindImageTexture(0, out_texture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RG32F);
-	glUniform1f(cs->sum_prescale_id, 1 / (f32)in_texture_count);
+	glUniform1f(cs->sum_prescale_id, in_scale);
 	for (u32 i = 0; i < in_texture_count; i++) {
 		glBindImageTexture(1, in_textures[i], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RG32F);
 		glDispatchCompute(ORONE(out_data_dim.x / 32),
@@ -305,13 +306,15 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 			u32 out;
 			if (ctx->out_data_dim.w > 1) out = csctx->sum_textures[csctx->sum_texture_index];
 			else                         out = ctx->out_texture;
-			do_sum_shader(csctx, csctx->array_textures, bp->array_count, out, ctx->out_data_dim);
+			do_sum_shader(csctx, csctx->array_textures, bp->array_count,
+			              1 / (f32)bp->array_count, out, ctx->out_data_dim);
 		}
 	} break;
 	case CS_SUM: {
 		u32 frame_count = ctx->out_data_dim.w;
 		if (frame_count > 1) {
-			do_sum_shader(csctx, csctx->sum_textures, frame_count, ctx->out_texture, ctx->out_data_dim);
+			do_sum_shader(csctx, csctx->sum_textures, frame_count, 1 / (f32)frame_count,
+			              ctx->out_texture, ctx->out_data_dim);
 			csctx->sum_texture_index = (csctx->sum_texture_index + 1) % frame_count;
 		}
 	} break;
