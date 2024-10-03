@@ -18,14 +18,7 @@ typedef struct {
 	char    *name;
 } os_pipe;
 
-typedef FILETIME os_filetime;
 typedef HANDLE   os_library_handle;
-
-#define ERROR_FILE_STATS (os_file_stats){.timestamp = (os_filetime){0}, .filesize = -1}
-typedef struct {
-	size        filesize;
-	os_filetime timestamp;
-} os_file_stats;
 
 static Arena
 os_alloc_arena(Arena a, size capacity)
@@ -89,7 +82,7 @@ os_write_file(char *fname, s8 raw)
 	return wlen == raw.len;
 }
 
-static os_file_stats
+static FileStats
 os_get_file_stats(char *fname)
 {
 	HANDLE h = CreateFileA(fname, 0, 0, 0, OPEN_EXISTING, 0, 0);
@@ -107,10 +100,10 @@ os_get_file_stats(char *fname)
 
 	size filesize = (size)fileinfo.nFileSizeHigh << 32;
 	filesize     |= (size)fileinfo.nFileSizeLow;
-	return (os_file_stats){
-		.filesize  = filesize,
-		.timestamp = fileinfo.ftLastWriteTime,
-	};
+	u64 timestamp = (u64)fileinfo.ftLastWriteTime.dwHighDateTime << 32;
+	timestamp    |= (u64)fileinfo.ftLastWriteTime.dwLowDateTime;
+
+	return (FileStats){.filesize  = filesize, .timestamp = timestamp};
 }
 
 /* NOTE: win32 doesn't pollute the filesystem so no need to waste the user's time */
@@ -195,11 +188,4 @@ static void
 os_unload_library(os_library_handle h)
 {
 	FreeLibrary(h);
-}
-
-static b32
-os_filetime_is_newer(os_filetime a, os_filetime b)
-{
-	b32 result = CompareFileTime(&a, &b) > 0;
-	return result;
 }

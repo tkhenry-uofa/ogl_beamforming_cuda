@@ -24,9 +24,9 @@ static do_beamformer_fn *do_beamformer;
 static void
 do_debug(void)
 {
-	static os_filetime updated_time;
-	os_file_stats test_stats = os_get_file_stats(OS_DEBUG_LIB_NAME);
-	if (test_stats.filesize > 32 && os_filetime_is_newer(test_stats.timestamp, updated_time)) {
+	static f32 updated_time;
+	FileStats test_stats = os_get_file_stats(OS_DEBUG_LIB_NAME);
+	if (test_stats.filesize > 32 && test_stats.timestamp > updated_time) {
 		os_unload_library(libhandle);
 		libhandle     = os_load_library(OS_DEBUG_LIB_NAME, OS_DEBUG_LIB_TEMP_NAME);
 		do_beamformer = os_lookup_dynamic_symbol(libhandle, "do_beamformer");
@@ -154,9 +154,9 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 			continue;
 
 		Arena tmp = a;
-		os_file_stats fs = os_get_file_stats(compute_shader_paths[i]);
-		s8 shader_text   = os_read_file(&tmp, compute_shader_paths[i], fs.filesize);
-		u32 shader_id    = compile_shader(tmp, GL_COMPUTE_SHADER, shader_text);
+		FileStats fs   = os_get_file_stats(compute_shader_paths[i]);
+		s8 shader_text = os_read_file(&tmp, compute_shader_paths[i], fs.filesize);
+		u32 shader_id  = compile_shader(tmp, GL_COMPUTE_SHADER, shader_text);
 
 		if (shader_id) {
 			glDeleteProgram(csctx->programs[i]);
@@ -200,8 +200,8 @@ validate_cuda_lib(CudaLib *cl)
 static void
 check_and_load_cuda_lib(CudaLib *cl)
 {
-	os_file_stats current = os_get_file_stats(OS_CUDA_LIB_NAME);
-	if (!os_filetime_is_newer(current.timestamp, cl->timestamp) || current.filesize < 32)
+	FileStats current = os_get_file_stats(OS_CUDA_LIB_NAME);
+	if (cl->timestamp == current.timestamp || current.filesize < 32)
 		return;
 
 	TraceLog(LOG_INFO, "Loading CUDA lib: %s", OS_CUDA_LIB_NAME);

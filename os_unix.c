@@ -12,15 +12,7 @@ typedef struct {
 	char    *name;
 } os_pipe;
 
-typedef struct timespec os_filetime;
-
 typedef void *os_library_handle;
-
-#define ERROR_FILE_STATS (os_file_stats){.timestamp = (os_filetime){0}, .filesize = -1}
-typedef struct {
-	size        filesize;
-	os_filetime timestamp;
-} os_file_stats;
 
 static Arena
 os_alloc_arena(Arena a, size capacity)
@@ -72,7 +64,7 @@ os_write_file(char *fname, s8 raw)
 	return wlen == raw.len;
 }
 
-static os_file_stats
+static FileStats
 os_get_file_stats(char *fname)
 {
 	struct stat st;
@@ -81,9 +73,9 @@ os_get_file_stats(char *fname)
 		return ERROR_FILE_STATS;
 	}
 
-	return (os_file_stats){
+	return (FileStats){
 		.filesize  = st.st_size,
-		.timestamp = st.st_mtim,
+		.timestamp = st.st_mtim.tv_sec + st.st_mtim.tv_nsec * 1e9,
 	};
 }
 
@@ -213,17 +205,4 @@ os_unload_library(os_library_handle h)
 	/* NOTE: glibc is buggy gnuware so we need to check this */
 	if (h)
 		dlclose(h);
-}
-
-static b32
-os_filetime_is_newer(os_filetime a, os_filetime b)
-{
-	os_filetime result;
-	result.tv_sec  = a.tv_sec - b.tv_sec;
-	result.tv_nsec = a.tv_nsec - b.tv_nsec;
-	if (result.tv_nsec < 0) {
-		result.tv_sec--;
-		result.tv_nsec += 1000000000L;
-	}
-	return result.tv_sec + result.tv_nsec > 0;
 }

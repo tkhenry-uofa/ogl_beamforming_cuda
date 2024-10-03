@@ -100,6 +100,12 @@ typedef struct {
 	b32                  upload;
 } BeamformerParametersFull;
 
+typedef struct {
+	size filesize;
+	u64  timestamp;
+} FileStats;
+#define ERROR_FILE_STATS (FileStats){.filesize = -1}
+
 #if defined(__unix__)
 	#include "os_unix.c"
 
@@ -149,7 +155,7 @@ typedef CUDA_HILBERT_FN(cuda_hilbert_fn);
 
 typedef struct {
 	os_library_handle           lib;
-	os_filetime                 timestamp;
+	u64                         timestamp;
 	init_cuda_configuration_fn *init_cuda_configuration;
 	register_cuda_buffers_fn   *register_cuda_buffers;
 	cuda_decode_fn             *cuda_decode;
