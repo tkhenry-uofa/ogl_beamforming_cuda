@@ -1,5 +1,8 @@
 /* See LICENSE for license details. */
 #include "beamformer.h"
+
+static f32 dt_for_frame;
+
 #include "ui.c"
 
 static size
@@ -355,7 +358,7 @@ check_compute_timers(ComputeShaderCtx *cs, ExportCtx *e, BeamformerParametersFul
 DEBUG_EXPORT void
 do_beamformer(BeamformerCtx *ctx, Arena arena)
 {
-	ctx->dt = GetFrameTime();
+	dt_for_frame = GetFrameTime();
 
 	if (IsWindowResized()) {
 		ctx->window_size.h = GetScreenHeight();

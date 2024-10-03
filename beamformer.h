@@ -250,8 +250,6 @@ typedef struct {
 	uv2 window_size;
 	u32 flags;
 
-	f32 dt;
-
 	/* UI Theming */
 	Font font;
 	Font small_font;

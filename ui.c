@@ -203,7 +203,7 @@ do_text_input(BeamformerCtx *ctx, i32 max_disp_chars, Rect r, Color colour)
 	draw_text(ctx->font, buf, pos, 0, colour);
 
 	ctx->is.cursor_blink_t = move_towards_f32(ctx->is.cursor_blink_t,
-	                                          ctx->is.cursor_blink_target, 1.5 * ctx->dt);
+	                                          ctx->is.cursor_blink_target, 1.5 * dt_for_frame);
 	if (ctx->is.cursor_blink_t == ctx->is.cursor_blink_target) {
 		if (ctx->is.cursor_blink_target == 0) ctx->is.cursor_blink_target = 1;
 		else                                  ctx->is.cursor_blink_target = 0;
@@ -312,11 +312,11 @@ set_text_input_idx(BeamformerCtx *ctx, BPModifiableValue bmv, Rect r, v2 mouse)
 }
 
 static b32
-hover_text(v2 mouse, Rect text_rect, f32 dt, f32 *hover_t, b32 can_advance)
+hover_text(v2 mouse, Rect text_rect, f32 *hover_t, b32 can_advance)
 {
 	b32 hovering = CheckCollisionPointRec(mouse.rl, text_rect.rl);
-	if (hovering && can_advance) *hover_t += TEXT_HOVER_SPEED * dt;
-	else                         *hover_t -= TEXT_HOVER_SPEED * dt;
+	if (hovering && can_advance) *hover_t += TEXT_HOVER_SPEED * dt_for_frame;
+	else                         *hover_t -= TEXT_HOVER_SPEED * dt_for_frame;
 	*hover_t = CLAMP01(*hover_t);
 	return hovering;
 }
@@ -370,7 +370,7 @@ do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx
 		.size = {.x = txt_s.w + TEXT_BOX_EXTRA_X, .y = txt_s.h}
 	};
 
-	b32 hovering = hover_text(mouse, edit_rect, ctx->dt, hover_t, !bmv_active);
+	b32 hovering = hover_text(mouse, edit_rect, hover_t, !bmv_active);
 	if (hovering) {
 		f32 mouse_scroll = GetMouseWheelMove();
 		if (mouse_scroll) {
@@ -422,7 +422,7 @@ do_text_toggle_listing(s8 prefix, s8 text0, s8 text1, b32 toggle, BPModifiableVa
 		.size = {.x = txt_s.w + TEXT_BOX_EXTRA_X, .y = txt_s.h}
 	};
 
-	b32 hovering = hover_text(mouse, edit_rect, ctx->dt, hover_t, 1);
+	b32 hovering = hover_text(mouse, edit_rect, hover_t, 1);
 
 	b32 pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
 	if (hovering && (pressed || GetMouseWheelMove())) {
@@ -443,7 +443,7 @@ do_text_toggle_listing(s8 prefix, s8 text0, s8 text1, b32 toggle, BPModifiableVa
 static b32
 do_text_button(BeamformerCtx *ctx, s8 text, Rect r, v2 mouse, f32 *hover_t)
 {
-	b32 hovering = hover_text(mouse, r, ctx->dt, hover_t, 1);
+	b32 hovering = hover_text(mouse, r, hover_t, 1);
 	b32 pressed  = 0;
 	pressed     |= (hovering && IsMouseButtonPressed(MOUSE_BUTTON_LEFT));
 	pressed     |= (hovering && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT));
@@ -631,8 +631,8 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 			ts[1] = measure_text(ctx->font, txt[1]);
 		}
 
-		pos.x += 130 * ctx->dt * scale.x;
-		pos.y += 120 * ctx->dt * scale.y;
+		pos.x += 130 * dt_for_frame * scale.x;
+		pos.y += 120 * dt_for_frame * scale.y;
 
 		if (pos.x > (ws.w - ts[txt_idx].x) || pos.x < 0) {
 			txt_idx  = !txt_idx;
@@ -735,7 +735,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 				/* TODO: don't do this nonsense; this code will need to get
 				 * split into a seperate function */
 				u32 coord_idx = i == 0? 0 : 2;
-				if (hover_text(mouse, tick_rect, ctx->dt, txt_colour_t + i, 1)) {
+				if (hover_text(mouse, tick_rect, txt_colour_t + i, 1)) {
 					f32 scale[2]   = {0.5e-3, 1e-3};
 					f32 size_delta = GetMouseWheelMove() * scale[i];
 					/* TODO: smooth scroll this? */
