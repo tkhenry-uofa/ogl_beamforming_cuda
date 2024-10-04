@@ -1,3 +1,5 @@
+/* See LICENSE for license details. */
+
 #include "ogl_beamformer_lib.h"
 typedef struct {
 	BeamformerParameters raw;
@@ -21,10 +23,20 @@ typedef struct {
 	char    *name;
 } os_pipe;
 #elif defined(_WIN32)
-#include <windows.h>
+#define OPEN_EXISTING        3
+#define GENERIC_WRITE        0x40000000
+#define FILE_MAP_ALL_ACCESS  0x000F001F
+#define INVALID_HANDLE_VALUE (void *)-1
+
+#define W32(r) __declspec(dllimport) r __stdcall
+W32(b32)    CloseHandle(void *);
+W32(void *) CreateFileA(c8 *, u32, u32, void *, u32, u32, void *);
+W32(void *) MapViewOfFile(void *, u32, u32, u32, u64);
+W32(void *) OpenFileMappingA(u32, b32, c8 *);
+W32(b32)    WriteFile(void *, u8 *, i32, i32 *, void *);
 
 #define OS_INVALID_FILE (INVALID_HANDLE_VALUE)
-typedef HANDLE os_file;
+typedef void *os_file;
 typedef struct {
 	os_file  file;
 	char    *name;
@@ -56,12 +68,6 @@ os_write_to_pipe(os_pipe p, void *data, size len)
 	return written;
 }
 
-static void
-os_close_pipe(os_pipe p)
-{
-	close(p.file);
-}
-
 static BeamformerParametersFull *
 os_open_shared_memory_area(char *name)
 {
@@ -84,28 +90,22 @@ os_open_shared_memory_area(char *name)
 static os_pipe
 os_open_named_pipe(char *name)
 {
-	HANDLE pipe = CreateFileA(name, GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
+	void *pipe = CreateFileA(name, GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
 	return (os_pipe){.file = pipe, .name = name};
 }
 
 static size
 os_write_to_pipe(os_pipe p, void *data, size len)
 {
-	DWORD bytes_written;
+	i32 bytes_written;
 	WriteFile(p.file, data, len, &bytes_written, 0);
 	return bytes_written;
-}
-
-static void
-os_close_pipe(os_pipe p)
-{
-	CloseHandle(p.file);
 }
 
 static BeamformerParametersFull *
 os_open_shared_memory_area(char *name)
 {
-	HANDLE h = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, name);
+	void *h = OpenFileMappingA(FILE_MAP_ALL_ACCESS, 0, name);
 	if (h == OS_INVALID_FILE)
 		return NULL;
 
@@ -117,27 +117,41 @@ os_open_shared_memory_area(char *name)
 }
 #endif
 
-static void
+#if defined(MATLAB_CONSOLE)
+#define mexErrMsgIdAndTxt  mexErrMsgIdAndTxt_800
+#define mexWarnMsgIdAndTxt mexWarnMsgIdAndTxt_800
+void mexErrMsgIdAndTxt(const c8 *, c8 *, ...);
+void mexWarnMsgIdAndTxt(const c8 *, c8 *, ...);
+#define error_msg(...)   mexErrMsgIdAndTxt(__func__, __VA_ARGS__)
+#define warning_msg(...) mexWarnMsgIdAndTxt(__func__, __VA_ARGS__)
+#else
+#define error_msg(...)
+#define warning_msg(...)
+#endif
+
+static b32
 check_shared_memory(char *name)
 {
-	if (g_bp)
-		return;
-	g_bp = os_open_shared_memory_area(name);
-	if (g_bp == NULL)
-		mexErrMsgIdAndTxt("ogl_beamformer:shared_memory",
-		                  "failed to open shared memory area");
+	if (!g_bp) {
+		g_bp = os_open_shared_memory_area(name);
+		if (!g_bp) {
+			error_msg("failed to open shared memory area");
+			return 0;
+		}
+	}
+	return 1;
 }
 
-void
+b32
 set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 {
 	if (stages_count > ARRAY_COUNT(g_bp->compute_stages)) {
-		mexErrMsgIdAndTxt("ogl_beamformer:config", "maximum stage count is %u",
-		                  ARRAY_COUNT(g_bp->compute_stages));
-		return;
+		error_msg("maximum stage count is %u", ARRAY_COUNT(g_bp->compute_stages));
+		return 0;
 	}
 
-	check_shared_memory(shm_name);
+	if (!check_shared_memory(shm_name))
+		return 0;
 
 	for (i32 i = 0; i < stages_count; i++) {
 		switch (stages[i]) {
@@ -151,47 +165,50 @@ set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 			g_bp->compute_stages[i] = stages[i];
 			break;
 		default:
-			mexErrMsgIdAndTxt("ogl_beamformer:config", "invalid shader stage: %d",
-			                  stages[i]);
-			return;
+			error_msg("invalid shader stage: %d", stages[i]);
+			return 0;
 		}
 	}
-
 	g_bp->compute_stages_count = stages_count;
+
+	return 1;
 }
 
-void
+b32
 send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim)
 {
 	if (g_pipe.file == OS_INVALID_FILE) {
 		g_pipe = os_open_named_pipe(pipe_name);
 		if (g_pipe.file == OS_INVALID_FILE) {
-			mexErrMsgIdAndTxt("ogl_beamformer:pipe_error", "failed to open pipe");
-			return;
+			error_msg("failed to open pipe");
+			return 0;
 		}
 	}
 
-	check_shared_memory(shm_name);
+	if (!check_shared_memory(shm_name))
+		return 0;
+
 	/* TODO: this probably needs a mutex around it if we want to change it here */
 	g_bp->raw.rf_raw_dim = data_dim;
 	size data_size       = data_dim.x * data_dim.y * sizeof(i16);
 	size written         = os_write_to_pipe(g_pipe, data, data_size);
 	if (written != data_size)
-		mexWarnMsgIdAndTxt("ogl_beamformer:write_error",
-		                   "failed to write full data to pipe: wrote: %ld", written);
+		warning_msg("failed to write full data to pipe: wrote: %ld", written);
 	g_bp->upload = 1;
+
+	return 1;
 }
 
-void
+b32
 set_beamformer_parameters(char *shm_name, BeamformerParameters *new_bp)
 {
-	check_shared_memory(shm_name);
-
-	if (!g_bp)
-		return;
+	if (!check_shared_memory(shm_name))
+		return 0;
 
 	u8 *src = (u8 *)new_bp, *dest = (u8 *)&g_bp->raw;
 	for (size i = 0; i < sizeof(BeamformerParameters); i++)
 		dest[i] = src[i];
 	g_bp->upload = 1;
+
+	return 1;
 }

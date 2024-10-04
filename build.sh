@@ -14,13 +14,18 @@ case $(uname -s) in
 MINGW64*)
 	os="win32"
 	ldflags="$ldflags -lgdi32 -lwinmm"
+	[! ${NO_MATLAB} ] && [ -d "C:/Program Files/MATLAB/R2022a/extern/lib/win64/microsoft" ] &&
+	libcflags="$libcflags -DMATLAB_CONSOLE"
 	libname="beamformer.dll"
+	${cc} $libcflags helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.dll \
+		-L'C:/Program Files/MATLAB/R2022a/extern/lib/win64/microsoft' \
+		-llibmat -llibmex
 	;;
 Linux*)
 	os="unix"
 	cflags="$cflags -D_DEFAULT_SOURCE"
-	libcflags="$libcflags -I/opt/matlab/extern/include"
 	libname="beamformer.so"
+	${cc} $libcflags helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.so
 	;;
 esac
 
@@ -49,22 +54,6 @@ else
 		cmake --install external/raylib/build_shared
 	fi
 fi
-
-# NOTE: this needs to be separate for now in case matlab junk is not available
-case "$1" in
-*lib)
-	case "$os" in
-	"win32")
-		${cc} $libcflags -I'C:/Program Files/MATLAB/R2022a/extern/include' \
-			helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.dll \
-			-L'C:/Program Files/MATLAB/R2022a/extern/lib/win64/microsoft' \
-			-llibmat -llibmex
-		;;
-	"unix")
-		${cc} $libcflags helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.so
-		;;
-	esac
-esac
 
 # Hot Reloading/Debugging
 if [ "$debug" ]; then

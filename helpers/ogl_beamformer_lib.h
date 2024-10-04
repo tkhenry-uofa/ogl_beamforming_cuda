@@ -1,15 +1,15 @@
-/* NOTE: mex.h can still be used to get access to functions that print to the matlab console */
-#include <mex.h>
-
+/* See LICENSE for license details. */
 #include <stddef.h>
 #include <stdint.h>
 
+typedef char      c8;
 typedef uint8_t   u8;
 typedef int16_t   i16;
 typedef uint16_t  u16;
 typedef int32_t   i32;
 typedef uint32_t  u32;
 typedef uint32_t  b32;
+typedef uint64_t  u64;
 typedef float     f32;
 typedef double    f64;
 typedef ptrdiff_t size;
@@ -27,6 +27,6 @@ typedef struct { u32 x, y, z, w; } uv4;
 
 #include "../beamformer_parameters.h"
 
-LIB_FN void set_beamformer_parameters(char *shm_name, BeamformerParameters *);
-LIB_FN void set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count);
-LIB_FN void send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim);
+LIB_FN b32 set_beamformer_parameters(char *shm_name, BeamformerParameters *);
+LIB_FN b32 set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count);
+LIB_FN b32 send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim);
