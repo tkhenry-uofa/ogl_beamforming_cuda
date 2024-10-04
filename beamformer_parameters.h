@@ -17,9 +17,9 @@ typedef struct {
 	u16 channel_mapping[512];   /* Transducer Channel to Verasonics Channel */
 	u32 uforces_channels[128];  /* Channels used for virtual UFORCES elements */
 	f32 lpf_coefficients[64];   /* Low Pass Filter Cofficients */
-	v4  xdc_origin[4];          /* [m] Corner of transducer being treated as origin */
-	v4  xdc_corner1[4];         /* [m] Corner of transducer along first axis (arbitrary) */
-	v4  xdc_corner2[4];         /* [m] Corner of transducer along second axis (arbitrary) */
+	f32 xdc_origin[16];         /* [m] (4 v4s) Corner of transducer being treated as origin */
+	f32 xdc_corner1[16];        /* [m] (4 v4s) Corner of transducer along first axis (arbitrary) */
+	f32 xdc_corner2[16];        /* [m] (4 v4s) Corner of transducer along second axis (arbitrary) */
 	uv4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
 	uv4 output_points;          /* Width * Height * Depth * (Frame Average Count) */
 	v4  output_min_coordinate;  /* [m] Back-Top-Left corner of output region (w ignored) */

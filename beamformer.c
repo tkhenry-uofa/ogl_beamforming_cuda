@@ -126,7 +126,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 }
 
 static m3
-observation_direction_to_xdc_space(v3 direction, v3 origin, v3 corner1, v3 corner2)
+v3_to_xdc_space(v3 direction, v3 origin, v3 corner1, v3 corner2)
 {
 	v3 edge1      = sub_v3(corner1, origin);
 	v3 edge2      = sub_v3(corner2, origin);
@@ -142,6 +142,14 @@ observation_direction_to_xdc_space(v3 direction, v3 origin, v3 corner1, v3 corne
 		.c[1] = (v3){.x = e3.y, .y = e2.y, .z = e1.y},
 		.c[2] = (v3){.x = e3.z, .y = e2.z, .z = e1.z},
 	};
+	return result;
+}
+
+static v4
+f32_4_to_v4(f32 *in)
+{
+	v4 result;
+	_mm_storeu_ps(result.E, _mm_loadu_ps(in));
 	return result;
 }
 
@@ -289,10 +297,10 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 				texture = csctx->array_textures[i];
 			}
 
-			m3 xdc_transform = observation_direction_to_xdc_space((v3){.z = 1},
-			                                                      bp->xdc_origin[i].xyz,
-			                                                      bp->xdc_corner1[i].xyz,
-			                                                      bp->xdc_corner2[i].xyz);
+			m3 xdc_transform = v3_to_xdc_space((v3){.z = 1},
+			                                   f32_4_to_v4(bp->xdc_origin  + (4 * i)).xyz,
+			                                   f32_4_to_v4(bp->xdc_corner1 + (4 * i)).xyz,
+			                                   f32_4_to_v4(bp->xdc_corner2 + (4 * i)).xyz);
 			glBindImageTexture(0, texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
 			glUniform1i(csctx->xdc_index_id, i);
 			glUniformMatrix3fv(csctx->xdc_transform_id, 1, GL_FALSE, xdc_transform.E);
