@@ -2,14 +2,6 @@
 #ifndef _BEAMFORMER_H_
 #define _BEAMFORMER_H_
 
-#include <immintrin.h>
-
-#include <glad.h>
-
-#define GRAPHICS_API_OPENGL_43
-#include <raylib.h>
-#include <rlgl.h>
-
 #include "util.h"
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -27,34 +19,6 @@
 #define RECT_BTN_BORDER_COLOUR (Color){.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xCC}
 #define RECT_BTN_ROUNDNESS     0.3f
 #define RECT_BTN_BORDER_WIDTH  6.0f
-
-typedef union {
-	struct { f32 x, y; };
-	struct { f32 w, h; };
-	f32 E[2];
-	Vector2 rl;
-} v2;
-
-typedef union {
-	struct { f32 x, y, z, w; };
-	struct { f32 r, g, b, a; };
-	struct { v3 xyz; f32 _1; };
-	struct { f32 _2; v3 yzw; };
-	struct { v2 xy, zw; };
-	f32 E[4];
-	Vector4 rl;
-} v4;
-
-typedef union {
-	struct { v3 x, y, z; };
-	v3  c[3];
-	f32 E[9];
-} m3;
-
-typedef union {
-	struct { v2 pos, size; };
-	Rectangle rl;
-} Rect;
 
 enum program_flags {
 	RELOAD_SHADERS = 1 << 0,
@@ -91,20 +55,6 @@ typedef struct {
 	f32  cursor_blink_t;
 	f32  cursor_blink_target;
 } InputState;
-
-#include "beamformer_parameters.h"
-typedef struct {
-	BeamformerParameters raw;
-	enum compute_shaders compute_stages[16];
-	u32                  compute_stages_count;
-	b32                  upload;
-} BeamformerParametersFull;
-
-typedef struct {
-	size filesize;
-	u64  timestamp;
-} FileStats;
-#define ERROR_FILE_STATS (FileStats){.filesize = -1}
 
 #if defined(__unix__)
 	#include "os_unix.c"

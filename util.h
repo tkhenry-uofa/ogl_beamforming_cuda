@@ -5,6 +5,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <immintrin.h>
+
+#include <glad.h>
+
+#define GRAPHICS_API_OPENGL_43
+#include <raylib.h>
+#include <rlgl.h>
+
 #ifndef asm
 #define asm __asm__
 #endif
@@ -31,6 +39,7 @@
 
 #define U32_MAX  (0xFFFFFFFFUL)
 
+typedef char      c8;
 typedef uint8_t   u8;
 typedef int16_t   i16;
 typedef uint16_t  u16;
@@ -65,10 +74,51 @@ typedef union {
 } uv4;
 
 typedef union {
+	struct { f32 x, y; };
+	struct { f32 w, h; };
+	Vector2 rl;
+	f32 E[2];
+} v2;
+
+typedef union {
 	struct { f32 x, y, z; };
 	struct { f32 w, h, d; };
 	f32 E[3];
 } v3;
+
+typedef union {
+	struct { f32 x, y, z, w; };
+	struct { f32 r, g, b, a; };
+	struct { v3 xyz; f32 _1; };
+	struct { f32 _2; v3 yzw; };
+	struct { v2 xy, zw; };
+	f32 E[4];
+} v4;
+
+typedef union {
+	struct { v3 x, y, z; };
+	v3  c[3];
+	f32 E[9];
+} m3;
+
+typedef union {
+	struct { v2 pos, size; };
+	Rectangle rl;
+} Rect;
+
+typedef struct {
+	size filesize;
+	u64  timestamp;
+} FileStats;
+#define ERROR_FILE_STATS (FileStats){.filesize = -1}
+
+#include "beamformer_parameters.h"
+typedef struct {
+	BeamformerParameters raw;
+	enum compute_shaders compute_stages[16];
+	u32                  compute_stages_count;
+	b32                  upload;
+} BeamformerParametersFull;
 
 #include "util.c"
 
