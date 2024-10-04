@@ -122,8 +122,9 @@ os_open_shared_memory_area(char *name)
 #define mexWarnMsgIdAndTxt mexWarnMsgIdAndTxt_800
 void mexErrMsgIdAndTxt(const c8 *, c8 *, ...);
 void mexWarnMsgIdAndTxt(const c8 *, c8 *, ...);
-#define error_msg(...)   mexErrMsgIdAndTxt(__func__, __VA_ARGS__)
-#define warning_msg(...) mexWarnMsgIdAndTxt(__func__, __VA_ARGS__)
+#define error_tag "ogl_beamformer_lib:error"
+#define error_msg(...)   mexErrMsgIdAndTxt(error_tag, __VA_ARGS__)
+#define warning_msg(...) mexWarnMsgIdAndTxt(error_tag, __VA_ARGS__)
 #else
 #define error_msg(...)
 #define warning_msg(...)
@@ -161,6 +162,7 @@ set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 		case CS_HADAMARD:
 		case CS_HERCULES:
 		case CS_MIN_MAX:
+		case CS_SUM:
 		case CS_UFORCES:
 			g_bp->compute_stages[i] = stages[i];
 			break;
