@@ -47,7 +47,7 @@ typedef struct {
 } BPModifiableValue;
 
 typedef struct {
-	char buf[64];
+	u8   buf[64];
 	BPModifiableValue store;
 	i32  buf_len;
 	i32  cursor;

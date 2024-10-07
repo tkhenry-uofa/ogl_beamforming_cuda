@@ -189,12 +189,12 @@ bmv_sprint(BPModifiableValue *bmv, Stream *s)
 static void
 do_text_input(BeamformerCtx *ctx, i32 max_disp_chars, Rect r, Color colour)
 {
-	v2 ts  = measure_text(ctx->font, (s8){.len = ctx->is.buf_len, .data = (u8 *)ctx->is.buf});
+	v2 ts  = measure_text(ctx->font, (s8){.len = ctx->is.buf_len, .data = ctx->is.buf});
 	v2 pos = {.x = r.pos.x, .y = r.pos.y + (r.size.y - ts.y) / 2};
 
 	i32 buf_delta = ctx->is.buf_len - max_disp_chars;
 	if (buf_delta < 0) buf_delta = 0;
-	s8 buf = {.len = ctx->is.buf_len - buf_delta, .data = (u8 *)ctx->is.buf + buf_delta};
+	s8 buf = {.len = ctx->is.buf_len - buf_delta, .data = ctx->is.buf + buf_delta};
 	{
 		/* NOTE: drop a char if the subtext still doesn't fit */
 		v2 nts = measure_text(ctx->font, buf);
@@ -297,7 +297,7 @@ static void
 set_text_input_idx(BeamformerCtx *ctx, BPModifiableValue bmv, Rect r, v2 mouse)
 {
 	if (ctx->is.store.value && !bmv_equal(&ctx->is.store, &bmv)) {
-		f32 new_val = strtof(ctx->is.buf, NULL);
+		f32 new_val = parse_f64((s8){.len = ctx->is.buf_len, .data =ctx->is.buf});
 		bmv_store_value(ctx, &ctx->is.store, new_val, 0);
 	}
 
@@ -311,7 +311,6 @@ set_text_input_idx(BeamformerCtx *ctx, BPModifiableValue bmv, Rect r, v2 mouse)
 	bmv_sprint(&bmv, &s);
 	ASSERT(!s.errors);
 	ctx->is.buf_len = s.widx;
-	ctx->is.buf[ctx->is.buf_len] = 0;
 
 	ASSERT(CheckCollisionPointRec(mouse.rl, r.rl));
 	ctx->is.cursor_hover_p = CLAMP01((mouse.x - r.pos.x) / r.size.w);
@@ -363,8 +362,7 @@ do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx
 
 	b32 bmv_active = bmv_equal(&bmv, &ctx->is.store);
 	if (bmv_active) {
-		txt_s = measure_text(ctx->font, (s8){.len = ctx->is.buf_len,
-		                                     .data = (u8 *)ctx->is.buf});
+		txt_s = measure_text(ctx->font, (s8){.len = ctx->is.buf_len, .data = ctx->is.buf});
 	} else {
 		bmv_sprint(&bmv, &buf);
 		txt_s = measure_text(ctx->font, stream_to_s8(buf));

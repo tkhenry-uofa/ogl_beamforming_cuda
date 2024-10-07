@@ -1,7 +1,5 @@
 /* See LICENSE for license details. */
-#include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 static void *
 mem_clear(u8 *p, u8 c, size len)
@@ -11,7 +9,7 @@ mem_clear(u8 *p, u8 c, size len)
 }
 
 static void
-mem_move(char *src, char *dest, size n)
+mem_move(u8 *src, u8 *dest, size n)
 {
 	if (dest < src) while (n) { *dest++ = *src++; n--; }
 	else            while (n) { n--; dest[n] = src[n]; }
@@ -164,6 +162,35 @@ normalize_v3(v3 a)
 {
 	f32 length = length_v3(a);
 	v3 result = {.x = a.x / length, .y = a.y / length, .z = a.z / length};
+	return result;
+}
+
+static f64
+parse_f64(s8 s)
+{
+	f64 integral = 0, fractional = 0, sign = 1;
+
+	if (s.len && *s.data == '-') {
+		sign = -1;
+		s.data++;
+		s.len--;
+	}
+
+	while (s.len && *s.data != '.') {
+		integral *= 10;
+		integral += *s.data - '0';
+		s.data++;
+		s.len--;
+	}
+
+	if (*s.data == '.') { s.data++; s.len--; }
+
+	while (s.len) {
+		ASSERT(s.data[s.len - 1] != '.');
+		fractional /= 10;
+		fractional += (f64)(s.data[--s.len] - '0') / 10.0;
+	}
+	f64 result = sign * (integral + fractional);
 	return result;
 }
 
