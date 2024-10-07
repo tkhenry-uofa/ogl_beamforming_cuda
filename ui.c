@@ -297,7 +297,7 @@ static void
 set_text_input_idx(BeamformerCtx *ctx, BPModifiableValue bmv, Rect r, v2 mouse)
 {
 	if (ctx->is.store.value && !bmv_equal(&ctx->is.store, &bmv)) {
-		f32 new_val = parse_f64((s8){.len = ctx->is.buf_len, .data =ctx->is.buf});
+		f32 new_val = parse_f64((s8){.len = ctx->is.buf_len, .data = ctx->is.buf});
 		bmv_store_value(ctx, &ctx->is.store, new_val, 0);
 	}
 
@@ -307,7 +307,7 @@ set_text_input_idx(BeamformerCtx *ctx, BPModifiableValue bmv, Rect r, v2 mouse)
 	if (ctx->is.store.value == NULL)
 		return;
 
-	Stream s = {.cap = ARRAY_COUNT(ctx->is.buf), .data = (u8 *)ctx->is.buf};
+	Stream s = {.cap = ARRAY_COUNT(ctx->is.buf), .data = ctx->is.buf};
 	bmv_sprint(&bmv, &s);
 	ASSERT(!s.errors);
 	ctx->is.buf_len = s.widx;
@@ -357,7 +357,7 @@ static Rect
 do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx *ctx, Arena a,
                       Rect r, v2 mouse, f32 *hover_t)
 {
-	Stream buf = stream_alloc(&a, 68);
+	Stream buf = stream_alloc(&a, 64);
 	v2 txt_s;
 
 	b32 bmv_active = bmv_equal(&bmv, &ctx->is.store);
