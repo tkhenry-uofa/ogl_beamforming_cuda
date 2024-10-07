@@ -18,7 +18,7 @@ layout(std140, binding = 0) uniform parameters {
 	vec4  output_min_coord;       /* [m] Top left corner of output region */
 	vec4  output_max_coord;       /* [m] Bottom right corner of output region */
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */
-	uint  array_count;            /* Number of Arrays (4 max) */
+	uint  xdc_count;              /* Number of Transducer Arrays (4 max) */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	uint  lpf_order;              /* Order of Low Pass Filter */
 	float speed_of_sound;         /* [m/s] */
@@ -141,7 +141,7 @@ void main()
 	}
 
 	/* NOTE: skip over channels corresponding to other arrays */
-	uint ridx      = u_xdc_index * (dec_data_dim.y / array_count) * dec_data_dim.x * dec_data_dim.z;
+	uint ridx      = u_xdc_index * (dec_data_dim.y / xdc_count) * dec_data_dim.x * dec_data_dim.z;
 	int  direction = beamform_plane * (u_volume_export_pass ^ 1);
 	/* NOTE: For Each Acquistion in Raw Data */
 	for (uint i = 0; i < dec_data_dim.z; i++) {

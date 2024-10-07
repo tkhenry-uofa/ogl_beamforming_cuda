@@ -25,7 +25,7 @@ typedef struct {
 	v4  output_min_coordinate;  /* [m] Back-Top-Left corner of output region (w ignored) */
 	v4  output_max_coordinate;  /* [m] Front-Bottom-Right corner of output region (w ignored)*/
 	uv2 rf_raw_dim;             /* Raw Data Dimensions */
-	u32 array_count;            /* Number of Arrays (4 max) */
+	u32 xdc_count;              /* Number of Transducer Arrays (4 max) */
 	u32 channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	u32 lpf_order;              /* Order of Low Pass Filter */
 	f32 speed_of_sound;         /* [m/s] */

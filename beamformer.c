@@ -47,10 +47,10 @@ alloc_output_image(BeamformerCtx *ctx)
 		}
 	}
 
-	bp->array_count = CLAMP(bp->array_count, 1, ARRAY_COUNT(cs->array_textures));
+	bp->xdc_count = CLAMP(bp->xdc_count, 1, ARRAY_COUNT(cs->array_textures));
 	glDeleteTextures(ARRAY_COUNT(cs->array_textures), cs->array_textures);
-	glGenTextures(bp->array_count, cs->array_textures);
-	for (u32 i = 0; i < bp->array_count; i++) {
+	glGenTextures(bp->xdc_count, cs->array_textures);
+	for (u32 i = 0; i < bp->xdc_count; i++) {
 		glBindTexture(GL_TEXTURE_3D, cs->array_textures[i]);
 		glTexStorage3D(GL_TEXTURE_3D, ctx->out_texture_mips, GL_RG32F, odim.x, odim.y, odim.z);
 	}
@@ -285,9 +285,9 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 		glUniform3iv(csctx->volume_export_dim_offset_id, 1, (i32 []){0, 0, 0});
 		glUniform1i(csctx->volume_export_pass_id, 0);
 
-		for (u32 i = 0; i < bp->array_count; i++) {
+		for (u32 i = 0; i < bp->xdc_count; i++) {
 			u32 texture;
-			if (bp->array_count == 1) {
+			if (bp->xdc_count == 1) {
 				if (ctx->out_data_dim.w > 1) {
 					texture = csctx->sum_textures[csctx->sum_texture_index];
 				} else {
@@ -308,14 +308,14 @@ do_compute_shader(BeamformerCtx *ctx, enum compute_shaders shader)
 			                  ctx->out_data_dim.y,
 			                  ORONE(ctx->out_data_dim.z / 32));
 		}
-		if (bp->array_count > 1) {
+		if (bp->xdc_count > 1) {
 			glUseProgram(csctx->programs[CS_SUM]);
 			glBindBufferBase(GL_UNIFORM_BUFFER, 0, csctx->shared_ubo);
 			u32 out;
 			if (ctx->out_data_dim.w > 1) out = csctx->sum_textures[csctx->sum_texture_index];
 			else                         out = ctx->out_texture;
-			do_sum_shader(csctx, csctx->array_textures, bp->array_count,
-			              1 / (f32)bp->array_count, out, ctx->out_data_dim);
+			do_sum_shader(csctx, csctx->array_textures, bp->xdc_count,
+			              1 / (f32)bp->xdc_count, out, ctx->out_data_dim);
 		}
 	} break;
 	case CS_SUM: {
