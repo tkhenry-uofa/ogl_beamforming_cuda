@@ -79,6 +79,8 @@ typedef struct {
 
 typedef void *os_library_handle;
 
+static void *win32_stderr_handle;
+
 static void __attribute__((noreturn))
 os_fail(void)
 {
@@ -112,7 +114,7 @@ os_alloc_arena(Arena a, size capacity)
 
 	a.beg = VirtualAlloc(0, capacity, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 	if (a.beg == NULL) {
-		os_write_err_msg("os_alloc_arena: couldn't allocate memory\n");
+		os_write_err_msg(s8("os_alloc_arena: couldn't allocate memory\n"));
 		os_fail();
 	}
 	a.end = a.beg + capacity;
