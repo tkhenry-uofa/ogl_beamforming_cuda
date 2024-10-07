@@ -14,6 +14,12 @@ typedef struct {
 
 typedef void *os_library_handle;
 
+static void
+os_write_err_msg(s8 msg)
+{
+	write(STDERR_FILENO, msg.data, msg.len);
+}
+
 static Arena
 os_alloc_arena(Arena a, size capacity)
 {

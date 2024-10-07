@@ -45,6 +45,7 @@ typedef int16_t   i16;
 typedef uint16_t  u16;
 typedef int32_t   i32;
 typedef uint32_t  u32;
+typedef int64_t   i64;
 typedef uint64_t  u64;
 typedef uint32_t  b32;
 typedef float     f32;
@@ -111,6 +112,13 @@ typedef struct {
 	u64  timestamp;
 } FileStats;
 #define ERROR_FILE_STATS (FileStats){.filesize = -1}
+
+typedef struct {
+	size  widx;
+	u8   *data;
+	size  cap;
+	b32   errors;
+} Stream;
 
 #include "beamformer_parameters.h"
 typedef struct {

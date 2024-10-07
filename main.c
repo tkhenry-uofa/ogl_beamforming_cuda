@@ -46,16 +46,20 @@ static void
 gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, const void *userctx)
 {
 	(void)src; (void)type; (void)id; (void)userctx;
-	fputs("[GL DEBUG ", stderr);
+
+	u8 buf[128];
+	Stream s = {.data = buf, .cap = ARRAY_COUNT(buf)};
+	stream_append_s8(&s, s8("[GL DEBUG "));
 	switch (lvl) {
-	case GL_DEBUG_SEVERITY_HIGH:         fputs("HIGH]: ",         stderr); break;
-	case GL_DEBUG_SEVERITY_MEDIUM:       fputs("MEDIUM]: ",       stderr); break;
-	case GL_DEBUG_SEVERITY_LOW:          fputs("LOW]: ",          stderr); break;
-	case GL_DEBUG_SEVERITY_NOTIFICATION: fputs("NOTIFICATION]: ", stderr); break;
-	default:                             fputs("INVALID]: ",      stderr); break;
+	case GL_DEBUG_SEVERITY_HIGH:         stream_append_s8(&s, s8("HIGH]: "));         break;
+	case GL_DEBUG_SEVERITY_MEDIUM:       stream_append_s8(&s, s8("MEDIUM]: "));       break;
+	case GL_DEBUG_SEVERITY_LOW:          stream_append_s8(&s, s8("LOW]: "));          break;
+	case GL_DEBUG_SEVERITY_NOTIFICATION: stream_append_s8(&s, s8("NOTIFICATION]: ")); break;
+	default:                             stream_append_s8(&s, s8("INVALID]: "));      break;
 	}
-	fwrite(msg, 1, len, stderr);
-	fputc('\n', stderr);
+	os_write_err_msg(stream_to_s8(s));
+	os_write_err_msg((s8){.len = len, .data = (u8 *)msg});
+	os_write_err_msg(s8("\n"));
 }
 
 static void
@@ -88,22 +92,32 @@ validate_gl_requirements(GLParams *gl)
 }
 
 static void
-dump_gl_params(GLParams *gl)
+dump_gl_params(GLParams *gl, Arena a)
 {
-	(void)gl;
+	(void)gl; (void)a;
 #ifdef _DEBUG
-	fputs("---- GL Parameters ----\n", stdout);
+	Stream s = stream_alloc(&a, 1 * MEGABYTE);
+	stream_append_s8(&s, s8("---- GL Parameters ----\n"));
 	switch (gl->vendor_id) {
-	case GL_VENDOR_AMD:    fputs("Vendor: AMD\n",    stdout); break;
-	case GL_VENDOR_INTEL:  fputs("Vendor: Intel\n",  stdout); break;
-	case GL_VENDOR_NVIDIA: fputs("Vendor: nVidia\n", stdout); break;
+	case GL_VENDOR_AMD:    stream_append_s8(&s, s8("Vendor: AMD\n"));    break;
+	case GL_VENDOR_INTEL:  stream_append_s8(&s, s8("Vendor: Intel\n"));  break;
+	case GL_VENDOR_NVIDIA: stream_append_s8(&s, s8("Vendor: nVidia\n")); break;
 	}
-	printf("Version: %d.%d\n", gl->version_major, gl->version_minor);
-	printf("Max 1D/2D Texture Dimension: %d\n", gl->max_2d_texture_dim);
-	printf("Max 3D Texture Dimension: %d\n", gl->max_3d_texture_dim);
-	printf("Max SSBO Size: %d\n", gl->max_ssbo_size);
-	printf("Max UBO Size: %d\n", gl->max_ubo_size);
-	fputs("-----------------------\n", stdout);
+	stream_append_s8(&s, s8("Version: "));
+	stream_append_i64(&s, gl->version_major);
+	stream_append_s8(&s, s8("."));
+	stream_append_i64(&s, gl->version_minor);
+	stream_append_s8(&s, s8("\nMax 1D/2D Texture Dimension: "));
+	stream_append_i64(&s, gl->max_2d_texture_dim);
+	stream_append_s8(&s, s8("\nMax 3D Texture Dimension: "));
+	stream_append_i64(&s, gl->max_3d_texture_dim);
+	stream_append_s8(&s, s8("\nMax SSBO Size: "));
+	stream_append_i64(&s, gl->max_ssbo_size);
+	stream_append_s8(&s, s8("\nMax UBO Size: "));
+	stream_append_i64(&s, gl->max_ubo_size);
+	stream_append_s8(&s, s8("\n-----------------------\n"));
+	if (!s.errors)
+		os_write_err_msg(stream_to_s8(s));
 #endif
 }
 
@@ -238,7 +252,7 @@ main(void)
 
 	/* NOTE: Gather information about the GPU */
 	get_gl_params(&ctx.gl);
-	dump_gl_params(&ctx.gl);
+	dump_gl_params(&ctx.gl, temp_memory);
 	validate_gl_requirements(&ctx.gl);
 
 	/* TODO: build these into the binary */

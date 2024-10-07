@@ -3,18 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static void __attribute__((noreturn))
-die(char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-
-	exit(1);
-}
-
 static void *
 mem_clear(u8 *p, u8 c, size len)
 {
@@ -35,14 +23,97 @@ alloc_(Arena *a, size len, size align, size count)
 {
 	size padding   = -(uintptr_t)a->beg & (align - 1);
 	size available = a->end - a->beg - padding;
-	if (available < 0 || count > available / len) {
-		ASSERT(0);
-		die("arena OOM\n");
-	}
+	if (available < 0 || count > available / len)
+		ASSERT(0 && "arena OOM\n");
 	void *p = a->beg + padding;
 	a->beg += padding + count * len;
 	/* TODO: Performance? */
 	return mem_clear(p, 0, count * len);
+}
+
+static Stream
+stream_alloc(Arena *a, size cap)
+{
+	Stream result = {.cap = cap};
+	result.data = alloc(a, u8, cap);
+	return result;
+}
+
+static s8
+stream_to_s8(Stream s)
+{
+	ASSERT(!s.errors);
+	s8 result = {.len = s.widx, .data = s.data};
+	return result;
+}
+
+static void
+stream_append_s8(Stream *s, s8 str)
+{
+	s->errors |= (s->cap - s->widx) <= str.len;
+	for (size i = 0; !s->errors && i < str.len; i++)
+		s->data[s->widx++] = str.data[i];
+}
+
+static void
+stream_append_u64(Stream *s, u64 n)
+{
+	u8 tmp[64];
+	u8 *end = tmp + sizeof(tmp);
+	u8 *beg = end;
+	do { *--beg = '0' + (n % 10); } while (n /= 10);
+	stream_append_s8(s, (s8){.len = end - beg, .data = beg});
+}
+
+static void
+stream_append_i64(Stream *s, i64 n)
+{
+	if (n < 0) {
+		stream_append_s8(s, s8("-"));
+		n *= -1;
+	}
+	stream_append_u64(s, n);
+}
+
+static void
+stream_append_f32(Stream *s, f32 f)
+{
+	if (f < 0) {
+		stream_append_s8(s, s8("-"));
+		f *= -1;
+	}
+	/* TODO */
+	size remaining = s->cap - s->widx;
+	s->errors |= remaining <= snprintf(0, 0, "%0.02f", f);
+	if (!s->errors)
+		s->widx += snprintf((char *)(s->data + s->widx), remaining, "%0.02f", f);
+}
+
+static void
+stream_append_f32_e(Stream *s, f32 f)
+{
+	if (f < 0) {
+		stream_append_s8(s, s8("-"));
+		f *= -1;
+	}
+	/* TODO */
+	size remaining = s->cap - s->widx;
+	s->errors |= remaining <= snprintf(0, 0, "%0.02e", f);
+	if (!s->errors)
+		s->widx += snprintf((char *)(s->data + s->widx), remaining, "%0.02e", f);
+}
+
+
+static void __attribute__((noreturn))
+die(char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+
+	exit(1);
 }
 
 static s8

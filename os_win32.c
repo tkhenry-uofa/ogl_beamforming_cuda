@@ -1,6 +1,9 @@
 /* See LICENSE for license details. */
 #include "util.h"
 
+#define STD_OUTPUT_HANDLE -11
+#define STD_ERROR_HANDLE  -12
+
 #define PAGE_READWRITE 0x04
 #define MEM_COMMIT     0x1000
 #define MEM_RESERVE    0x2000
@@ -56,6 +59,7 @@ W32(b32)    FreeLibrary(void *);
 W32(b32)    GetFileInformationByHandle(void *, void *);
 W32(i32)    GetLastError(void);
 W32(void *) GetProcAddress(void *, c8 *);
+W32(void *) GetStdHandle(i32);
 W32(void)   GetSystemInfo(void *);
 W32(void *) LoadLibraryA(c8 *);
 W32(void *) MapViewOfFile(void *, u32, u32, u32, u64);
@@ -73,6 +77,15 @@ typedef struct {
 } os_pipe;
 
 typedef void *os_library_handle;
+
+static void
+os_write_err_msg(s8 msg)
+{
+	if (!win32_stderr_handle)
+		win32_stderr_handle = GetStdHandle(STD_ERROR_HANDLE);
+	i32 wlen;
+	WriteFile(win32_stderr_handle, msg.data, msg.len, &wlen, 0);
+}
 
 static Arena
 os_alloc_arena(Arena a, size capacity)
@@ -122,7 +135,7 @@ static b32
 os_write_file(char *fname, s8 raw)
 {
 	if (raw.len > (size)U32_MAX) {
-		fputs("os_write_file: writing files > 4GB is not yet support on win32\n", stderr);
+		os_write_err_msg(s8("os_write_file: writing files > 4GB is not yet support on win32\n"));
 		return 0;
 	}
 
@@ -146,7 +159,7 @@ os_get_file_stats(char *fname)
 
 	w32_file_info fileinfo;
 	if (!GetFileInformationByHandle(h, &fileinfo)) {
-		fputs("os_get_file_stats: couldn't get file info\n", stderr);
+		os_write_err_msg(s8("os_get_file_stats: couldn't get file info\n"));
 		CloseHandle(h);
 		return ERROR_FILE_STATS;
 	}
