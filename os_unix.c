@@ -20,6 +20,12 @@ os_write_err_msg(s8 msg)
 	write(STDERR_FILENO, msg.data, msg.len);
 }
 
+static void __attribute__((noreturn))
+os_fail(void)
+{
+	_exit(1);
+}
+
 static Arena
 os_alloc_arena(Arena a, size capacity)
 {
@@ -35,8 +41,10 @@ os_alloc_arena(Arena a, size capacity)
 		munmap(a.beg, oldsize);
 
 	a.beg = mmap(0, capacity, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
-	if (a.beg == MAP_FAILED)
-		die("os_alloc_arena: couldn't allocate memory\n");
+	if (a.beg == MAP_FAILED) {
+		os_write_err_msg(s8("os_alloc_arena: couldn't allocate memory\n"));
+		os_fail();
+	}
 	a.end = a.beg + capacity;
 	return a;
 }
@@ -44,17 +52,19 @@ os_alloc_arena(Arena a, size capacity)
 static s8
 os_read_file(Arena *a, char *fname, size fsize)
 {
+	if (fsize < 0)
+		return (s8){.len = -1};
+
 	i32 fd = open(fname, O_RDONLY);
 	if (fd < 0)
-		die("os_read_file: couldn't open file: %s\n", fname);
+		return (s8){.len = -1};
 
-	s8 ret = s8alloc(a, fsize);
-
+	s8 ret    = s8alloc(a, fsize);
 	size rlen = read(fd, ret.data, ret.len);
 	close(fd);
 
 	if (rlen != ret.len)
-		die("os_read_file: couldn't read file: %s\n", fname);
+		return (s8){.len = -1};
 
 	return ret;
 }

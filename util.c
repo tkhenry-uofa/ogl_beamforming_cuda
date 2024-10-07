@@ -103,17 +103,12 @@ stream_append_f32_e(Stream *s, f32 f)
 		s->widx += snprintf((char *)(s->data + s->widx), remaining, "%0.02e", f);
 }
 
-
-static void __attribute__((noreturn))
-die(char *fmt, ...)
+static s8
+cstr_to_s8(char *cstr)
 {
-	va_list ap;
-
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-
-	exit(1);
+	s8 result = {.data = (u8 *)cstr};
+	while (*cstr) { result.len++; cstr++; }
+	return result;
 }
 
 static s8

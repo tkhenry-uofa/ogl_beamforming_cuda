@@ -1,13 +1,13 @@
 /* See LICENSE for license details. */
 #include "beamformer.h"
 
-static char *compute_shader_paths[CS_LAST] = {
-	[CS_HADAMARD] = "shaders/hadamard.glsl",
-	[CS_HERCULES] = "shaders/hercules.glsl",
-	[CS_DEMOD]    = "shaders/demod.glsl",
-	[CS_MIN_MAX]  = "shaders/min_max.glsl",
-	[CS_SUM]      = "shaders/sum.glsl",
-	[CS_UFORCES]  = "shaders/uforces.glsl",
+static s8 compute_shader_paths[CS_LAST] = {
+	[CS_HADAMARD] = s8("shaders/hadamard.glsl"),
+	[CS_HERCULES] = s8("shaders/hercules.glsl"),
+	[CS_DEMOD]    = s8("shaders/demod.glsl"),
+	[CS_MIN_MAX]  = s8("shaders/min_max.glsl"),
+	[CS_SUM]      = s8("shaders/sum.glsl"),
+	[CS_UFORCES]  = s8("shaders/uforces.glsl"),
 };
 
 #ifndef _DEBUG
@@ -65,14 +65,21 @@ gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, co
 static void
 get_gl_params(GLParams *gl)
 {
-	const u8 *vendor = glGetString(GL_VENDOR);
-	if (!vendor)
-		die("Failed to determine GL Vendor\n");
+	char *vendor = (char *)glGetString(GL_VENDOR);
+	if (!vendor) {
+		os_write_err_msg(s8("Failed to determine GL Vendor\n"));
+		os_fail();
+	}
 	switch (vendor[0]) {
-	case 'A': gl->vendor_id = GL_VENDOR_AMD;          break;
-	case 'I': gl->vendor_id = GL_VENDOR_INTEL;        break;
-	case 'N': gl->vendor_id = GL_VENDOR_NVIDIA;       break;
-	default:  die("Unknown GL Vendor: %s\n", vendor); break;
+	case 'A': gl->vendor_id = GL_VENDOR_AMD;                      break;
+	case 'I': gl->vendor_id = GL_VENDOR_INTEL;                    break;
+	case 'N': gl->vendor_id = GL_VENDOR_NVIDIA;                   break;
+	default: {
+		os_write_err_msg(s8("Unknown GL Vendor: "));
+		os_write_err_msg(cstr_to_s8(vendor));
+		os_write_err_msg(s8("\n"));
+		os_fail();
+	} break;
 	}
 
 	glGetIntegerv(GL_MAJOR_VERSION,                 &gl->version_major);
@@ -87,8 +94,10 @@ static void
 validate_gl_requirements(GLParams *gl)
 {
 	ASSERT(gl->max_ubo_size >= sizeof(BeamformerParameters));
-	if (gl->version_major < 4 || (gl->version_major == 4 && gl->version_minor < 5))
-		die("Only OpenGL Versions 4.5 or newer are supported!\n");
+	if (gl->version_major < 4 || (gl->version_major == 4 && gl->version_minor < 5)) {
+		os_write_err_msg(s8("Only OpenGL Versions 4.5 or newer are supported!\n"));
+		os_fail();
+	}
 }
 
 static void
@@ -164,12 +173,18 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
 	for (u32 i = 0; i < ARRAY_COUNT(csctx->programs); i++) {
-		if (!compute_shader_paths[i])
+		if (!compute_shader_paths[i].len)
 			continue;
 
 		Arena tmp = a;
-		FileStats fs   = os_get_file_stats(compute_shader_paths[i]);
-		s8 shader_text = os_read_file(&tmp, compute_shader_paths[i], fs.filesize);
+		FileStats fs   = os_get_file_stats((char *)compute_shader_paths[i].data);
+		s8 shader_text = os_read_file(&tmp, (char *)compute_shader_paths[i].data, fs.filesize);
+		if (shader_text.len == -1) {
+			os_write_err_msg(s8("failed to read shader: "));
+			os_write_err_msg(compute_shader_paths[i]);
+			os_write_err_msg(s8("\n"));
+			os_fail();
+		}
 		u32 shader_id  = compile_shader(tmp, GL_COMPUTE_SHADER, shader_text);
 
 		if (shader_id) {

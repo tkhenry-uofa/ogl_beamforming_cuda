@@ -55,6 +55,7 @@ W32(void *) CreateFileA(c8 *, u32, u32, void *, u32, u32, void *);
 W32(void *) CreateFileMappingA(void *, void *, u32, u32, u32, c8 *);
 W32(void *) CreateNamedPipeA(c8 *, u32, u32, u32, u32, u32, u32, void *);
 W32(b32)    DeleteFileA(c8 *);
+W32(void)   ExitProcess(i32);
 W32(b32)    FreeLibrary(void *);
 W32(b32)    GetFileInformationByHandle(void *, void *);
 W32(i32)    GetLastError(void);
@@ -77,6 +78,12 @@ typedef struct {
 } os_pipe;
 
 typedef void *os_library_handle;
+
+static void __attribute__((noreturn))
+os_fail(void)
+{
+	ExitProcess(1);
+}
 
 static void
 os_write_err_msg(s8 msg)
@@ -104,8 +111,10 @@ os_alloc_arena(Arena a, size capacity)
 		VirtualFree(a.beg, oldsize, MEM_RELEASE);
 
 	a.beg = VirtualAlloc(0, capacity, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-	if (a.beg == NULL)
-		die("os_alloc_arena: couldn't allocate memory\n");
+	if (a.beg == NULL) {
+		os_write_err_msg("os_alloc_arena: couldn't allocate memory\n");
+		os_fail();
+	}
 	a.end = a.beg + capacity;
 	return a;
 }
@@ -113,20 +122,26 @@ os_alloc_arena(Arena a, size capacity)
 static s8
 os_read_file(Arena *a, char *fname, size fsize)
 {
-	if (fsize > (size)U32_MAX)
-		die("os_read_file: %s\nHandling files >4GB is not yet "
-		    "handled in win32 code\n", fname);
+	if (fsize < 0)
+		return (s8){.len = -1};
+
+	if (fsize > (size)U32_MAX) {
+		os_write_err_msg(s8("os_read_file: Handling files >4GB is not yet handled"
+		                    "in win32 code\n"));
+		return (s8){.len = -1};
+	}
 
 	void *h = CreateFileA(fname, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0);
 	if (h == INVALID_HANDLE_VALUE)
-		die("os_read_file: couldn't open file: %s\n", fname);
+		return (s8){.len = -1};
 
 	s8 ret = s8alloc(a, fsize);
 
-	i32 rlen = 0;
-	if (!ReadFile(h, ret.data, ret.len, &rlen, 0) && rlen != ret.len)
-		die("os_read_file: couldn't read file: %s\n", fname);
+	i32 rlen  = 0;
+	b32 error = !ReadFile(h, ret.data, ret.len, &rlen, 0) || rlen != ret.len;
 	CloseHandle(h);
+	if (error)
+		return (s8){.len = -1};
 
 	return ret;
 }
