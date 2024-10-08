@@ -24,6 +24,7 @@ static void __attribute__((noreturn))
 os_fail(void)
 {
 	_exit(1);
+	unreachable();
 }
 
 static Arena

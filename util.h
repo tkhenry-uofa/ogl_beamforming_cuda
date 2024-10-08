@@ -21,7 +21,7 @@
 #ifdef _MSC_VER
 	#define unreachable() __assume(0)
 #else
-	#define unreachable() __builtitin_unreachable()
+	#define unreachable() __builtin_unreachable()
 #endif
 #endif
 
