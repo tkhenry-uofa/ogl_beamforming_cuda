@@ -37,21 +37,21 @@ do_debug(Stream *error_stream)
 static void
 gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, const void *userctx)
 {
-	(void)src; (void)type; (void)id; (void)userctx;
+	(void)src; (void)type; (void)id;
 
-	u8 buf[128];
-	Stream s = {.data = buf, .cap = ARRAY_COUNT(buf)};
-	stream_append_s8(&s, s8("[GL DEBUG "));
+	Stream *e = (Stream *)userctx;
+	stream_append_s8(e, s8("[GL DEBUG "));
 	switch (lvl) {
-	case GL_DEBUG_SEVERITY_HIGH:         stream_append_s8(&s, s8("HIGH]: "));         break;
-	case GL_DEBUG_SEVERITY_MEDIUM:       stream_append_s8(&s, s8("MEDIUM]: "));       break;
-	case GL_DEBUG_SEVERITY_LOW:          stream_append_s8(&s, s8("LOW]: "));          break;
-	case GL_DEBUG_SEVERITY_NOTIFICATION: stream_append_s8(&s, s8("NOTIFICATION]: ")); break;
-	default:                             stream_append_s8(&s, s8("INVALID]: "));      break;
+	case GL_DEBUG_SEVERITY_HIGH:         stream_append_s8(e, s8("HIGH]: "));         break;
+	case GL_DEBUG_SEVERITY_MEDIUM:       stream_append_s8(e, s8("MEDIUM]: "));       break;
+	case GL_DEBUG_SEVERITY_LOW:          stream_append_s8(e, s8("LOW]: "));          break;
+	case GL_DEBUG_SEVERITY_NOTIFICATION: stream_append_s8(e, s8("NOTIFICATION]: ")); break;
+	default:                             stream_append_s8(e, s8("INVALID]: "));      break;
 	}
-	os_write_err_msg(stream_to_s8(s));
-	os_write_err_msg((s8){.len = len, .data = (u8 *)msg});
-	os_write_err_msg(s8("\n"));
+	stream_append_s8(e, (s8){.len = len, .data = (u8 *)msg});
+	stream_append_byte(e, '\n');
+	os_write_err_msg(stream_to_s8(*e));
+	e->widx = 0;
 }
 
 static void
@@ -278,7 +278,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 	validate_cuda_lib(&ctx->cuda_lib);
 
 	/* NOTE: set up OpenGL debug logging */
-	glDebugMessageCallback(gl_debug_logger, NULL);
+	glDebugMessageCallback(gl_debug_logger, &ctx->error_stream);
 #ifdef _DEBUG
 	glEnable(GL_DEBUG_OUTPUT);
 #endif
