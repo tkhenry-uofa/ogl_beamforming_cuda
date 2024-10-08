@@ -1,6 +1,4 @@
 /* See LICENSE for license details. */
-#include "beamformer.h"
-
 static s8 compute_shader_paths[CS_LAST] = {
 	[CS_HADAMARD] = s8("shaders/hadamard.glsl"),
 	[CS_HERCULES] = s8("shaders/hercules.glsl"),
@@ -22,14 +20,14 @@ typedef void do_beamformer_fn(BeamformerCtx *, Arena);
 static do_beamformer_fn *do_beamformer;
 
 static void
-do_debug(void)
+do_debug(Stream *error_stream)
 {
 	static f32 updated_time;
 	FileStats test_stats = os_get_file_stats(OS_DEBUG_LIB_NAME);
 	if (test_stats.filesize > 32 && test_stats.timestamp > updated_time) {
 		os_unload_library(debug_lib);
-		debug_lib = os_load_library(OS_DEBUG_LIB_NAME, OS_DEBUG_LIB_TEMP_NAME);
-		do_beamformer = os_lookup_dynamic_symbol(debug_lib, "do_beamformer");
+		debug_lib = os_load_library(OS_DEBUG_LIB_NAME, OS_DEBUG_LIB_TEMP_NAME, error_stream);
+		do_beamformer = os_lookup_dynamic_symbol(debug_lib, "do_beamformer", error_stream);
 		updated_time  = test_stats.timestamp;
 	}
 }
@@ -221,7 +219,7 @@ validate_cuda_lib(CudaLib *cl)
 }
 
 static void
-check_and_load_cuda_lib(CudaLib *cl)
+check_and_load_cuda_lib(CudaLib *cl, Stream *error_stream)
 {
 	FileStats current = os_get_file_stats(OS_CUDA_LIB_NAME);
 	if (cl->timestamp == current.timestamp || current.filesize < 32)
@@ -231,12 +229,12 @@ check_and_load_cuda_lib(CudaLib *cl)
 
 	cl->timestamp = current.timestamp;
 	os_unload_library(cl->lib);
-	cl->lib = os_load_library(OS_CUDA_LIB_NAME, OS_CUDA_LIB_TEMP_NAME);
+	cl->lib = os_load_library(OS_CUDA_LIB_NAME, OS_CUDA_LIB_TEMP_NAME, error_stream);
 
-	cl->init_cuda_configuration = os_lookup_dynamic_symbol(cl->lib, "init_cuda_configuration");
-	cl->register_cuda_buffers   = os_lookup_dynamic_symbol(cl->lib, "register_cuda_buffers");
-	cl->cuda_decode             = os_lookup_dynamic_symbol(cl->lib, "cuda_decode");
-	cl->cuda_hilbert            = os_lookup_dynamic_symbol(cl->lib, "cuda_hilbert");
+	cl->init_cuda_configuration = os_lookup_dynamic_symbol(cl->lib, "init_cuda_configuration", error_stream);
+	cl->register_cuda_buffers   = os_lookup_dynamic_symbol(cl->lib, "register_cuda_buffers", error_stream);
+	cl->cuda_decode             = os_lookup_dynamic_symbol(cl->lib, "cuda_decode", error_stream);
+	cl->cuda_hilbert            = os_lookup_dynamic_symbol(cl->lib, "cuda_hilbert", error_stream);
 
 	validate_cuda_lib(cl);
 }
@@ -267,7 +265,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 	init_fragment_shader_ctx(&ctx->fsctx, ctx->out_data_dim);
 
 	ctx->data_pipe = os_open_named_pipe(OS_PIPE_NAME);
-	ctx->params    = os_open_shared_memory_area(OS_SMEM_NAME);
+	ctx->params    = os_open_shared_memory_area(OS_SMEM_NAME, sizeof(ctx->params));
 	/* TODO: properly handle this? */
 	ASSERT(ctx->data_pipe.file != INVALID_FILE);
 	ASSERT(ctx->params);
@@ -304,9 +302,9 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 static void
 do_program_step(BeamformerCtx *ctx, Arena temp_memory)
 {
-	do_debug();
+	do_debug(&ctx->error_stream);
 	if (ctx->gl.vendor_id == GL_VENDOR_NVIDIA)
-		check_and_load_cuda_lib(&ctx->cuda_lib);
+		check_and_load_cuda_lib(&ctx->cuda_lib, &ctx->error_stream);
 
 	if (ctx->flags & RELOAD_SHADERS) {
 		ctx->flags &= ~RELOAD_SHADERS;

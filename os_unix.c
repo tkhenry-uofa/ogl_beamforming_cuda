@@ -8,17 +8,28 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static void
-os_write_err_msg(s8 msg)
-{
-	write(STDERR_FILENO, msg.data, msg.len);
-}
-
 static void __attribute__((noreturn))
 os_fail(void)
 {
 	_exit(1);
 	unreachable();
+}
+
+static b32
+os_write_file(iptr file, s8 raw)
+{
+	while (raw.len) {
+		size r = write(file, raw.data, raw.len);
+		if (r < 0) return 0;
+		raw = s8_cut_head(raw, r);
+	}
+	return 1;
+}
+
+static void
+os_write_err_msg(s8 msg)
+{
+	write(STDERR_FILENO, msg.data, msg.len);
 }
 
 static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
@@ -66,12 +77,12 @@ os_read_file(Arena *a, char *fname, size fsize)
 
 static PLATFORM_WRITE_NEW_FILE_FN(os_write_new_file)
 {
-	i32 fd = open(fname, O_WRONLY|O_TRUNC|O_CREAT, 0600);
-	if (fd < 0)
+	iptr fd = open(fname, O_WRONLY|O_TRUNC|O_CREAT, 0600);
+	if (fd == INVALID_FILE)
 		return 0;
-	size wlen = write(fd, raw.data, raw.len);
+	b32 ret = os_write_file(fd, raw);
 	close(fd);
-	return wlen == raw.len;
+	return ret;
 }
 
 static FileStats
@@ -121,20 +132,19 @@ static PLATFORM_READ_PIPE_FN(os_read_pipe)
 	return total_read;
 }
 
-static BeamformerParametersFull *
-os_open_shared_memory_area(char *name)
+static void *
+os_open_shared_memory_area(char *name, size cap)
 {
 	i32 fd = shm_open(name, O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
 	if (fd == -1)
 		return NULL;
 
-	if (ftruncate(fd, sizeof(BeamformerParametersFull)) == -1) {
+	if (ftruncate(fd, cap) == -1) {
 		close(fd);
 		return NULL;
 	}
 
-	BeamformerParametersFull *new;
-	new = mmap(NULL, sizeof(*new), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	void *new = mmap(NULL, cap, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 	close(fd);
 
 	if (new == MAP_FAILED)
@@ -180,15 +190,20 @@ ret:
 }
 
 static void *
-os_load_library(char *name, char *temp_name)
+os_load_library(char *name, char *temp_name, Stream *e)
 {
 	if (temp_name) {
 		if (os_copy_file(name, temp_name))
 			name = temp_name;
 	}
 	void *res = dlopen(name, RTLD_NOW|RTLD_LOCAL);
-	if (!res)
-		TraceLog(LOG_WARNING, "os_load_library(%s): %s\n", name, dlerror());
+	if (!res && e) {
+		s8 errs[] = {s8("WARNING: os_load_library("), cstr_to_s8(name), s8("): "),
+		             cstr_to_s8(dlerror()), s8("\n")};
+		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+		os_write_err_msg(stream_to_s8(*e));
+		e->widx = 0;
+	}
 
 	if (temp_name)
 		unlink(temp_name);
@@ -197,13 +212,19 @@ os_load_library(char *name, char *temp_name)
 }
 
 static void *
-os_lookup_dynamic_symbol(void *h, char *name)
+os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 {
 	if (!h)
 		return 0;
 	void *res = dlsym(h, name);
-	if (!res)
-		TraceLog(LOG_WARNING, "os_lookup_dynamic_symbol(%s): %s\n", name, dlerror());
+	if (!res && e) {
+		s8 errs[] = {s8("WARNING: os_lookup_dynamic_symbol("), cstr_to_s8(name), s8("): "),
+		             cstr_to_s8(dlerror()), s8("\n")};
+		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+		os_write_err_msg(stream_to_s8(*e));
+		e->widx = 0;
+	}
+
 	return res;
 }
 

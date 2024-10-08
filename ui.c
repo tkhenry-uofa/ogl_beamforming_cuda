@@ -1,6 +1,4 @@
 /* See LICENSE for license details. */
-#include "beamformer.h"
-
 static void
 ui_start_compute(BeamformerCtx *ctx)
 {

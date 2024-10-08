@@ -77,13 +77,20 @@ os_fail(void)
 	unreachable();
 }
 
+static b32
+os_write_file(iptr file, s8 raw)
+{
+	i32 wlen;
+	WriteFile(file, raw.data, raw.len, &wlen, 0);
+	return raw.len == wlen;
+}
+
 static void
 os_write_err_msg(s8 msg)
 {
 	if (!win32_stderr_handle)
 		win32_stderr_handle = GetStdHandle(STD_ERROR_HANDLE);
-	i32 wlen;
-	WriteFile(win32_stderr_handle, msg.data, msg.len, &wlen, 0);
+	os_write_file(win32_stderr_handle, msg);
 }
 
 static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
@@ -118,8 +125,7 @@ os_read_file(Arena *a, char *fname, size fsize)
 		return (s8){.len = -1};
 
 	if (fsize > (size)U32_MAX) {
-		os_write_err_msg(s8("os_read_file: Handling files >4GB is not yet handled"
-		                    "in win32 code\n"));
+		os_write_err_msg(s8("os_read_file: files >4GB are not yet handled on win32\n"));
 		return (s8){.len = -1};
 	}
 
@@ -141,7 +147,7 @@ os_read_file(Arena *a, char *fname, size fsize)
 static PLATFORM_WRITE_NEW_FILE_FN(os_write_new_file)
 {
 	if (raw.len > (size)U32_MAX) {
-		os_write_err_msg(s8("os_write_file: writing files > 4GB is not yet support on win32\n"));
+		os_write_err_msg(s8("os_write_file: files >4GB are not yet handled on win32\n"));
 		return 0;
 	}
 
@@ -149,10 +155,10 @@ static PLATFORM_WRITE_NEW_FILE_FN(os_write_new_file)
 	if (h == INVALID_FILE)
 		return  0;
 
-	i32 wlen;
-	WriteFile(h, raw.data, raw.len, &wlen, 0);
+	b32 ret = os_write_file(h, raw);
 	CloseHandle(h);
-	return wlen == raw.len;
+
+	return ret;
 }
 
 static FileStats
@@ -203,18 +209,14 @@ static PLATFORM_READ_PIPE_FN(os_read_pipe)
 	return total_read;
 }
 
-static BeamformerParametersFull *
-os_open_shared_memory_area(char *name)
+static void *
+os_open_shared_memory_area(char *name, size cap)
 {
-	iptr h = CreateFileMappingA(-1, 0, PAGE_READWRITE, 0,
-	                             sizeof(BeamformerParametersFull), name);
+	iptr h = CreateFileMappingA(-1, 0, PAGE_READWRITE, 0, cap, name);
 	if (h == INVALID_FILE)
 		return NULL;
 
-	BeamformerParametersFull *new;
-	new = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(*new));
-
-	return new;
+	return MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, cap);
 }
 
 /* NOTE: closing the handle releases the memory and this happens when program terminates */
@@ -224,7 +226,7 @@ os_remove_shared_memory(char *name)
 }
 
 static void *
-os_load_library(char *name, char *temp_name)
+os_load_library(char *name, char *temp_name, Stream *e)
 {
 	if (temp_name) {
 		if (CopyFileA(name, temp_name, 0))
@@ -232,8 +234,14 @@ os_load_library(char *name, char *temp_name)
 	}
 
 	void *res = LoadLibraryA(name);
-	if (!res)
-		TraceLog(LOG_WARNING, "os_load_library(%s): %d\n", name, GetLastError());
+	if (!res && e) {
+		s8 errs[] = {s8("WARNING: os_load_library("), cstr_to_s8(name), s8("): ")};
+		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+		stream_append_i64(e, GetLastError());
+		stream_append_s8(e, s8("\n"));
+		os_write_err_msg(stream_to_s8(*e));
+		e->widx = 0;
+	}
 
 	if (temp_name)
 		DeleteFileA(temp_name);
@@ -242,13 +250,19 @@ os_load_library(char *name, char *temp_name)
 }
 
 static void *
-os_lookup_dynamic_symbol(void *h, char *name)
+os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 {
 	if (!h)
 		return 0;
 	void *res = GetProcAddress(h, name);
-	if (!res)
-		TraceLog(LOG_WARNING, "os_lookup_dynamic_symbol(%s): %d\n", name, GetLastError());
+	if (!res && e) {
+		s8 errs[] = {s8("WARNING: os_lookup_dynamic_symbol("), cstr_to_s8(name), s8("): ")};
+		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+		stream_append_i64(e, GetLastError());
+		stream_append_s8(e, s8("\n"));
+		os_write_err_msg(stream_to_s8(*e));
+		e->widx = 0;
+	}
 	return res;
 }
 

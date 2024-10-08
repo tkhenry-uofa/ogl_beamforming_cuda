@@ -34,8 +34,9 @@ int
 main(void)
 {
 	BeamformerCtx ctx = {0};
-	Arena temp_memory = os_alloc_arena((Arena){0}, 8 * MEGABYTE);
+	Arena temp_memory = os_alloc_arena((Arena){0}, 16 * MEGABYTE);
 
+	ctx.error_stream            = stream_alloc(&temp_memory, 1 * MEGABYTE);
 	ctx.platform.alloc_arena    = os_alloc_arena;
 	ctx.platform.poll_pipe      = os_poll_pipe;
 	ctx.platform.read_pipe      = os_read_pipe;

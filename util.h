@@ -135,11 +135,30 @@ typedef struct {
 #define ERROR_FILE_STATS (FileStats){.filesize = -1}
 
 typedef struct {
-	size  widx;
 	u8   *data;
-	size  cap;
+	u32   widx;
+	u32   cap;
 	b32   errors;
 } Stream;
+
+#define PLATFORM_ALLOC_ARENA_FN(name) Arena name(Arena old, size capacity)
+typedef PLATFORM_ALLOC_ARENA_FN(platform_alloc_arena_fn);
+
+#define PLATFORM_POLL_PIPE_FN(name) b32 name(Pipe p)
+typedef PLATFORM_POLL_PIPE_FN(platform_poll_pipe_fn);
+
+#define PLATFORM_READ_PIPE_FN(name) size name(Pipe p, void *buf, size len)
+typedef PLATFORM_READ_PIPE_FN(platform_read_pipe_fn);
+
+#define PLATFORM_WRITE_NEW_FILE_FN(name) b32 name(char *fname, s8 raw)
+typedef PLATFORM_WRITE_NEW_FILE_FN(platform_write_new_file_fn);
+
+typedef struct {
+	platform_alloc_arena_fn    *alloc_arena;
+	platform_poll_pipe_fn      *poll_pipe;
+	platform_read_pipe_fn      *read_pipe;
+	platform_write_new_file_fn *write_new_file;
+} Platform;
 
 #include "util.c"
 

@@ -54,6 +54,16 @@ stream_append_s8(Stream *s, s8 str)
 }
 
 static void
+stream_append_s8_array(Stream *s, s8 *strs, size count)
+{
+	while (count > 0) {
+		stream_append_s8(s, *strs);
+		strs++;
+		count--;
+	}
+}
+
+static void
 stream_append_u64(Stream *s, u64 n)
 {
 	u8 tmp[64];
@@ -106,6 +116,17 @@ cstr_to_s8(char *cstr)
 {
 	s8 result = {.data = (u8 *)cstr};
 	while (*cstr) { result.len++; cstr++; }
+	return result;
+}
+
+static s8
+s8_cut_head(s8 s, size cut)
+{
+	s8 result = s;
+	if (cut > 0) {
+		result.data += cut;
+		result.len -= cut;
+	}
 	return result;
 }
 
