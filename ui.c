@@ -601,7 +601,7 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 		draw_text(ctx->font, labels[index], pos, 0, colour_from_normalized(FG_COLOUR));
 
 		buf.widx = 0;
-		stream_append_f32_e(&buf, cs->last_frame_time[index]);
+		stream_append_f64_e(&buf, cs->last_frame_time[index]);
 		stream_append_s8(&buf, s8(" [s]"));
 		v2 txt_fs = measure_text(ctx->font, stream_to_s8(buf));
 		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
@@ -617,7 +617,7 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 		draw_text(ctx->font, totals[i], pos, 0, colour_from_normalized(FG_COLOUR));
 
 		buf.widx = 0;
-		stream_append_f32_e(&buf, times[i]);
+		stream_append_f64_e(&buf, times[i]);
 		stream_append_s8(&buf, s8(" [s]"));
 		v2 txt_fs = measure_text(ctx->font, stream_to_s8(buf));
 		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};

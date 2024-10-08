@@ -1,6 +1,4 @@
 /* See LICENSE for license details. */
-#include <stdio.h>
-
 static void *
 mem_clear(u8 *p, u8 c, size len)
 {
@@ -120,17 +118,23 @@ stream_append_f64(Stream *s, f64 f, i64 prec)
 }
 
 static void
-stream_append_f32_e(Stream *s, f32 f)
+stream_append_f64_e(Stream *s, f64 f)
 {
-	if (f < 0) {
-		stream_append_byte(s, '-');
-		f *= -1;
-	}
-	/* TODO */
-	size remaining = s->cap - s->widx;
-	s->errors |= remaining <= snprintf(0, 0, "%0.02e", f);
-	if (!s->errors)
-		s->widx += snprintf((char *)(s->data + s->widx), remaining, "%0.02e", f);
+	/* NOTE: we ignore subnormal numbers for now */
+	union { f64 f; u64 u; } u = {.f = f};
+	f64 log_10_of_2 = 0.301f;
+	i64 exponent = (u.u & (0x7ffULL << 52)) >> 52;
+	f64 scale    = (exponent - 1023) * log_10_of_2;
+	u.u &= ~(0x7ffULL << 52);
+	u.u |=  (1023ULL << 52);
+
+	if (f == 0) { u.f = 0; scale = 0; }
+	stream_append_f64(s, u.f, 100);
+	stream_append_byte(s, 'e');
+	stream_append_byte(s, scale >= 0? '+' : '-');
+	if (ABS((i64)scale) < 10)
+		stream_append_byte(s, '0');
+	stream_append_u64(s, scale >= 0? scale : -scale);
 }
 
 static s8
