@@ -46,11 +46,21 @@ stream_to_s8(Stream s)
 }
 
 static void
+stream_append_byte(Stream *s, u8 b)
+{
+	s->errors |= s->widx + 1 > s->cap;
+	if (!s->errors)
+		s->data[s->widx++] = b;
+}
+
+static void
 stream_append_s8(Stream *s, s8 str)
 {
 	s->errors |= (s->cap - s->widx) <= str.len;
-	for (size i = 0; !s->errors && i < str.len; i++)
-		s->data[s->widx++] = str.data[i];
+	if (!s->errors) {
+		for (size i = 0; i < str.len; i++)
+			s->data[s->widx++] = str.data[i];
+	}
 }
 
 static void
@@ -84,17 +94,29 @@ stream_append_i64(Stream *s, i64 n)
 }
 
 static void
-stream_append_f32(Stream *s, f32 f)
+stream_append_f64(Stream *s, f64 f, i64 prec)
 {
 	if (f < 0) {
-		stream_append_s8(s, s8("-"));
+		stream_append_byte(s, '-');
 		f *= -1;
 	}
-	/* TODO */
-	size remaining = s->cap - s->widx;
-	s->errors |= remaining <= snprintf(0, 0, "%0.02f", f);
-	if (!s->errors)
-		s->widx += snprintf((char *)(s->data + s->widx), remaining, "%0.02f", f);
+
+	/* NOTE: round last digit */
+	f += 0.5f / prec;
+
+	if (f >= (f64)(-1UL >> 1)) {
+		stream_append_s8(s, s8("inf"));
+	} else {
+		u64 integral = f;
+		u64 fraction = (f - integral) * prec;
+		stream_append_u64(s, integral);
+		stream_append_byte(s, '.');
+		for (i64 i = prec / 10; i > 1; i /= 10) {
+			if (i > fraction)
+				stream_append_byte(s, '0');
+		}
+		stream_append_u64(s, fraction);
+	}
 }
 
 static void

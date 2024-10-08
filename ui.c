@@ -176,7 +176,7 @@ bmv_sprint(BPModifiableValue *bmv, Stream *s)
 {
 	if (bmv->flags & MV_FLOAT) {
 		f32 *value = bmv->value;
-		stream_append_f32(s, *value * bmv->scale);
+		stream_append_f64(s, *value * bmv->scale, 100);
 	} else {
 		ASSERT(bmv->flags & MV_INT);
 		i32 *value = bmv->value;
@@ -339,7 +339,7 @@ do_value_listing(s8 prefix, s8 suffix, f32 value, Font font, Arena a, Rect r)
 	v2 suffix_p = {.x = r.pos.x + r.size.w - suffix_s.w, .y = r.pos.y};
 
 	Stream buf = stream_alloc(&a, 64);
-	stream_append_f32(&buf, value);
+	stream_append_f64(&buf, value, 100);
 	v2 txt_p = {.x = r.pos.x + LISTING_LEFT_COLUMN_WIDTH, .y = r.pos.y};
 
 	draw_text(font, prefix,            r.pos,    0, colour_from_normalized(FG_COLOUR));
@@ -679,7 +679,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 
 		if (output_dim.x > 1e-6 && output_dim.y > 1e-6) {
 			Stream buf = stream_alloc(&arena, 64);
-			stream_append_f32(&buf, -188.88f);
+			stream_append_f64(&buf, -188.8f, 10);
 			stream_append_s8(&buf, s8(" mm"));
 			v2 txt_s = measure_text(ctx->small_font, stream_to_s8(buf));
 
@@ -761,7 +761,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 					DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(FG_COLOUR));
 					buf.widx = 0;
 					if (i == 0 && mm > 0) stream_append_s8(&buf, s8("+"));
-					stream_append_f32(&buf, mm);
+					stream_append_f64(&buf, mm, 10);
 					stream_append_s8(&buf, s8(" mm"));
 					draw_text(ctx->small_font, stream_to_s8(buf), txt_pos,
 					          rot[i], txt_colour);
