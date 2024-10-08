@@ -153,12 +153,15 @@ typedef PLATFORM_READ_PIPE_FN(platform_read_pipe_fn);
 #define PLATFORM_WRITE_NEW_FILE_FN(name) b32 name(char *fname, s8 raw)
 typedef PLATFORM_WRITE_NEW_FILE_FN(platform_write_new_file_fn);
 
-typedef struct {
-	platform_alloc_arena_fn    *alloc_arena;
-	platform_poll_pipe_fn      *poll_pipe;
-	platform_read_pipe_fn      *read_pipe;
-	platform_write_new_file_fn *write_new_file;
-} Platform;
+#define PLATFORM_FNS      \
+	X(alloc_arena)    \
+	X(poll_pipe)      \
+	X(read_pipe)      \
+	X(write_new_file)
+
+#define X(name) platform_ ## name ## _fn *name;
+typedef struct { PLATFORM_FNS } Platform;
+#undef X
 
 #include "util.c"
 

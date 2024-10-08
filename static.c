@@ -212,10 +212,9 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 static void
 validate_cuda_lib(CudaLib *cl)
 {
-	if (!cl->init_cuda_configuration) cl->init_cuda_configuration = init_cuda_configuration_stub;
-	if (!cl->register_cuda_buffers)   cl->register_cuda_buffers   = register_cuda_buffers_stub;
-	if (!cl->cuda_decode)             cl->cuda_decode             = cuda_decode_stub;
-	if (!cl->cuda_hilbert)            cl->cuda_hilbert            = cuda_hilbert_stub;
+	#define X(name) if (!cl->name) cl->name = name ## _stub;
+	CUDA_LIB_FNS
+	#undef X
 }
 
 static void
@@ -230,12 +229,9 @@ check_and_load_cuda_lib(CudaLib *cl, Stream *error_stream)
 	cl->timestamp = current.timestamp;
 	os_unload_library(cl->lib);
 	cl->lib = os_load_library(OS_CUDA_LIB_NAME, OS_CUDA_LIB_TEMP_NAME, error_stream);
-
-	cl->init_cuda_configuration = os_lookup_dynamic_symbol(cl->lib, "init_cuda_configuration", error_stream);
-	cl->register_cuda_buffers   = os_lookup_dynamic_symbol(cl->lib, "register_cuda_buffers", error_stream);
-	cl->cuda_decode             = os_lookup_dynamic_symbol(cl->lib, "cuda_decode", error_stream);
-	cl->cuda_hilbert            = os_lookup_dynamic_symbol(cl->lib, "cuda_hilbert", error_stream);
-
+	#define X(name) cl->name = os_lookup_dynamic_symbol(cl->lib, #name, error_stream);
+	CUDA_LIB_FNS
+	#undef X
 	validate_cuda_lib(cl);
 }
 

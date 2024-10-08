@@ -35,12 +35,11 @@ main(void)
 {
 	BeamformerCtx ctx = {0};
 	Arena temp_memory = os_alloc_arena((Arena){0}, 16 * MEGABYTE);
+	ctx.error_stream  = stream_alloc(&temp_memory, 1 * MEGABYTE);
 
-	ctx.error_stream            = stream_alloc(&temp_memory, 1 * MEGABYTE);
-	ctx.platform.alloc_arena    = os_alloc_arena;
-	ctx.platform.poll_pipe      = os_poll_pipe;
-	ctx.platform.read_pipe      = os_read_pipe;
-	ctx.platform.write_new_file = os_write_new_file;
+	#define X(name) ctx.platform.name = os_ ## name;
+	PLATFORM_FNS
+	#undef X
 
 	setup_beamformer(&ctx, temp_memory);
 

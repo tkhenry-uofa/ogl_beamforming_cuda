@@ -81,13 +81,18 @@ CUDA_DECODE_FN(cuda_decode_stub) {}
 typedef CUDA_HILBERT_FN(cuda_hilbert_fn);
 CUDA_HILBERT_FN(cuda_hilbert_stub) {}
 
+#define CUDA_LIB_FNS \
+	X(cuda_decode)             \
+	X(cuda_hilbert)            \
+	X(init_cuda_configuration) \
+	X(register_cuda_buffers)
+
 typedef struct {
 	void                       *lib;
 	u64                         timestamp;
-	init_cuda_configuration_fn *init_cuda_configuration;
-	register_cuda_buffers_fn   *register_cuda_buffers;
-	cuda_decode_fn             *cuda_decode;
-	cuda_hilbert_fn            *cuda_hilbert;
+	#define X(name) name ## _fn *name;
+	CUDA_LIB_FNS
+	#undef X
 } CudaLib;
 
 #include "beamformer_parameters.h"
