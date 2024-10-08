@@ -7,12 +7,6 @@
 
 #include <immintrin.h>
 
-#include <glad.h>
-
-#define GRAPHICS_API_OPENGL_43
-#include <raylib.h>
-#include <rlgl.h>
-
 #ifndef asm
 #define asm __asm__
 #endif
@@ -26,8 +20,14 @@
 #endif
 
 #ifdef _DEBUG
+	#ifdef _WIN32
+		#define DEBUG_EXPORT __declspec(dllexport)
+	#else
+		#define DEBUG_EXPORT
+	#endif
 	#define ASSERT(c) do { if (!(c)) asm("int3; nop"); } while (0);
 #else
+	#define DEBUG_EXPORT static
 	#define ASSERT(c)
 #endif
 
@@ -59,11 +59,18 @@ typedef uint32_t  b32;
 typedef float     f32;
 typedef double    f64;
 typedef ptrdiff_t size;
+typedef ptrdiff_t iptr;
 
 typedef struct { u8 *beg, *end; } Arena;
 
 typedef struct { size len; u8 *data; } s8;
 #define s8(s) (s8){.len = ARRAY_COUNT(s) - 1, .data = (u8 *)s}
+
+/* NOTE: raylib stubs */
+#ifndef RAYLIB_H
+typedef struct { f32 x, y; } Vector2;
+typedef struct { f32 x, y, w, h; } Rectangle;
+#endif
 
 typedef union {
 	struct { i32 x, y; };
@@ -116,6 +123,12 @@ typedef union {
 } Rect;
 
 typedef struct {
+	iptr  file;
+	char *name;
+} Pipe;
+#define INVALID_FILE (-1)
+
+typedef struct {
 	size filesize;
 	u64  timestamp;
 } FileStats;
@@ -127,14 +140,6 @@ typedef struct {
 	size  cap;
 	b32   errors;
 } Stream;
-
-#include "beamformer_parameters.h"
-typedef struct {
-	BeamformerParameters raw;
-	enum compute_shaders compute_stages[16];
-	u32                  compute_stages_count;
-	b32                  upload;
-} BeamformerParametersFull;
 
 #include "util.c"
 

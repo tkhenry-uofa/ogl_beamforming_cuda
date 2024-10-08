@@ -2,6 +2,12 @@
 #ifndef _BEAMFORMER_H_
 #define _BEAMFORMER_H_
 
+#include <glad.h>
+
+#define GRAPHICS_API_OPENGL_43
+#include <raylib.h>
+#include <rlgl.h>
+
 #include "util.h"
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -21,7 +27,8 @@
 #define RECT_BTN_BORDER_WIDTH  6.0f
 
 enum program_flags {
-	RELOAD_SHADERS = 1 << 0,
+	SHOULD_EXIT    = 1 << 0,
+	RELOAD_SHADERS = 1 << 1,
 	GEN_MIPMAPS    = 1 << 29,
 	DO_COMPUTE     = 1 << 30,
 };
@@ -56,61 +63,59 @@ typedef struct {
 	f32  cursor_blink_target;
 } InputState;
 
-#if defined(__unix__)
-	#include "os_unix.c"
-
-	#ifdef _DEBUG
-	#define DEBUG_EXPORT
-	#define OS_DEBUG_LIB_NAME      "./beamformer.so"
-	#define OS_DEBUG_LIB_TEMP_NAME "./beamformer_temp.so"
-	#else
-	#define DEBUG_EXPORT static
-	#endif
-
-	#define OS_CUDA_LIB_NAME      "./external/cuda_toolkit.so"
-	#define OS_CUDA_LIB_TEMP_NAME "./external/cuda_toolkit_temp.so"
-
-	#define OS_PIPE_NAME "/tmp/beamformer_data_fifo"
-	#define OS_SMEM_NAME "/ogl_beamformer_parameters"
-#elif defined(_WIN32)
-	#include "os_win32.c"
-
-	#ifdef _DEBUG
-	#define DEBUG_EXPORT __declspec(dllexport)
-	#define OS_DEBUG_LIB_NAME      "beamformer.dll"
-	#define OS_DEBUG_LIB_TEMP_NAME "beamformer_temp.dll"
-	#else
-	#define DEBUG_EXPORT static
-	#endif
-
-	#define OS_CUDA_LIB_NAME      "external\\cuda_toolkit.dll"
-	#define OS_CUDA_LIB_TEMP_NAME "external\\cuda_toolkit_temp.dll"
-
-	#define OS_PIPE_NAME "\\\\.\\pipe\\beamformer_data_fifo"
-	#define OS_SMEM_NAME "Local\\ogl_beamformer_parameters"
-#else
-	#error Unsupported Platform!
-#endif
-
 #define MAX_FRAMES_IN_FLIGHT 3
 
 #define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims, u16 *channel_mapping, b32 rx_cols)
 typedef INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_fn);
+INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_stub) {}
+
 #define REGISTER_CUDA_BUFFERS_FN(name) void name(u32 *rf_data_ssbos, u32 rf_buffer_count, u32 raw_data_ssbo)
 typedef REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_fn);
+REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_stub) {}
+
 #define CUDA_DECODE_FN(name) void name(size_t input_offset, u32 output_buffer_idx)
 typedef CUDA_DECODE_FN(cuda_decode_fn);
+CUDA_DECODE_FN(cuda_decode_stub) {}
+
 #define CUDA_HILBERT_FN(name) void name(u32 input_buffer_idx, u32 output_buffer_idx)
 typedef CUDA_HILBERT_FN(cuda_hilbert_fn);
+CUDA_HILBERT_FN(cuda_hilbert_stub) {}
 
 typedef struct {
-	os_library_handle           lib;
+	void                       *lib;
 	u64                         timestamp;
 	init_cuda_configuration_fn *init_cuda_configuration;
 	register_cuda_buffers_fn   *register_cuda_buffers;
 	cuda_decode_fn             *cuda_decode;
 	cuda_hilbert_fn            *cuda_hilbert;
 } CudaLib;
+
+#define PLATFORM_ALLOC_ARENA_FN(name) Arena name(Arena old, size capacity)
+typedef PLATFORM_ALLOC_ARENA_FN(platform_alloc_arena_fn);
+
+#define PLATFORM_POLL_PIPE_FN(name) b32 name(Pipe p)
+typedef PLATFORM_POLL_PIPE_FN(platform_poll_pipe_fn);
+
+#define PLATFORM_READ_PIPE_FN(name) size name(Pipe p, void *buf, size len)
+typedef PLATFORM_READ_PIPE_FN(platform_read_pipe_fn);
+
+#define PLATFORM_WRITE_NEW_FILE_FN(name) b32 name(char *fname, s8 raw)
+typedef PLATFORM_WRITE_NEW_FILE_FN(platform_write_new_file_fn);
+
+typedef struct {
+	platform_alloc_arena_fn    *alloc_arena;
+	platform_poll_pipe_fn      *poll_pipe;
+	platform_read_pipe_fn      *read_pipe;
+	platform_write_new_file_fn *write_new_file;
+} Platform;
+
+#include "beamformer_parameters.h"
+typedef struct {
+	BeamformerParameters raw;
+	enum compute_shaders compute_stages[16];
+	u32                  compute_stages_count;
+	b32                  upload;
+} BeamformerParametersFull;
 
 typedef struct {
 	u32 programs[CS_LAST];
@@ -214,10 +219,11 @@ typedef struct {
 	FragmentShaderCtx fsctx;
 	ExportCtx         export_ctx;
 
-	os_pipe data_pipe;
-	u32     partial_transfer_count;
+	Pipe data_pipe;
+	u32  partial_transfer_count;
 
-	CudaLib cuda_lib;
+	CudaLib  cuda_lib;
+	Platform platform;
 
 	BeamformerParametersFull *params;
 } BeamformerCtx;

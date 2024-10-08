@@ -1,18 +1,12 @@
+/* See LICENSE for license details. */
+#include "util.h"
+
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
-#define OS_INVALID_FILE (-1)
-typedef i32 os_file;
-typedef struct {
-	os_file  file;
-	char    *name;
-} os_pipe;
-
-typedef void *os_library_handle;
 
 static void
 os_write_err_msg(s8 msg)
@@ -27,27 +21,27 @@ os_fail(void)
 	unreachable();
 }
 
-static Arena
-os_alloc_arena(Arena a, size capacity)
+static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
 {
+	Arena result;
 	size pagesize = sysconf(_SC_PAGESIZE);
 	if (capacity % pagesize != 0)
 		capacity += pagesize - capacity % pagesize;
 
-	size oldsize = a.end - a.beg;
+	size oldsize = old.end - old.beg;
 	if (oldsize > capacity)
-		return a;
+		return old;
 
-	if (a.beg)
-		munmap(a.beg, oldsize);
+	if (old.beg)
+		munmap(old.beg, oldsize);
 
-	a.beg = mmap(0, capacity, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
-	if (a.beg == MAP_FAILED) {
+	result.beg = mmap(0, capacity, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+	if (result.beg == MAP_FAILED) {
 		os_write_err_msg(s8("os_alloc_arena: couldn't allocate memory\n"));
 		os_fail();
 	}
-	a.end = a.beg + capacity;
-	return a;
+	result.end = result.beg + capacity;
+	return result;
 }
 
 static s8
@@ -70,8 +64,7 @@ os_read_file(Arena *a, char *fname, size fsize)
 	return ret;
 }
 
-static b32
-os_write_file(char *fname, s8 raw)
+static PLATFORM_WRITE_NEW_FILE_FN(os_write_new_file)
 {
 	i32 fd = open(fname, O_WRONLY|O_TRUNC|O_CREAT, 0600);
 	if (fd < 0)
@@ -96,30 +89,28 @@ os_get_file_stats(char *fname)
 	};
 }
 
-static os_pipe
+static Pipe
 os_open_named_pipe(char *name)
 {
 	mkfifo(name, 0660);
-	return (os_pipe){.file = open(name, O_RDONLY|O_NONBLOCK), .name = name};
+	return (Pipe){.file = open(name, O_RDONLY|O_NONBLOCK), .name = name};
 }
 
 static void
-os_close_named_pipe(os_pipe p)
+os_close_named_pipe(Pipe p)
 {
 	close(p.file);
 	unlink(p.name);
 }
 
-static b32
-os_poll_pipe(os_pipe p)
+static PLATFORM_POLL_PIPE_FN(os_poll_pipe)
 {
 	struct pollfd pfd = {.fd = p.file, .events = POLLIN};
 	poll(&pfd, 1, 0);
 	return !!(pfd.revents & POLLIN);
 }
 
-static size
-os_read_pipe_data(os_pipe p, void *buf, size len)
+static PLATFORM_READ_PIPE_FN(os_read_pipe)
 {
 	size r = 0, total_read = 0;
 	do {
@@ -188,14 +179,14 @@ ret:
 	return result;
 }
 
-static os_library_handle
+static void *
 os_load_library(char *name, char *temp_name)
 {
 	if (temp_name) {
 		if (os_copy_file(name, temp_name))
 			name = temp_name;
 	}
-	os_library_handle res = dlopen(name, RTLD_NOW|RTLD_LOCAL);
+	void *res = dlopen(name, RTLD_NOW|RTLD_LOCAL);
 	if (!res)
 		TraceLog(LOG_WARNING, "os_load_library(%s): %s\n", name, dlerror());
 
@@ -206,7 +197,7 @@ os_load_library(char *name, char *temp_name)
 }
 
 static void *
-os_lookup_dynamic_symbol(os_library_handle h, char *name)
+os_lookup_dynamic_symbol(void *h, char *name)
 {
 	if (!h)
 		return 0;
@@ -217,7 +208,7 @@ os_lookup_dynamic_symbol(os_library_handle h, char *name)
 }
 
 static void
-os_unload_library(os_library_handle h)
+os_unload_library(void *h)
 {
 	/* NOTE: glibc is buggy gnuware so we need to check this */
 	if (h)

@@ -9,10 +9,10 @@ debug=${DEBUG}
 
 cc=${CC:-cc}
 system_raylib=${USE_SYSTEM_RAYLIB}
+main=main_generic.c
 
-case $(uname -s) in
+case $(uname -sm) in
 MINGW64*)
-	os="win32"
 	ldflags="$ldflags -lgdi32 -lwinmm"
 	[! ${NO_MATLAB} ] && [ -d "C:/Program Files/MATLAB/R2022a/extern/lib/win64/microsoft" ] &&
 	libcflags="$libcflags -DMATLAB_CONSOLE"
@@ -22,7 +22,6 @@ MINGW64*)
 		-llibmat -llibmex
 	;;
 Linux*)
-	os="unix"
 	cflags="$cflags -D_DEFAULT_SOURCE"
 	libname="beamformer.so"
 	${cc} $libcflags helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.so
@@ -68,4 +67,4 @@ else
 	[ ! "$system_raylib" ] && ldflags="./external/lib/libraylib.a $ldflags"
 fi
 
-${cc} $cflags -o ogl main.c $ldflags
+${cc} $cflags -o ogl $main $ldflags

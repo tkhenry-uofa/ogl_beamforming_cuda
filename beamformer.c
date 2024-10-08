@@ -107,7 +107,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		                                               full_rf_buf_size, map_flags);
 		break;
 	case GL_VENDOR_NVIDIA:
-		cs->raw_data_arena = os_alloc_arena(cs->raw_data_arena, full_rf_buf_size);
+		cs->raw_data_arena = ctx->platform.alloc_arena(cs->raw_data_arena, full_rf_buf_size);
 		ctx->cuda_lib.register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
 		                                    cs->raw_data_ssbo);
 		ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E,
@@ -379,7 +379,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
-	if (os_poll_pipe(ctx->data_pipe)) {
+	if (ctx->platform.poll_pipe(ctx->data_pipe)) {
 		ComputeShaderCtx *cs = &ctx->csctx;
 		if (!uv4_equal(cs->dec_data_dim, bp->dec_data_dim))
 			alloc_shader_storage(ctx, arena);
@@ -404,7 +404,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		size rf_raw_size  = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
 
 		void *rf_data_buf = cs->raw_data_arena.beg + raw_index * rf_raw_size;
-		size rlen         = os_read_pipe_data(ctx->data_pipe, rf_data_buf, rf_raw_size);
+		size rlen         = ctx->platform.read_pipe(ctx->data_pipe, rf_data_buf, rf_raw_size);
 		if (rlen != rf_raw_size) {
 			ctx->partial_transfer_count++;
 		} else {
@@ -467,11 +467,11 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			ExportCtx *e         = &ctx->export_ctx;
 			uv4 dim              = e->volume_dim;
 			size volume_out_size = dim.x * dim.y * dim.z * sizeof(f32);
-			e->volume_buf        = os_alloc_arena(e->volume_buf, volume_out_size);
+			e->volume_buf        = ctx->platform.alloc_arena(e->volume_buf, volume_out_size);
 			glGetTextureImage(e->volume_texture, 0, GL_RED, GL_FLOAT, volume_out_size,
 			                  e->volume_buf.beg);
 			s8 raw = {.len = volume_out_size, .data = e->volume_buf.beg};
-			if (!os_write_file("raw_volume.bin", raw))
+			if (!ctx->platform.write_new_file("raw_volume.bin", raw))
 				TraceLog(LOG_WARNING, "failed to write output volume\n");
 		}
 	}
@@ -501,4 +501,6 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 
 	if (IsKeyPressed(KEY_R))
 		ctx->flags |= RELOAD_SHADERS;
+	if (WindowShouldClose())
+		ctx->flags |= SHOULD_EXIT;
 }

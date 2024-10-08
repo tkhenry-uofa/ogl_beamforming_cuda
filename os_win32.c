@@ -16,8 +16,6 @@
 
 #define FILE_MAP_ALL_ACCESS 0x000F001F
 
-#define INVALID_HANDLE_VALUE (void *)-1
-
 #define CREATE_ALWAYS  2
 #define OPEN_EXISTING  3
 
@@ -49,37 +47,28 @@ typedef struct {
 } w32_file_info;
 
 #define W32(r) __declspec(dllimport) r __stdcall
-W32(b32)    CloseHandle(void *);
+W32(b32)    CloseHandle(iptr);
 W32(b32)    CopyFileA(c8 *, c8 *, b32);
-W32(void *) CreateFileA(c8 *, u32, u32, void *, u32, u32, void *);
-W32(void *) CreateFileMappingA(void *, void *, u32, u32, u32, c8 *);
-W32(void *) CreateNamedPipeA(c8 *, u32, u32, u32, u32, u32, u32, void *);
+W32(iptr)   CreateFileA(c8 *, u32, u32, void *, u32, u32, void *);
+W32(iptr)   CreateFileMappingA(iptr, void *, u32, u32, u32, c8 *);
+W32(iptr)   CreateNamedPipeA(c8 *, u32, u32, u32, u32, u32, u32, void *);
 W32(b32)    DeleteFileA(c8 *);
 W32(void)   ExitProcess(i32);
 W32(b32)    FreeLibrary(void *);
-W32(b32)    GetFileInformationByHandle(void *, void *);
+W32(b32)    GetFileInformationByHandle(iptr, w32_file_info *);
 W32(i32)    GetLastError(void);
 W32(void *) GetProcAddress(void *, c8 *);
-W32(void *) GetStdHandle(i32);
+W32(iptr)   GetStdHandle(i32);
 W32(void)   GetSystemInfo(void *);
 W32(void *) LoadLibraryA(c8 *);
-W32(void *) MapViewOfFile(void *, u32, u32, u32, u64);
-W32(b32)    PeekNamedPipe(void *, u8 *, i32, i32 *, i32 *, i32 *);
-W32(b32)    ReadFile(void *, u8 *, i32, i32 *, void *);
-W32(b32)    WriteFile(void *, u8 *, i32, i32 *, void *);
+W32(void *) MapViewOfFile(iptr, u32, u32, u32, u64);
+W32(b32)    PeekNamedPipe(iptr, u8 *, i32, i32 *, i32 *, i32 *);
+W32(b32)    ReadFile(iptr, u8 *, i32, i32 *, void *);
+W32(b32)    WriteFile(iptr, u8 *, i32, i32 *, void *);
 W32(void *) VirtualAlloc(u8 *, size, u32, u32);
 W32(b32)    VirtualFree(u8 *, size, u32);
 
-#define OS_INVALID_FILE (INVALID_HANDLE_VALUE)
-typedef void *os_file;
-typedef struct {
-	os_file  file;
-	char    *name;
-} os_pipe;
-
-typedef void *os_library_handle;
-
-static void *win32_stderr_handle;
+static iptr win32_stderr_handle;
 
 static void __attribute__((noreturn))
 os_fail(void)
@@ -97,29 +86,29 @@ os_write_err_msg(s8 msg)
 	WriteFile(win32_stderr_handle, msg.data, msg.len, &wlen, 0);
 }
 
-static Arena
-os_alloc_arena(Arena a, size capacity)
+static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
 {
+	Arena result;
 	w32_sys_info Info;
 	GetSystemInfo(&Info);
 
 	if (capacity % Info.dwPageSize != 0)
 		capacity += (Info.dwPageSize - capacity % Info.dwPageSize);
 
-	size oldsize = a.end - a.beg;
+	size oldsize = old.end - old.beg;
 	if (oldsize > capacity)
-		return a;
+		return old;
 
-	if (a.beg)
-		VirtualFree(a.beg, oldsize, MEM_RELEASE);
+	if (old.beg)
+		VirtualFree(old.beg, oldsize, MEM_RELEASE);
 
-	a.beg = VirtualAlloc(0, capacity, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-	if (a.beg == NULL) {
+	result.beg = VirtualAlloc(0, capacity, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+	if (result.beg == NULL) {
 		os_write_err_msg(s8("os_alloc_arena: couldn't allocate memory\n"));
 		os_fail();
 	}
-	a.end = a.beg + capacity;
-	return a;
+	result.end = result.beg + capacity;
+	return result;
 }
 
 static s8
@@ -134,8 +123,8 @@ os_read_file(Arena *a, char *fname, size fsize)
 		return (s8){.len = -1};
 	}
 
-	void *h = CreateFileA(fname, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0);
-	if (h == INVALID_HANDLE_VALUE)
+	iptr h = CreateFileA(fname, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0);
+	if (h == INVALID_FILE)
 		return (s8){.len = -1};
 
 	s8 ret = s8alloc(a, fsize);
@@ -149,16 +138,15 @@ os_read_file(Arena *a, char *fname, size fsize)
 	return ret;
 }
 
-static b32
-os_write_file(char *fname, s8 raw)
+static PLATFORM_WRITE_NEW_FILE_FN(os_write_new_file)
 {
 	if (raw.len > (size)U32_MAX) {
 		os_write_err_msg(s8("os_write_file: writing files > 4GB is not yet support on win32\n"));
 		return 0;
 	}
 
-	void *h = CreateFileA(fname, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
-	if (h == INVALID_HANDLE_VALUE)
+	iptr h = CreateFileA(fname, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+	if (h == INVALID_FILE)
 		return  0;
 
 	i32 wlen;
@@ -170,10 +158,9 @@ os_write_file(char *fname, s8 raw)
 static FileStats
 os_get_file_stats(char *fname)
 {
-	void *h = CreateFileA(fname, 0, 0, 0, OPEN_EXISTING, 0, 0);
-	if (h == INVALID_HANDLE_VALUE) {
+	iptr h = CreateFileA(fname, 0, 0, 0, OPEN_EXISTING, 0, 0);
+	if (h == INVALID_FILE)
 		return ERROR_FILE_STATS;
-	}
 
 	w32_file_info fileinfo;
 	if (!GetFileInformationByHandle(h, &fileinfo)) {
@@ -189,29 +176,27 @@ os_get_file_stats(char *fname)
 	return (FileStats){.filesize  = filesize, .timestamp = fileinfo.ftLastWriteTime};
 }
 
-/* NOTE: win32 doesn't pollute the filesystem so no need to waste the user's time */
-static void
-os_close_named_pipe(os_pipe p)
-{
-}
-
-static os_pipe
+static Pipe
 os_open_named_pipe(char *name)
 {
-	void *h = CreateNamedPipeA(name, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE, 1,
-	                           0, 1 * MEGABYTE, 0, 0);
-	return (os_pipe){.file = h, .name = name};
+	iptr h = CreateNamedPipeA(name, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE, 1,
+	                          0, 1 * MEGABYTE, 0, 0);
+	return (Pipe){.file = h, .name = name};
 }
 
-static b32
-os_poll_pipe(os_pipe p)
+/* NOTE: win32 doesn't pollute the filesystem so no need to waste the user's time */
+static void
+os_close_named_pipe(Pipe p)
+{
+}
+
+static PLATFORM_POLL_PIPE_FN(os_poll_pipe)
 {
 	i32 bytes_available = 0;
 	return PeekNamedPipe(p.file, 0, 1 * MEGABYTE, 0, &bytes_available, 0) && bytes_available;
 }
 
-static size
-os_read_pipe_data(os_pipe p, void *buf, size len)
+static PLATFORM_READ_PIPE_FN(os_read_pipe)
 {
 	i32 total_read = 0;
 	ReadFile(p.file, buf, len, &total_read, 0);
@@ -221,9 +206,9 @@ os_read_pipe_data(os_pipe p, void *buf, size len)
 static BeamformerParametersFull *
 os_open_shared_memory_area(char *name)
 {
-	void *h = CreateFileMappingA(INVALID_HANDLE_VALUE, 0, PAGE_READWRITE, 0,
+	iptr h = CreateFileMappingA(-1, 0, PAGE_READWRITE, 0,
 	                             sizeof(BeamformerParametersFull), name);
-	if (h == INVALID_HANDLE_VALUE)
+	if (h == INVALID_FILE)
 		return NULL;
 
 	BeamformerParametersFull *new;
@@ -238,7 +223,7 @@ os_remove_shared_memory(char *name)
 {
 }
 
-static os_library_handle
+static void *
 os_load_library(char *name, char *temp_name)
 {
 	if (temp_name) {
@@ -246,7 +231,7 @@ os_load_library(char *name, char *temp_name)
 			name = temp_name;
 	}
 
-	os_library_handle res = LoadLibraryA(name);
+	void *res = LoadLibraryA(name);
 	if (!res)
 		TraceLog(LOG_WARNING, "os_load_library(%s): %d\n", name, GetLastError());
 
@@ -257,7 +242,7 @@ os_load_library(char *name, char *temp_name)
 }
 
 static void *
-os_lookup_dynamic_symbol(os_library_handle h, char *name)
+os_lookup_dynamic_symbol(void *h, char *name)
 {
 	if (!h)
 		return 0;
@@ -268,7 +253,7 @@ os_lookup_dynamic_symbol(os_library_handle h, char *name)
 }
 
 static void
-os_unload_library(os_library_handle h)
+os_unload_library(void *h)
 {
 	FreeLibrary(h);
 }

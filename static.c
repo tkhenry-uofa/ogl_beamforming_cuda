@@ -13,10 +13,10 @@ static s8 compute_shader_paths[CS_LAST] = {
 #ifndef _DEBUG
 
 #include "beamformer.c"
-static void do_debug(void) { }
+#define do_debug(...)
 
 #else
-static os_library_handle libhandle;
+static void *debug_lib;
 
 typedef void do_beamformer_fn(BeamformerCtx *, Arena);
 static do_beamformer_fn *do_beamformer;
@@ -27,20 +27,14 @@ do_debug(void)
 	static f32 updated_time;
 	FileStats test_stats = os_get_file_stats(OS_DEBUG_LIB_NAME);
 	if (test_stats.filesize > 32 && test_stats.timestamp > updated_time) {
-		os_unload_library(libhandle);
-		libhandle     = os_load_library(OS_DEBUG_LIB_NAME, OS_DEBUG_LIB_TEMP_NAME);
-		do_beamformer = os_lookup_dynamic_symbol(libhandle, "do_beamformer");
+		os_unload_library(debug_lib);
+		debug_lib = os_load_library(OS_DEBUG_LIB_NAME, OS_DEBUG_LIB_TEMP_NAME);
+		do_beamformer = os_lookup_dynamic_symbol(debug_lib, "do_beamformer");
 		updated_time  = test_stats.timestamp;
 	}
 }
 
 #endif /* _DEBUG */
-
-/* NOTE: cuda lib stubs */
-INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_stub) {}
-REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_stub) {}
-CUDA_DECODE_FN(cuda_decode_stub) {}
-CUDA_HILBERT_FN(cuda_hilbert_stub) {}
 
 static void
 gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, const void *userctx)
@@ -247,53 +241,47 @@ check_and_load_cuda_lib(CudaLib *cl)
 	validate_cuda_lib(cl);
 }
 
-int
-main(void)
+static void
+setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 {
-	BeamformerCtx ctx = {0};
+	ctx->window_size  = (uv2){.w = 1280, .h = 840};
 
-	Arena temp_memory = os_alloc_arena((Arena){0}, 8 * MEGABYTE);
-
-	ctx.window_size  = (uv2){.w = 1280, .h = 840};
-
-	ctx.out_data_dim          = (uv4){.x = 1, .y = 1, .z = 1};
-	ctx.export_ctx.volume_dim = (uv4){.x = 1, .y = 1, .z = 1};
+	ctx->out_data_dim          = (uv4){.x = 1, .y = 1, .z = 1};
+	ctx->export_ctx.volume_dim = (uv4){.x = 1, .y = 1, .z = 1};
 
 	SetConfigFlags(FLAG_VSYNC_HINT);
-	InitWindow(ctx.window_size.w, ctx.window_size.h, "OGL Beamformer");
+	InitWindow(ctx->window_size.w, ctx->window_size.h, "OGL Beamformer");
 	/* NOTE: do this after initing so that the window starts out floating in tiling wm */
 	SetWindowState(FLAG_WINDOW_RESIZABLE);
-	SetWindowMinSize(INFO_COLUMN_WIDTH * 2, ctx.window_size.h);
+	SetWindowMinSize(INFO_COLUMN_WIDTH * 2, ctx->window_size.h);
 
 	/* NOTE: Gather information about the GPU */
-	get_gl_params(&ctx.gl);
-	dump_gl_params(&ctx.gl, temp_memory);
-	validate_gl_requirements(&ctx.gl);
+	get_gl_params(&ctx->gl);
+	dump_gl_params(&ctx->gl, temp_memory);
+	validate_gl_requirements(&ctx->gl);
 
 	/* TODO: build these into the binary */
-	ctx.font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
-	ctx.small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 22, 0, 0);
+	ctx->font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
+	ctx->small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 22, 0, 0);
 
-	ctx.is.cursor_blink_t = 1;
+	init_fragment_shader_ctx(&ctx->fsctx, ctx->out_data_dim);
 
-	init_fragment_shader_ctx(&ctx.fsctx, ctx.out_data_dim);
-
-	ctx.data_pipe = os_open_named_pipe(OS_PIPE_NAME);
-	ctx.params    = os_open_shared_memory_area(OS_SMEM_NAME);
+	ctx->data_pipe = os_open_named_pipe(OS_PIPE_NAME);
+	ctx->params    = os_open_shared_memory_area(OS_SMEM_NAME);
 	/* TODO: properly handle this? */
-	ASSERT(ctx.data_pipe.file != OS_INVALID_FILE);
-	ASSERT(ctx.params);
+	ASSERT(ctx->data_pipe.file != INVALID_FILE);
+	ASSERT(ctx->params);
 
-	ctx.params->raw.output_points = ctx.out_data_dim;
+	ctx->params->raw.output_points = ctx->out_data_dim;
 	/* NOTE: default compute shader pipeline */
-	ctx.params->compute_stages[0]    = CS_HADAMARD;
-	ctx.params->compute_stages[1]    = CS_DEMOD;
-	ctx.params->compute_stages[2]    = CS_UFORCES;
-	ctx.params->compute_stages[3]    = CS_MIN_MAX;
-	ctx.params->compute_stages_count = 4;
+	ctx->params->compute_stages[0]    = CS_HADAMARD;
+	ctx->params->compute_stages[1]    = CS_DEMOD;
+	ctx->params->compute_stages[2]    = CS_UFORCES;
+	ctx->params->compute_stages[3]    = CS_MIN_MAX;
+	ctx->params->compute_stages_count = 4;
 
 	/* NOTE: make sure function pointers are valid even if we are not using the cuda lib */
-	validate_cuda_lib(&ctx.cuda_lib);
+	validate_cuda_lib(&ctx->cuda_lib);
 
 	/* NOTE: set up OpenGL debug logging */
 	glDebugMessageCallback(gl_debug_logger, NULL);
@@ -302,33 +290,28 @@ main(void)
 #endif
 
 	/* NOTE: allocate space for Uniform Buffer but don't send anything yet */
-	glCreateBuffers(1, &ctx.csctx.shared_ubo);
-	glNamedBufferStorage(ctx.csctx.shared_ubo, sizeof(BeamformerParameters), 0, GL_DYNAMIC_STORAGE_BIT);
+	glCreateBuffers(1, &ctx->csctx.shared_ubo);
+	glNamedBufferStorage(ctx->csctx.shared_ubo, sizeof(BeamformerParameters), 0, GL_DYNAMIC_STORAGE_BIT);
 
-	glGenQueries(ARRAY_COUNT(ctx.csctx.timer_fences) * CS_LAST, (u32 *)ctx.csctx.timer_ids);
-	glGenQueries(ARRAY_COUNT(ctx.export_ctx.timer_ids), ctx.export_ctx.timer_ids);
+	glGenQueries(ARRAY_COUNT(ctx->csctx.timer_fences) * CS_LAST, (u32 *)ctx->csctx.timer_ids);
+	glGenQueries(ARRAY_COUNT(ctx->export_ctx.timer_ids), ctx->export_ctx.timer_ids);
 
 	/* NOTE: do not DO_COMPUTE on first frame */
-	reload_shaders(&ctx, temp_memory);
-	ctx.flags &= ~DO_COMPUTE;
+	reload_shaders(ctx, temp_memory);
+	ctx->flags &= ~DO_COMPUTE;
+}
 
-	while(!WindowShouldClose()) {
-		do_debug();
-		if (ctx.gl.vendor_id == GL_VENDOR_NVIDIA)
-			check_and_load_cuda_lib(&ctx.cuda_lib);
+static void
+do_program_step(BeamformerCtx *ctx, Arena temp_memory)
+{
+	do_debug();
+	if (ctx->gl.vendor_id == GL_VENDOR_NVIDIA)
+		check_and_load_cuda_lib(&ctx->cuda_lib);
 
-		if (ctx.flags & RELOAD_SHADERS) {
-			ctx.flags &= ~RELOAD_SHADERS;
-			reload_shaders(&ctx, temp_memory);
-		}
-
-		do_beamformer(&ctx, temp_memory);
+	if (ctx->flags & RELOAD_SHADERS) {
+		ctx->flags &= ~RELOAD_SHADERS;
+		reload_shaders(ctx, temp_memory);
 	}
 
-	/* NOTE: make sure this will get cleaned up after external
-	 * programs release their references */
-	os_remove_shared_memory(OS_SMEM_NAME);
-
-	/* NOTE: garbage code needed for Linux */
-	os_close_named_pipe(ctx.data_pipe);
+	do_beamformer(ctx, temp_memory);
 }
