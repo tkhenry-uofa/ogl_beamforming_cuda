@@ -238,7 +238,7 @@ os_load_library(char *name, char *temp_name, Stream *e)
 		s8 errs[] = {s8("WARNING: os_load_library("), cstr_to_s8(name), s8("): ")};
 		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
 		stream_append_i64(e, GetLastError());
-		stream_append_s8(e, s8("\n"));
+		stream_append_byte(e, '\n');
 		os_write_err_msg(stream_to_s8(*e));
 		e->widx = 0;
 	}
@@ -259,7 +259,7 @@ os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 		s8 errs[] = {s8("WARNING: os_lookup_dynamic_symbol("), cstr_to_s8(name), s8("): ")};
 		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
 		stream_append_i64(e, GetLastError());
-		stream_append_s8(e, s8("\n"));
+		stream_append_byte(e, '\n');
 		os_write_err_msg(stream_to_s8(*e));
 		e->widx = 0;
 	}

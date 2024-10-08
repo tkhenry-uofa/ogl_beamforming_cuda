@@ -106,7 +106,7 @@ dump_gl_params(GLParams *gl, Arena a)
 	}
 	stream_append_s8(&s, s8("Version: "));
 	stream_append_i64(&s, gl->version_major);
-	stream_append_s8(&s, s8("."));
+	stream_append_byte(&s, '.');
 	stream_append_i64(&s, gl->version_minor);
 	stream_append_s8(&s, s8("\nMax 1D/2D Texture Dimension: "));
 	stream_append_i64(&s, gl->max_2d_texture_dim);

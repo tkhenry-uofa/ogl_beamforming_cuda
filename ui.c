@@ -760,7 +760,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 				for (u32 j = 0; j <= line_count; j++) {
 					DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(FG_COLOUR));
 					buf.widx = 0;
-					if (i == 0 && mm > 0) stream_append_s8(&buf, s8("+"));
+					if (i == 0 && mm > 0) stream_append_byte(&buf, '+');
 					stream_append_f64(&buf, mm, 10);
 					stream_append_s8(&buf, s8(" mm"));
 					draw_text(ctx->small_font, stream_to_s8(buf), txt_pos,

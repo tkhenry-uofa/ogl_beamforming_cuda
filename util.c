@@ -87,7 +87,7 @@ static void
 stream_append_i64(Stream *s, i64 n)
 {
 	if (n < 0) {
-		stream_append_s8(s, s8("-"));
+		stream_append_byte(s, '-');
 		n *= -1;
 	}
 	stream_append_u64(s, n);
@@ -123,7 +123,7 @@ static void
 stream_append_f32_e(Stream *s, f32 f)
 {
 	if (f < 0) {
-		stream_append_s8(s, s8("-"));
+		stream_append_byte(s, '-');
 		f *= -1;
 	}
 	/* TODO */
