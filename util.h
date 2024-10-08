@@ -17,6 +17,14 @@
 #define asm __asm__
 #endif
 
+#ifndef unreachable
+#ifdef _MSC_VER
+	#define unreachable() __assume(0)
+#else
+	#define unreachable() __builtitin_unreachable()
+#endif
+#endif
+
 #ifdef _DEBUG
 	#define ASSERT(c) do { if (!(c)) asm("int3; nop"); } while (0);
 #else

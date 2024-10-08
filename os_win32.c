@@ -85,6 +85,7 @@ static void __attribute__((noreturn))
 os_fail(void)
 {
 	ExitProcess(1);
+	unreachable();
 }
 
 static void
