@@ -81,7 +81,7 @@ CUDA_DECODE_FN(cuda_decode_stub) {}
 typedef CUDA_HILBERT_FN(cuda_hilbert_fn);
 CUDA_HILBERT_FN(cuda_hilbert_stub) {}
 
-#define CUDA_LIB_FNS \
+#define CUDA_LIB_FNS               \
 	X(cuda_decode)             \
 	X(cuda_hilbert)            \
 	X(init_cuda_configuration) \
@@ -102,6 +102,14 @@ typedef struct {
 	u32                  compute_stages_count;
 	b32                  upload;
 } BeamformerParametersFull;
+
+#define CS_UNIFORMS                              \
+	X(CS_HERCULES, volume_export_dim_offset) \
+	X(CS_HERCULES, volume_export_pass)       \
+	X(CS_MIN_MAX,  mips_level)               \
+	X(CS_SUM,      sum_prescale)             \
+	X(CS_UFORCES,  xdc_index)                \
+	X(CS_UFORCES,  xdc_transform)
 
 typedef struct {
 	u32 programs[CS_LAST];
@@ -142,13 +150,9 @@ typedef struct {
 	uv4 dec_data_dim;
 	uv2 rf_raw_dim;
 
-	i32 mips_level_id;
-	i32 volume_export_pass_id;
-	i32 volume_export_dim_offset_id;
-	i32 xdc_transform_id;
-	i32 xdc_index_id;
-
-	i32 sum_prescale_id;
+	#define X(idx, name) i32 name ## _id;
+	CS_UNIFORMS
+	#undef X
 } ComputeShaderCtx;
 
 typedef struct {

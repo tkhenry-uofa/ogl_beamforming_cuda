@@ -188,18 +188,9 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		glDeleteShader(shader_id);
 	}
 
-	csctx->volume_export_pass_id       = glGetUniformLocation(csctx->programs[CS_HERCULES],
-	                                                          "u_volume_export_pass");
-	csctx->volume_export_dim_offset_id = glGetUniformLocation(csctx->programs[CS_HERCULES],
-	                                                         "u_volume_export_dim_offset");
-	csctx->xdc_transform_id            = glGetUniformLocation(csctx->programs[CS_UFORCES],
-	                                                          "u_xdc_transform");
-	csctx->xdc_index_id                = glGetUniformLocation(csctx->programs[CS_UFORCES],
-	                                                          "u_xdc_index");
-
-	csctx->mips_level_id   = glGetUniformLocation(csctx->programs[CS_MIN_MAX], "u_mip_map");
-
-	csctx->sum_prescale_id = glGetUniformLocation(csctx->programs[CS_SUM], "u_prescale");
+	#define X(idx, name) csctx->name##_id = glGetUniformLocation(csctx->programs[idx], "u_" #name);
+	CS_UNIFORMS
+	#undef X
 
 	Shader updated_fs = LoadShader(NULL, "shaders/render.glsl");
 	if (updated_fs.id != rlGetShaderIdDefault()) {
