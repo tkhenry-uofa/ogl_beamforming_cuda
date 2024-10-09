@@ -59,10 +59,8 @@ if [ "$debug" ]; then
 	cflags="$cflags -O0 -ggdb -D_DEBUG -Wno-unused-function"
 	#cflags="$cflags -fsanitize=address,undefined"
 	ldflags="-L./external/lib -lraylib -Wl,-rpath,external/lib/ $ldflags"
-
-	libcflags="$cflags -fPIC"
-	libldflags="$ldflags -shared"
-	${cc} $libcflags beamformer.c -o $libname $libldflags
+	libcflags="$cflags -fPIC -shared"
+	${cc} $libcflags beamformer.c -o $libname $ldflags
 else
 	[ ! "$system_raylib" ] && ldflags="./external/lib/libraylib.a $ldflags"
 fi

@@ -120,21 +120,37 @@ stream_append_f64(Stream *s, f64 f, i64 prec)
 static void
 stream_append_f64_e(Stream *s, f64 f)
 {
+	/* TODO: there should be a better way of doing this */
+	#if 0
 	/* NOTE: we ignore subnormal numbers for now */
 	union { f64 f; u64 u; } u = {.f = f};
-	f64 log_10_of_2 = 0.301f;
-	i64 exponent = (u.u & (0x7ffULL << 52)) >> 52;
-	f64 scale    = (exponent - 1023) * log_10_of_2;
-	u.u &= ~(0x7ffULL << 52);
-	u.u |=  (1023ULL << 52);
+	i32 exponent = ((u.u >> 52) & 0x7ff) - 1023;
+	f32 log_10_of_2 = 0.301f;
+	i32 scale       = (exponent * log_10_of_2);
+	/* NOTE: normalize f */
+	for (i32 i = ABS(scale); i > 0; i--)
+		f *= (scale > 0)? 0.1f : 10.0f;
+	#else
+	i32 scale = 0;
+	if (f != 0) {
+		while (f > 1) {
+			f *= 0.1f;
+			scale++;
+		}
+		while (f < 1) {
+			f *= 10.0f;
+			scale--;
+		}
+	}
+	#endif
 
-	if (f == 0) { u.f = 0; scale = 0; }
-	stream_append_f64(s, u.f, 100);
+	i32 prec = 100;
+	stream_append_f64(s, f, prec);
 	stream_append_byte(s, 'e');
 	stream_append_byte(s, scale >= 0? '+' : '-');
-	if (ABS((i64)scale) < 10)
+	for (i32 i = prec / 10; i > 1; i /= 10)
 		stream_append_byte(s, '0');
-	stream_append_u64(s, scale >= 0? scale : -scale);
+	stream_append_u64(s, ABS(scale));
 }
 
 static s8
