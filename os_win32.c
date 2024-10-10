@@ -33,7 +33,11 @@ typedef struct {
 	u16  wProcessorRevision;
 } w32_sys_info;
 
-typedef struct {
+/* NOTE: this is packed because the w32 api designers are dumb and ordered the members
+ * incorrectly. They worked around it be making the ft* members a struct {u32, u32} which
+ * is aligned on a 4-byte boundary. Then in their documentation they explicitly tell you not
+ * to cast to u64 because "it can cause alignment faults on 64-bit Windows" - go figure */
+typedef struct __attribute__((packed)) {
 	u32 dwFileAttributes;
 	u64 ftCreationTime;
 	u64 ftLastAccessTime;
