@@ -44,4 +44,4 @@ jobs:
           pacboy: ninja:p cmake:p
 
       - name: Build
-        run: ./build.sh win32
+        run: NO_MATLAB=1 ./build.sh
