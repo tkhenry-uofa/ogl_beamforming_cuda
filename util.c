@@ -54,7 +54,7 @@ stream_append_byte(Stream *s, u8 b)
 static void
 stream_append_s8(Stream *s, s8 str)
 {
-	s->errors |= (s->cap - s->widx) <= str.len;
+	s->errors |= (s->cap - s->widx) < str.len;
 	if (!s->errors) {
 		for (size i = 0; i < str.len; i++)
 			s->data[s->widx++] = str.data[i];
