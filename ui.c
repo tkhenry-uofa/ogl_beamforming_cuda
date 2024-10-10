@@ -249,10 +249,8 @@ do_text_input(BeamformerCtx *ctx, i32 max_disp_chars, Rect r, Color colour)
 	/* NOTE: handle multiple input keys on a single frame */
 	i32 key = GetCharPressed();
 	while (key > 0) {
-		if (ctx->is.buf_len == (ARRAY_COUNT(ctx->is.buf) - 1)) {
-			ctx->is.buf[ARRAY_COUNT(ctx->is.buf) - 1] = 0;
+		if (ctx->is.buf_len == ARRAY_COUNT(ctx->is.buf))
 			break;
-		}
 
 		b32 allow_key = ((key >= '0' && key <= '9') || (key == '.') ||
 		                 (key == '-' && ctx->is.cursor == 0));
