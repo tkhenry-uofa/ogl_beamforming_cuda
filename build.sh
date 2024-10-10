@@ -1,4 +1,6 @@
 #!/bin/sh
+set -e
+
 cflags="-march=native -std=c11 -O3 -Wall -I./external/include"
 #cflags="${cflags} -fproc-stat-report"
 #cflags="${cflags} -Rpass-missed=.*"
