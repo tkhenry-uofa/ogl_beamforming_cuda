@@ -86,7 +86,11 @@ static void
 validate_gl_requirements(GLParams *gl)
 {
 	ASSERT(gl->max_ubo_size >= sizeof(BeamformerParameters));
-	if (gl->version_major < 4 || (gl->version_major == 4 && gl->version_minor < 5)) {
+	/* NOTE: nVidia's driver seems to misreport the version */
+	if (gl->version_major < 4 ||
+	    (gl->version_major == 4 && gl->version_minor < 3 && gl->vendor_id == GL_VENDOR_NVIDIA) ||
+	    (gl->version_major == 4 && gl->version_minor < 5))
+	{
 		os_write_err_msg(s8("Only OpenGL Versions 4.5 or newer are supported!\n"));
 		os_fail();
 	}
