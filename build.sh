@@ -14,7 +14,7 @@ main=main_generic.c
 case $(uname -sm) in
 MINGW64*)
 	ldflags="$ldflags -lgdi32 -lwinmm"
-	[! ${NO_MATLAB} ] && [ -d "C:/Program Files/MATLAB/R2022a/extern/lib/win64/microsoft" ] &&
+	[ ! ${NO_MATLAB} ] && [ -d "C:/Program Files/MATLAB/R2022a/extern/lib/win64/microsoft" ] &&
 	libcflags="$libcflags -DMATLAB_CONSOLE"
 	libname="beamformer.dll"
 	${cc} $libcflags helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.dll \
