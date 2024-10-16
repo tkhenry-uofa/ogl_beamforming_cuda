@@ -17,7 +17,6 @@ layout(std430, binding = 3) readonly restrict buffer buffer_3 {
 layout(std140, binding = 0) uniform parameters {
 	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
-	vec4  lpf_coefficients[16];   /* Low Pass Filter Cofficients */
 	vec4  xdc_origin[4];          /* [m] Corner of transducer being treated as origin */
 	vec4  xdc_corner1[4];         /* [m] Corner of transducer along first axis (arbitrary) */
 	vec4  xdc_corner2[4];         /* [m] Corner of transducer along second axis (arbitrary) */
@@ -28,13 +27,11 @@ layout(std140, binding = 0) uniform parameters {
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */
 	uint  xdc_count;              /* Number of Transducer Arrays (4 max) */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
-	uint  lpf_order;              /* Order of Low Pass Filter */
 	float speed_of_sound;         /* [m/s] */
 	float sampling_frequency;     /* [Hz]  */
 	float center_frequency;       /* [Hz]  */
 	float focal_depth;            /* [m]   */
 	float time_offset;            /* pulse length correction time [s]   */
-	uint  uforces;                /* mode is UFORCES (1) or FORCES (0) */
 	float off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */
 	int   beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 };

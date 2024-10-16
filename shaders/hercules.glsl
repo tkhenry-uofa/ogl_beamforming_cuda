@@ -9,7 +9,6 @@ layout(std430, binding = 1) readonly restrict buffer buffer_1 {
 layout(std140, binding = 0) uniform parameters {
 	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
-	vec4  lpf_coefficients[16];   /* Low Pass Filter Cofficients */
 	vec4  xdc_origin[4];          /* [m] Corner of transducer being treated as origin */
 	vec4  xdc_corner1[4];         /* [m] Corner of transducer along first axis (arbitrary) */
 	vec4  xdc_corner2[4];         /* [m] Corner of transducer along second axis (arbitrary) */
@@ -20,13 +19,11 @@ layout(std140, binding = 0) uniform parameters {
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */
 	uint  xdc_count;              /* Number of Transducer Arrays (4 max) */
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
-	uint  lpf_order;              /* Order of Low Pass Filter */
 	float speed_of_sound;         /* [m/s] */
 	float sampling_frequency;     /* [Hz]  */
 	float center_frequency;       /* [Hz]  */
 	float focal_depth;            /* [m]   */
 	float time_offset;            /* pulse length correction time [s]   */
-	uint  uforces;                /* mode is UFORCES (1) or FORCES (0) */
 	float off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */
 	int   beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 };
@@ -109,18 +106,12 @@ void main()
 	float f_num    = 0.5;
 	float apod_arg = f_num * 0.5 * radians(360) / abs(image_point.z);
 
-	/* NOTE: for I-Q data phase correction */
-	float iq_time_scale = (lpf_order > 0)? radians(360) * center_frequency : 0;
-
 	/* NOTE: lerp along a line from one edge of the xdc to the other in the imaging plane */
 	vec3 delta      = edge1 / float(dec_data_dim.y);
 	vec3 xdc_start  = xdc_origin[u_xdc_index].xyz;
 	xdc_start      += edge2 / 2;
 
 	vec3 starting_point = image_point - xdc_start;
-
-	/* NOTE: offset correcting for both pulse length and low pass filtering */
-	float time_correction = time_offset + lpf_order / sampling_frequency;
 
 	vec2 sum   = vec2(0);
 	vec3 rdist = starting_point;
@@ -148,7 +139,7 @@ void main()
 		/* NOTE: For Each Virtual Source */
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float dist = transmit_dist + length(rdist);
-			float time = dist / speed_of_sound + time_correction;
+			float time = dist / speed_of_sound + time_offset;
 
 			/* NOTE: apodization value for this transducer element */
 			float a  = cos(clamp(abs(apod_arg * rdist.x), 0, 0.25 * radians(360)));
@@ -157,8 +148,7 @@ void main()
 			vec2 p   = cubic(ridx, time * sampling_frequency);
 			/* NOTE: tribal knowledge; this is a problem with the imaging sequence */
 			if (i == 0) p *= inversesqrt(128);
-			//p       *= vec2(cos(iq_time_scale * time), sin(iq_time_scale * time));
-			sum     += p;
+			sum += p;
 
 			rdist[direction] -= delta[direction];
 			ridx             += dec_data_dim.x;

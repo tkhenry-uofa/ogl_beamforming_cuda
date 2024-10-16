@@ -16,7 +16,6 @@ enum compute_shaders {
 typedef struct {
 	u16 channel_mapping[512];   /* Transducer Channel to Verasonics Channel */
 	u32 uforces_channels[128];  /* Channels used for virtual UFORCES elements */
-	f32 lpf_coefficients[64];   /* Low Pass Filter Cofficients */
 	f32 xdc_origin[16];         /* [m] (4 v4s) Corner of transducer being treated as origin */
 	f32 xdc_corner1[16];        /* [m] (4 v4s) Corner of transducer along first axis (arbitrary) */
 	f32 xdc_corner2[16];        /* [m] (4 v4s) Corner of transducer along second axis (arbitrary) */
@@ -27,14 +26,12 @@ typedef struct {
 	uv2 rf_raw_dim;             /* Raw Data Dimensions */
 	u32 xdc_count;              /* Number of Transducer Arrays (4 max) */
 	u32 channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
-	u32 lpf_order;              /* Order of Low Pass Filter */
 	f32 speed_of_sound;         /* [m/s] */
 	f32 sampling_frequency;     /* [Hz]  */
 	f32 center_frequency;       /* [Hz]  */
 	f32 focal_depth;            /* [m]   */
 	f32 time_offset;            /* pulse length correction time [s]   */
-	u32 uforces;                /* mode is UFORCES (1) or FORCES (0) */
 	f32 off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */
 	i32 beamform_plane;         /* Plane to Beamform in 2D HERCULES */
-	f32 _pad[3];
+	f32 _pad[1];
 } BeamformerParameters;
