@@ -1,0 +1,964 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="external\include\KHR\khrplatform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\include\glad.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\examples\models\rlights.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\examples\others\external\include\GLFW\glfw3.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\examples\others\external\include\GLFW\glfw3native.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\examples\others\external\include\glad.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\examples\others\external\include\glad_gles2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\examples\others\resources\audio_data.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\examples\others\resources\image_data.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\examples\others\reasings.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\examples\shaders\rlights.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\examples\shapes\raygui.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\examples\shapes\reasings.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\projects\Notepad++\raylib_npp_parser\raylib_to_parse.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\projects\VS2019-Android\raylib_android\raylib_android.NativeActivity\android_native_app_glue.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\deps\glad\gl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\deps\glad\gles2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\deps\glad\vulkan.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\deps\mingw\_mingw_dxhelper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\deps\mingw\dinput.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\deps\mingw\xinput.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\deps\getopt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\include\GLFW\glfw3.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\include\GLFW\glfw3native.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\cocoa_joystick.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\cocoa_platform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\cocoa_time.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\linux_joystick.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\mappings.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\null_joystick.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\null_platform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\platform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\posix_poll.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\posix_thread.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\posix_time.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\win32_joystick.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\win32_platform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\win32_thread.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\win32_time.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\wl_platform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\x11_platform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glfw\src\xkb_unicode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\cgltf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\dirent.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\dr_flac.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\dr_mp3.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\dr_wav.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glad.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\glad_gles2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\jar_mod.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\jar_xm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\m3d.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\miniaudio.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\msf_gif.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\nanosvg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\nanosvgrast.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\par_shapes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\qoa.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\qoi.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\RGFW.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\rl_gputex.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\rprand.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\sdefl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\sinfl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\stb_image.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\stb_image_resize2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\stb_image_write.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\stb_perlin.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\stb_rect_pack.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\stb_truetype.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\tinyobj_loader_c.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\external\vox_loader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\config.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\raylib.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\raymath.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\rcamera.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\rgestures.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\rlgl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\raylib\src\utils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="helpers\ogl_beamformer_lib.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="beamformer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="beamformer_parameters.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="util.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="external\raylib\examples\audio\audio_mixed_processor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\audio\audio_module_playing.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\audio\audio_music_stream.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\audio\audio_raw_stream.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\audio\audio_sound_loading.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\audio\audio_sound_multi.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\audio\audio_stream_effects.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_2d_camera.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_2d_camera_mouse_zoom.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_2d_camera_platformer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_2d_camera_split_screen.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_3d_camera_first_person.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_3d_camera_free.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_3d_camera_mode.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_3d_camera_split_screen.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_3d_picking.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_automation_events.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_basic_screen_manager.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_basic_window.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_basic_window_web.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_custom_frame_control.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_custom_logging.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_drop_files.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_input_gamepad.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_input_gamepad_info.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_input_gestures.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_input_gestures_web.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_input_keys.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_input_mouse.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_input_mouse_wheel.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_input_multitouch.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_loading_thread.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_random_sequence.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_random_values.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_scissor_test.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_smooth_pixelperfect.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_storage_values.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_vr_simulator.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_window_flags.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_window_letterbox.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_window_should_close.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\core\core_world_screen.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_animation.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_billboard.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_bone_socket.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_box_collisions.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_cubicmap.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_draw_cube_texture.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_first_person_maze.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_geometric_shapes.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_heightmap.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_loading.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_loading_gltf.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_loading_m3d.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_loading_vox.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_mesh_generation.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_mesh_picking.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_orthographic_projection.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_rlgl_solar_system.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_skybox.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_waving_cubes.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\models\models_yaw_pitch_roll.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\others\easings_testbed.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\others\embedded_files_loading.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\others\raylib_opengl_interop.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\others\raymath_vector_angle.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\others\rlgl_compute_shader.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\others\rlgl_standalone.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_basic_lighting.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_basic_pbr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_custom_uniform.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_deferred_render.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_eratosthenes.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_fog.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_hot_reloading.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_hybrid_render.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_julia_set.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_lightmap.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_mesh_instancing.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_model_shader.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_multi_sample2d.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_palette_switch.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_postprocessing.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_raymarching.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_shadowmap.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_shapes_textures.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_simple_mask.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_spotlight.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_texture_drawing.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_texture_outline.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_texture_tiling.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_texture_waves.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shaders\shaders_write_depth.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_basic_shapes.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_bouncing_ball.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_collision_area.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_colors_palette.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_draw_circle_sector.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_draw_rectangle_rounded.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_draw_ring.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_easings_ball_anim.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_easings_box_anim.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_easings_rectangle_array.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_following_eyes.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_lines_bezier.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_logo_raylib.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_logo_raylib_anim.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_rectangle_scaling.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_splines_drawing.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\shapes\shapes_top_down_lights.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\text\text_codepoints_loading.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\text\text_draw_3d.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\text\text_font_filters.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\text\text_font_loading.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\text\text_font_sdf.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\text\text_font_spritefont.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\text\text_format_text.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\text\text_input_box.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\text\text_raylib_fonts.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\text\text_rectangle_bounds.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\text\text_unicode.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\text\text_writing_anim.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_background_scrolling.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_blend_modes.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_bunnymark.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_draw_tiled.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_fog_of_war.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_gif_player.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_image_channel.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_image_drawing.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_image_generation.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_image_kernel.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_image_loading.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_image_processing.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_image_rotate.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_image_text.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_logo_raylib.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_mouse_painting.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_npatch_drawing.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_particles_blending.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_polygon.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_raw_data.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_sprite_anim.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_sprite_button.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_sprite_explosion.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_srcrec_dstrec.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_svg_loading.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_textured_curve.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\textures\textures_to_image.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\examples\examples_template.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\parser\raylib_parser.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\projects\4coder\main.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\projects\CMake\core_basic_window.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\projects\CodeBlocks\core_basic_window.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\projects\Geany\core_basic_window.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\projects\Notepad++\raylib_npp_parser\raylib_npp_parser.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\projects\scripts\core_basic_window.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\projects\VS2019-Android\raylib_android\raylib_android.NativeActivity\android_native_app_glue.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\projects\VS2019-Android\raylib_android\raylib_android.NativeActivity\main.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\projects\VSCode\main.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\deps\getopt.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\cocoa_time.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\context.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\egl_context.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\glx_context.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\init.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\input.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\linux_joystick.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\monitor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\null_init.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\null_joystick.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\null_monitor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\null_window.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\osmesa_context.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\platform.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\posix_module.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\posix_poll.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\posix_thread.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\posix_time.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\vulkan.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\wgl_context.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_init.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_joystick.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_module.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_monitor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_thread.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_time.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\win32_window.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\window.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\wl_init.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\wl_monitor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\wl_window.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\x11_init.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\x11_monitor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\x11_window.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\glfw\src\xkb_unicode.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\qoaplay.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\external\stb_vorbis.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\platforms\rcore_android.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\platforms\rcore_desktop_glfw.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\platforms\rcore_desktop_rgfw.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\platforms\rcore_desktop_sdl.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\platforms\rcore_drm.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\platforms\rcore_template.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\platforms\rcore_web.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\raudio.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\rcore.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\rglfw.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\rmodels.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\rshapes.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\rtext.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\rtextures.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="external\raylib\src\utils.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="helpers\ogl_beamformer_lib.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="beamformer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="os_unix.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="os_win32.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="util.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ui.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="static.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="main_generic.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="external\raylib\examples\examples.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+    <ResourceCompile Include="external\raylib\src\raylib.dll.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+    <ResourceCompile Include="external\raylib\src\raylib.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="external\raylib\src\minshell.html" />
+    <None Include="external\raylib\src\shell.html" />
+    <None Include=".gitignore" />
+    <None Include=".gitmodules" />
+    <None Include="build.sh" />
+    <None Include="LICENSE" />
+    <None Include="build_win.sh" />
+    <None Include="shaders\hadamard.glsl" />
+    <None Include="shaders\lpf.glsl" />
+    <None Include="shaders\min_max.glsl" />
+    <None Include="shaders\render.glsl" />
+    <None Include="shaders\uforces.glsl" />
+    <None Include="shaders\sum.glsl" />
+    <None Include="shaders\hercules.glsl" />
+    <None Include="shaders\demod.glsl" />
+  </ItemGroup>
+</Project>
