@@ -9,3 +9,5 @@ external/include/r*.h
 ogl
 out
 x64
+/beamformer
+/ogl_beamforming_cuda
