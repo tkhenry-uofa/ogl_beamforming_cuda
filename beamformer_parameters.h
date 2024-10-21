@@ -54,7 +54,6 @@ typedef struct {
 	u32 readi_group_id;			/* Which readi group this data is from*/
 	u32 readi_group_size;		/* Size of readi transmit group */
 	f32 _pad[3];
-	f32 _pad[1];
 } BeamformerParameters;
 
 /* NOTE: garbage to get the prepocessor to properly stringize the value of a macro */

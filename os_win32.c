@@ -239,7 +239,7 @@ os_close_named_pipe(Pipe p)
 	CloseHandle(p.file);
 }
 
-static PLATFORM_POLL_PIPE_FN(os_poll_pipe)
+static b32 os_poll_pipe(Pipe* p)
 {
 	// Try and read 0 bytes, this will give more pipe status information than PeakNamedPipe
 	u8 data = 0;

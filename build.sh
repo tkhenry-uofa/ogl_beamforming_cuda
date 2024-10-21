@@ -36,7 +36,7 @@ MINGW64*)
 		extra_ldflags="-llibmat -llibmex"
 	fi
 	${cc} ${libcflags} helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.dll \
-		-L'C:/Program Files/MATLAB/R2022a/extern/lib/win64/microsoft' \
+		-L'C:/Program Files/MATLAB/R2024a/extern/lib/win64/mingw64' \
 		${extra_ldflags}
 	;;
 Linux*)
