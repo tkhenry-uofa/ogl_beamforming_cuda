@@ -304,7 +304,7 @@ set_text_input_idx(BeamformerCtx *ctx, BPModifiableValue bmv, Rect r, v2 mouse)
 {
 	if (ctx->is.store.value && !bmv_equal(&ctx->is.store, &bmv)) {
 		f32 new_val = parse_f64((s8){.len = ctx->is.buf_len, .data = ctx->is.buf});
-		ctx->is.store.store_fn(ctx, &ctx->is.store, new_val / bmv.display_scale, 0);
+		ctx->is.store.store_fn(ctx, &ctx->is.store, new_val / ctx->is.store.display_scale, 0);
 	}
 
 	ctx->is.store  = bmv;
