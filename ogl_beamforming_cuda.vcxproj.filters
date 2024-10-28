@@ -960,5 +960,6 @@
     <None Include="shaders\sum.glsl" />
     <None Include="shaders\hercules.glsl" />
     <None Include="shaders\demod.glsl" />
+    <None Include="build_cl.ps1" />
   </ItemGroup>
 </Project>

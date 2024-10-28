@@ -19,8 +19,8 @@
 	#define OS_DEBUG_LIB_NAME      "beamformer.dll"
 	#define OS_DEBUG_LIB_TEMP_NAME "beamformer_temp.dll"
 
-	#define OS_CUDA_LIB_NAME      "external\\cuda_toolkit.dll"
-	#define OS_CUDA_LIB_TEMP_NAME "external\\cuda_toolkit_temp.dll"
+	#define OS_CUDA_LIB_NAME      "cuda_toolkit.dll"
+	#define OS_CUDA_LIB_TEMP_NAME NULL
 
 	#define OS_PIPE_NAME "\\\\.\\pipe\\beamformer_data_fifo"
 	#define OS_SMEM_NAME "Local\\ogl_beamformer_parameters"

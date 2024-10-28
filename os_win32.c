@@ -19,6 +19,22 @@
 #define CREATE_ALWAYS  2
 #define OPEN_EXISTING  3
 
+
+#ifdef _MSC_VER
+#define NORETURN __declspec(noreturn)
+#else
+#define NORETURN __attribute__((noreturn))
+#endif
+
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+#define PACKED
+#else
+#define PACKED __attribute__((packed))
+#endif
+
+
+
 typedef struct {
 	u16  wProcessorArchitecture;
 	u16  _pad1;
@@ -37,7 +53,7 @@ typedef struct {
  * incorrectly. They worked around it be making the ft* members a struct {u32, u32} which
  * is aligned on a 4-byte boundary. Then in their documentation they explicitly tell you not
  * to cast to u64 because "it can cause alignment faults on 64-bit Windows" - go figure */
-typedef struct __attribute__((packed)) {
+typedef struct PACKED {
 	u32 dwFileAttributes;
 	u64 ftCreationTime;
 	u64 ftLastAccessTime;
@@ -49,6 +65,10 @@ typedef struct __attribute__((packed)) {
 	u32 nFileIndexHigh;
 	u32 nFileIndexLow;
 } w32_file_info;
+
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
 
 #define W32(r) __declspec(dllimport) r __stdcall
 W32(b32)    CloseHandle(iptr);
@@ -74,12 +94,12 @@ W32(b32)    VirtualFree(u8 *, size, u32);
 
 static iptr win32_stderr_handle;
 
-static void __attribute__((noreturn))
+static void NORETURN
 os_fail(void)
 {
 	ExitProcess(1);
 	unreachable();
-}
+};
 
 static b32
 os_write_file(iptr file, s8 raw)

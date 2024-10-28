@@ -1,11 +1,16 @@
+
+
 /* See LICENSE for license details. */
-static s8 compute_shader_paths[CS_LAST] = {
-	[CS_HADAMARD] = s8("shaders/hadamard.glsl"),
-	[CS_HERCULES] = s8("shaders/hercules.glsl"),
-	[CS_DEMOD]    = s8("shaders/demod.glsl"),
-	[CS_MIN_MAX]  = s8("shaders/min_max.glsl"),
-	[CS_SUM]      = s8("shaders/sum.glsl"),
-	[CS_UFORCES]  = s8("shaders/uforces.glsl"),
+static s8 compute_shader_paths[CS_LAST];
+
+static void initialize_compute_shader_paths()
+{
+	compute_shader_paths[CS_HADAMARD] = s8("shaders/hadamard.glsl");
+	compute_shader_paths[CS_HERCULES] = s8("shaders/hercules.glsl");
+	compute_shader_paths[CS_DEMOD] = s8("shaders/demod.glsl");
+	compute_shader_paths[CS_MIN_MAX] = s8("shaders/min_max.glsl");
+	compute_shader_paths[CS_SUM] = s8("shaders/sum.glsl");
+	compute_shader_paths[CS_UFORCES] = s8("shaders/uforces.glsl");
 };
 
 #ifndef _DEBUG
@@ -236,6 +241,7 @@ check_and_load_cuda_lib(CudaLib *cl, Stream *error_stream)
 
 	cl->timestamp = current.timestamp;
 	os_unload_library(cl->lib);
+
 	cl->lib = os_load_library(OS_CUDA_LIB_NAME, OS_CUDA_LIB_TEMP_NAME, error_stream);
 	#define X(name) cl->name = os_lookup_dynamic_symbol(cl->lib, #name, error_stream);
 	CUDA_LIB_FNS
@@ -246,6 +252,8 @@ check_and_load_cuda_lib(CudaLib *cl, Stream *error_stream)
 static void
 setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 {
+	initialize_compute_shader_paths();
+
 	ctx->window_size  = (uv2){.w = 1280, .h = 840};
 
 	ctx->out_data_dim          = (uv4){.x = 1, .y = 1, .z = 1};

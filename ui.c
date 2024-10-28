@@ -575,16 +575,17 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 {
 	uv2 ws = ctx->window_size;
 
-	static s8 labels[CS_LAST] = {
-		[CS_CUDA_DECODE]  = s8("CUDA Decoding:"),
-		[CS_CUDA_HILBERT] = s8("CUDA Hilbert:"),
-		[CS_DEMOD]        = s8("Demodulation:"),
-		[CS_HADAMARD]     = s8("Decoding:"),
-		[CS_HERCULES]     = s8("HERCULES:"),
-		[CS_MIN_MAX]      = s8("Min/Max:"),
-		[CS_SUM]          = s8("Sum:"),
-		[CS_UFORCES]      = s8("UFORCES:"),
-	};
+	static s8 labels[8];
+
+	labels[CS_CUDA_DECODE] = s8("CUDA Decoding:");
+	labels[CS_CUDA_HILBERT] = s8("CUDA Hilbert:");
+	labels[CS_DEMOD] = s8("Demodulation:");
+	labels[CS_HADAMARD] = s8("Decoding");
+	labels[CS_HERCULES] = s8("HERCULES:");
+	labels[CS_MIN_MAX] = s8("Min/Max:");
+	labels[CS_SUM] = s8("Sum:");
+	labels[CS_UFORCES] = s8("UFORCES:");
+
 
 	ComputeShaderCtx *cs = &ctx->csctx;
 
@@ -608,7 +609,11 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 		compute_time_sum += cs->last_frame_time[index];
 	}
 
-	static s8 totals[2] = {s8("Compute Total:"), s8("Volume Total:")};
+	static s8 totals[2];
+	totals[0] = s8("Compute Total:");
+	totals[1]  = s8("Volume Total:");
+
+
 	f32 times[2]        = {compute_time_sum, ctx->export_ctx.runtime};
 	for (u32 i = 0; i < ARRAY_COUNT(totals); i++) {
 		pos.y    -= measure_text(ctx->font, totals[i]).y;
@@ -626,7 +631,9 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 		static v2 pos       = {.x = 32,  .y = 128};
 		static v2 scale     = {.x = 1.0, .y = 1.0};
 		static u32 txt_idx  = 0;
-		static s8 txt[2]    = { s8("-_-"), s8("^_^") };
+		static s8 txt[2];
+		txt[0] = s8("-_-");
+		txt[1] = s8("^_^");
 		static v2 ts[2];
 		if (ts[0].x == 0) {
 			ts[0] = measure_text(ctx->font, txt[0]);

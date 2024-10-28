@@ -7,9 +7,10 @@ enum compute_shaders {
 	CS_HERCULES              = 4,
 	CS_MIN_MAX               = 5,
 	CS_SUM                   = 6,
-	CS_UFORCES               = 7,
-	CS_LAST
+	CS_UFORCES               = 7
 };
+
+#define CS_LAST 8
 
 /* NOTE: This struct follows the OpenGL std140 layout. DO NOT modify unless you have
  * read and understood the rules, particulary with regards to _member alignment_ */

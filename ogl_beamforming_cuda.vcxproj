@@ -71,7 +71,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <NMakeBuildCommandLine>C:\msys64\usr\bin\bash.exe  -c "export MSYSTEM=UCRT64 &amp;&amp; source /etc/profile &amp;&amp; cd - &amp;&amp; ./build_win.sh  -d "</NMakeBuildCommandLine>
+    <NMakeBuildCommandLine>powershell -ExecutionPolicy Bypass -File "$(ProjectDir)\build_cl.ps1" -d</NMakeBuildCommandLine>
     <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(SolutionDir)$(Platform)\$(Configuration)\</LibraryPath>
     <IncludePath>$(ProjectDir)external\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
@@ -454,6 +454,7 @@
     <None Include=".gitignore" />
     <None Include=".gitmodules" />
     <None Include="build.sh" />
+    <None Include="build_cl.ps1" />
     <None Include="build_win.sh" />
     <None Include="external\raylib\src\minshell.html" />
     <None Include="external\raylib\src\shell.html" />
