@@ -226,7 +226,6 @@ do_text_input(BeamformerCtx *ctx, i32 max_disp_chars, Rect r, Color colour)
 	Color cursor_colour = colour_from_normalized(lerp_v4(bg, FOCUSED_COLOUR,
 	                                                     ctx->is.cursor_blink_t));
 
-
 	/* NOTE: guess a cursor position */
 	if (ctx->is.cursor == -1) {
 		/* NOTE: extra offset to help with putting a cursor at idx 0 */
@@ -500,7 +499,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	draw_r = do_value_listing(s8("Sampling Frequency:"), s8("[MHz]"),
 	                          bp->sampling_frequency * 1e-6, ctx->font, arena, draw_r);
 
-	static f32 hover_t[13];
+	static f32 hover_t[14];
 	i32 idx = 0;
 
 	BPModifiableValue bmv;
@@ -551,6 +550,11 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	bmv = (BPModifiableValue){&ctx->fsctx.db, bmv_store_generic, .flimits = (v2){.x = -120},
 	                          MV_FLOAT|MV_GEN_MIPMAPS, 1, 1};
 	draw_r = do_text_input_listing(s8("Dynamic Range:"), s8("[dB]"), bmv, ctx, arena,
+	                               draw_r, mouse, hover_t + idx++);
+
+	bmv = (BPModifiableValue){&ctx->fsctx.threshold, bmv_store_generic, .flimits = (v2){.y = 240},
+	                          MV_FLOAT|MV_GEN_MIPMAPS, 1, 1};
+	draw_r = do_text_input_listing(s8("Threshold:"), s8(""), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
 	draw_r.pos.y  += 2 * LISTING_LINE_PAD;

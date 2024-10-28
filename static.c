@@ -173,8 +173,9 @@ compile_shader(Arena a, u32 type, s8 shader)
 static void
 init_fragment_shader_ctx(FragmentShaderCtx *ctx, uv4 out_data_dim)
 {
-	ctx->output = LoadRenderTexture(out_data_dim.x, out_data_dim.y);
-	ctx->db     = -50.0f;
+	ctx->output    = LoadRenderTexture(out_data_dim.x, out_data_dim.y);
+	ctx->db        = -50.0f;
+	ctx->threshold =  40.0f;
 }
 
 static void
@@ -214,6 +215,7 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		UnloadShader(ctx->fsctx.shader);
 		ctx->fsctx.shader       = updated_fs;
 		ctx->fsctx.db_cutoff_id = GetShaderLocation(updated_fs, "u_db_cutoff");
+		ctx->fsctx.threshold_id = GetShaderLocation(updated_fs, "u_threshold");
 	}
 }
 

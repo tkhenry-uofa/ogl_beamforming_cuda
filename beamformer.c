@@ -484,6 +484,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			glUseProgram(fs->shader.id);
 			glBindTextureUnit(0, ctx->out_texture);
 			glUniform1f(fs->db_cutoff_id, fs->db);
+			glUniform1f(fs->threshold_id, fs->threshold);
 			DrawTexture(fs->output.texture, 0, 0, WHITE);
 		EndShaderMode();
 	EndTextureMode();

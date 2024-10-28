@@ -6,6 +6,7 @@ out vec4 v_out_colour;
 
 layout(binding = 0)  uniform sampler3D u_out_data_tex;
 layout(location = 1) uniform float     u_db_cutoff = -60;
+layout(location = 2) uniform float     u_threshold =  40;
 
 /* input:  h [0,360] | s,v [0, 1] *
  * output: rgb [0,1]              */
@@ -26,9 +27,14 @@ void main()
 
 	ivec3 smp_coord = ivec3(coord.x, 0, coord.y);
 	float smp       = length(texelFetch(u_out_data_tex, smp_coord, 0).xy);
-	float absmax    = max(abs(min_max.y), abs(min_max.x));
 
-	smp = 20 * log(smp / absmax) / log(10);
+	//float absmax    = max(abs(min_max.y), abs(min_max.x));
+	//smp = 20 * log(smp / absmax) / log(10);
+
+	float threshold_val = pow(10.0f, u_threshold / 10.0f);
+	smp = clamp(smp, 0.0f, threshold_val);
+	smp = 20 * log(smp / threshold_val) / log(10);
+
 	smp = clamp(smp, u_db_cutoff, 0) / u_db_cutoff;
 	smp = 1 - smp;
 
