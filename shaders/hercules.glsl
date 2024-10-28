@@ -145,7 +145,9 @@ void main()
 			float a  = cos(clamp(abs(apod_arg * rdist.x), 0, 0.25 * radians(360)));
 			a        = a * a;
 
-			vec2 p   = cubic(ridx, time * sampling_frequency);
+			float sidx = time * sampling_frequency;
+			vec2 valid = vec2(sidx < dec_data_dim.x);
+			vec2 p     = cubic(ridx, sidx);
 			/* NOTE: tribal knowledge; this is a problem with the imaging sequence */
 			if (i == 0) p *= inversesqrt(128);
 			sum += p;

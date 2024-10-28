@@ -131,10 +131,12 @@ void main()
 			float a  = cos(clamp(abs(apod_arg * rdist.x), 0, 0.25 * radians(360)));
 			a        = a * a;
 
-			vec2 p   = cubic(ridx, time * sampling_frequency);
-			sum     += p * a;
-			rdist   -= delta;
-			ridx    += dec_data_dim.x;
+			float sidx  = time * sampling_frequency;
+			vec2 valid  = vec2(sidx < dec_data_dim.x);
+			vec2 p      = cubic(ridx, sidx) * valid;
+			sum        += p * a;
+			rdist      -= delta;
+			ridx       += dec_data_dim.x;
 		}
 	}
 	imageStore(u_out_data_tex, out_coord, vec4(sum.x, sum.y, 0, 0));
