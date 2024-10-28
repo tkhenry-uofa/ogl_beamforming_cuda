@@ -40,17 +40,26 @@ enum gl_vendor_ids {
 };
 
 enum modifiable_value_flags {
-	MV_CAUSES_COMPUTE = 1 << 0,
-	MV_FLOAT          = 1 << 1,
-	MV_INT            = 1 << 2,
-	MV_GEN_MIPMAPS    = 1 << 29,
-	MV_POWER_OF_TWO   = 1 << 30,
+	MV_FLOAT          = 1 << 0,
+	MV_INT            = 1 << 1,
+	MV_CAUSES_COMPUTE = 1 << 29,
+	MV_GEN_MIPMAPS    = 1 << 30,
 };
-typedef struct {
-	void *value;
-	u32   flags;
-	f32   scale;
-	union {v2 flimits; iv2 ilimits;};
+
+typedef struct BeamformerCtx BeamformerCtx;
+typedef struct BPModifiableValue BPModifiableValue;
+
+#define BMV_STORE_FN(name) void name(BeamformerCtx *ctx, BPModifiableValue *bmv, f32 new_val, b32 from_scroll)
+typedef BMV_STORE_FN(bmv_store_fn);
+BMV_STORE_FN(bmv_store_fn_stub) {}
+
+typedef struct BPModifiableValue {
+	void         *value;
+	bmv_store_fn *store_fn;
+	union        {v2 flimits; iv2 ilimits;};
+	u32          flags;
+	f32          scroll_scale;
+	f32          display_scale;
 } BPModifiableValue;
 
 typedef struct {
@@ -189,7 +198,7 @@ typedef struct {
 	i32  max_ubo_size;
 } GLParams;
 
-typedef struct {
+typedef struct BeamformerCtx {
 	GLParams gl;
 
 	uv2 window_size;
