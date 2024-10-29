@@ -273,11 +273,16 @@ parse_f64(s8 s)
 }
 
 static void
-fill_kronecker_sub_matrix(i32 *out, i32 out_stride, i32 scale, i32 *b, uv2 b_dim)
+fill_kronecker_sub_matrix(__m128i *out, i32 out_stride, i32 scale, __m128i *b, uv2 b_dim)
 {
-	for (u32 i = 0; i < b_dim.y; i++)
-		for (u32 j = 0; j < b_dim.x; j++)
-			out[i * out_stride + j] = scale * b[i * b_dim.x + j];
+	__m128 vscale = _mm_set1_ps(scale);
+	for (u32 i = 0; i < b_dim.y; i++) {
+		for (u32 j = 0; j < b_dim.x / 4; j++) {
+			__m128 vb = _mm_cvtepi32_ps(_mm_loadu_si128(b++));
+			_mm_storeu_si128(out + j, _mm_cvtps_epi32(_mm_mul_ps(vscale, vb)));
+		}
+		out += out_stride;
+	}
 }
 
 /* NOTE: this won't check for valid space/etc and assumes row major order */
@@ -285,11 +290,14 @@ static void
 kronecker_product(i32 *out, i32 *a, uv2 a_dim, i32 *b, uv2 b_dim)
 {
 	uv2 out_dim = {.x = a_dim.x * b_dim.x, .y = a_dim.y * b_dim.y};
+	ASSERT(out_dim.y % 4 == 0);
 	for (u32 i = 0; i < a_dim.y; i++) {
-		for (u32 j = 0; j < a_dim.x; j++) {
-			fill_kronecker_sub_matrix(out + j * b_dim.y + i * out_dim.y * b_dim.x,
-			                          out_dim.y, a[i * a_dim.x + j], b, b_dim);
+		__m128i *vout = (__m128i *)out;
+		for (u32 j = 0; j < a_dim.x; j++, a++) {
+			fill_kronecker_sub_matrix(vout, out_dim.y / 4, *a, (__m128i *)b, b_dim);
+			vout += b_dim.y / 4;
 		}
+		out += out_dim.y * b_dim.x;
 	}
 }
 
