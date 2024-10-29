@@ -1,4 +1,19 @@
 /* See LICENSE for license details. */
+static i32 hadamard_12_12_transpose[] = {
+	1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
+	1, -1, -1,  1, -1, -1, -1,  1,  1,  1, -1,  1,
+	1,  1, -1, -1,  1, -1, -1, -1,  1,  1,  1, -1,
+	1, -1,  1, -1, -1,  1, -1, -1, -1,  1,  1,  1,
+	1,  1, -1,  1, -1, -1,  1, -1, -1, -1,  1,  1,
+	1,  1,  1, -1,  1, -1, -1,  1, -1, -1, -1,  1,
+	1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1, -1,
+	1, -1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1,
+	1, -1, -1,  1,  1,  1, -1,  1, -1, -1,  1, -1,
+	1, -1, -1, -1,  1,  1,  1, -1,  1, -1, -1,  1,
+	1,  1, -1, -1, -1,  1,  1,  1, -1,  1, -1, -1,
+	1, -1,  1, -1, -1, -1,  1,  1,  1, -1,  1, -1,
+};
+
 static void *
 mem_clear(u8 *p, u8 c, size len)
 {
@@ -258,9 +273,41 @@ parse_f64(s8 s)
 }
 
 static void
-fill_hadamard(i32 *m, u32 dim)
+fill_kronecker_sub_matrix(i32 *out, i32 out_stride, i32 scale, i32 *b, uv2 b_dim)
 {
-	ASSERT(dim && ISPOWEROF2(dim));
+	for (u32 i = 0; i < b_dim.y; i++)
+		for (u32 j = 0; j < b_dim.x; j++)
+			out[i * out_stride + j] = scale * b[i * b_dim.x + j];
+}
+
+/* NOTE: this won't check for valid space/etc and assumes row major order */
+static void
+kronecker_product(i32 *out, i32 *a, uv2 a_dim, i32 *b, uv2 b_dim)
+{
+	uv2 out_dim = {.x = a_dim.x * b_dim.x, .y = a_dim.y * b_dim.y};
+	for (u32 i = 0; i < a_dim.y; i++) {
+		for (u32 j = 0; j < a_dim.x; j++) {
+			fill_kronecker_sub_matrix(out + j * b_dim.y + i * out_dim.y * b_dim.x,
+			                          out_dim.y, a[i * a_dim.x + j], b, b_dim);
+		}
+	}
+}
+
+/* NOTE/TODO: to support even more hadamard sizes use the Paley construction */
+static void
+fill_hadamard_transpose(i32 *out, i32 *tmp, u32 dim)
+{
+	ASSERT(dim);
+	b32 power_of_2 = ISPOWEROF2(dim);
+
+	if (!power_of_2) {
+		ASSERT(dim % 12 == 0);
+		dim /= 12;
+	}
+
+	i32 *m;
+	if (power_of_2) m = out;
+	else            m = tmp;
 
 	#define IND(i, j) ((i) * dim + (j))
 	m[0] = 1;
@@ -275,4 +322,8 @@ fill_hadamard(i32 *m, u32 dim)
 		}
 	}
 	#undef IND
+
+	if (!power_of_2)
+		kronecker_product(out, tmp, (uv2){.x = dim, .y = dim}, hadamard_12_12_transpose,
+		                  (uv2){.x = 12, .y = 12});
 }

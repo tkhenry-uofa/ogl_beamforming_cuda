@@ -119,7 +119,8 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	cs->hadamard_dim       = (uv2){.x = dec_data_dim.z, .y = dec_data_dim.z};
 	size hadamard_elements = dec_data_dim.z * dec_data_dim.z;
 	i32  *hadamard         = alloc(&a, i32, hadamard_elements);
-	fill_hadamard(hadamard, dec_data_dim.z);
+	i32  *tmp              = alloc(&a, i32, hadamard_elements);
+	fill_hadamard_transpose(hadamard, tmp, dec_data_dim.z);
 	glDeleteBuffers(1, &cs->hadamard_ssbo);
 	glCreateBuffers(1, &cs->hadamard_ssbo);
 	glNamedBufferStorage(cs->hadamard_ssbo, hadamard_elements * sizeof(i32), hadamard, 0);
