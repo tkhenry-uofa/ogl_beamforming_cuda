@@ -115,10 +115,8 @@ static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
 		VirtualFree(old.beg, oldsize, MEM_RELEASE);
 
 	result.beg = VirtualAlloc(0, capacity, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-	if (result.beg == NULL) {
-		os_write_err_msg(s8("os_alloc_arena: couldn't allocate memory\n"));
-		os_fail();
-	}
+	if (result.beg == NULL)
+		os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
 	result.end = result.beg + capacity;
 	return result;
 }
@@ -244,7 +242,7 @@ os_load_library(char *name, char *temp_name, Stream *e)
 		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
 		stream_append_i64(e, GetLastError());
 		stream_append_byte(e, '\n');
-		os_write_err_msg(stream_to_s8(*e));
+		os_write_err_msg(stream_to_s8(e));
 		e->widx = 0;
 	}
 
@@ -265,7 +263,7 @@ os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
 		stream_append_i64(e, GetLastError());
 		stream_append_byte(e, '\n');
-		os_write_err_msg(stream_to_s8(*e));
+		os_write_err_msg(stream_to_s8(e));
 		e->widx = 0;
 	}
 	return res;
