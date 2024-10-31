@@ -14,7 +14,7 @@ decoded_data_size(ComputeShaderCtx *cs)
 }
 
 static void
-alloc_output_image(BeamformerCtx *ctx)
+alloc_output_image(BeamformerCtx *ctx, Arena a)
 {
 	BeamformerParameters *bp = &ctx->params->raw;
 	ComputeShaderCtx *cs     = &ctx->csctx;
@@ -37,13 +37,21 @@ alloc_output_image(BeamformerCtx *ctx)
 	glGenTextures(1, &ctx->out_texture);
 	glBindTexture(GL_TEXTURE_3D, ctx->out_texture);
 	glTexStorage3D(GL_TEXTURE_3D, ctx->out_texture_mips, GL_RG32F, odim.x, odim.y, odim.z);
+	LABEL_GL_OBJECT(GL_TEXTURE, ctx->out_texture, s8("Beamformed_Data_Texture"));
 
+	Stream label = stream_alloc(&a, 256);
+	stream_append_s8(&label, s8("Sum_Texture_"));
+	u32 sidx = label.widx;
 	glDeleteTextures(ARRAY_COUNT(cs->sum_textures), cs->sum_textures);
 	if (odim.w > 1) {
 		glGenTextures(odim.w, cs->sum_textures);
 		for (u32 i = 0; i < odim.w; i++) {
 			glBindTexture(GL_TEXTURE_3D, cs->sum_textures[i]);
 			glTexStorage3D(GL_TEXTURE_3D, ctx->out_texture_mips, GL_RG32F, odim.x, odim.y, odim.z);
+			stream_append_u64(&label, i);
+			s8 slabel = stream_to_s8(&label);
+			LABEL_GL_OBJECT(GL_TEXTURE, cs->sum_textures[i], slabel);
+			label.widx = sidx;
 		}
 	}
 
@@ -58,6 +66,7 @@ alloc_output_image(BeamformerCtx *ctx)
 	UnloadRenderTexture(ctx->fsctx.output);
 	/* TODO: select odim.x vs odim.y */
 	ctx->fsctx.output = LoadRenderTexture(odim.x, odim.z);
+	LABEL_GL_OBJECT(GL_FRAMEBUFFER, ctx->fsctx.output.id, s8("Rendered_View"));
 	GenTextureMipmaps(&ctx->fsctx.output.texture);
 	//SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_ANISOTROPIC_8X);
 	//SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_TRILINEAR);
@@ -95,9 +104,18 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glDeleteBuffers(1, &cs->raw_data_ssbo);
 	glCreateBuffers(1, &cs->raw_data_ssbo);
 	glNamedBufferStorage(cs->raw_data_ssbo, full_rf_buf_size, 0, storage_flags);
+	LABEL_GL_OBJECT(GL_BUFFER, cs->raw_data_ssbo, s8("Raw_Data_SSBO"));
 
-	for (u32 i = 0; i < ARRAY_COUNT(cs->rf_data_ssbos); i++)
+	Stream label = stream_alloc(&a, 256);
+	stream_append_s8(&label, s8("RF_SSBO_"));
+	u32 s_widx  = label.widx;
+	for (u32 i = 0; i < ARRAY_COUNT(cs->rf_data_ssbos); i++) {
 		glNamedBufferStorage(cs->rf_data_ssbos[i], rf_decoded_size, 0, 0);
+		stream_append_u64(&label, i);
+		s8 rf_label = stream_to_s8(&label);
+		LABEL_GL_OBJECT(GL_BUFFER, cs->rf_data_ssbos[i], rf_label);
+		label.widx = s_widx;
+	}
 
 	i32 map_flags = GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT|GL_MAP_UNSYNCHRONIZED_BIT;
 	switch (ctx->gl.vendor_id) {
@@ -124,6 +142,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glDeleteBuffers(1, &cs->hadamard_ssbo);
 	glCreateBuffers(1, &cs->hadamard_ssbo);
 	glNamedBufferStorage(cs->hadamard_ssbo, hadamard_elements * sizeof(i32), hadamard, 0);
+	LABEL_GL_OBJECT(GL_BUFFER, cs->hadamard_ssbo, s8("Hadamard_SSBO"));
 }
 
 static m3
@@ -386,7 +405,7 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 			alloc_shader_storage(ctx, arena);
 
 		if (!uv4_equal(ctx->out_data_dim, bp->output_points))
-			alloc_output_image(ctx);
+			alloc_output_image(ctx, arena);
 
 		cs->raw_data_index = (cs->raw_data_index + 1) % ARRAY_COUNT(cs->raw_data_fences);
 		i32 raw_index = ctx->csctx.raw_data_index;
@@ -436,10 +455,12 @@ do_beamformer(BeamformerCtx *ctx, Arena arena)
 		glDeleteTextures(1, &e->volume_texture);
 		glCreateTextures(GL_TEXTURE_3D, 1, &e->volume_texture);
 		glTextureStorage3D(e->volume_texture, 1, GL_R32F, edim.x, edim.y, edim.z);
+		LABEL_GL_OBJECT(GL_TEXTURE, e->volume_texture, s8("Beamformed_Volume"));
 
 		glDeleteBuffers(1, &e->rf_data_ssbo);
 		glCreateBuffers(1, &e->rf_data_ssbo);
 		glNamedBufferStorage(e->rf_data_ssbo, decoded_data_size(&ctx->csctx), 0, 0);
+		LABEL_GL_OBJECT(GL_BUFFER, e->rf_data_ssbo, s8("Volume_RF_SSBO"));
 	}
 
 	if (ctx->flags & DO_COMPUTE || ctx->export_ctx.state & ES_START) {

@@ -1,14 +1,15 @@
 /* See LICENSE for license details. */
 static struct {
+	s8  label;
 	s8  path;
 	b32 needs_header;
 } compute_shaders[CS_LAST] = {
-	[CS_HADAMARD] = {.path = s8("shaders/hadamard.glsl"), .needs_header = 1},
-	[CS_HERCULES] = {.path = s8("shaders/hercules.glsl"), .needs_header = 1},
-	[CS_DEMOD]    = {.path = s8("shaders/demod.glsl"),    .needs_header = 1},
-	[CS_MIN_MAX]  = {.path = s8("shaders/min_max.glsl"),  .needs_header = 0},
-	[CS_SUM]      = {.path = s8("shaders/sum.glsl"),      .needs_header = 0},
-	[CS_UFORCES]  = {.path = s8("shaders/uforces.glsl"),  .needs_header = 1},
+	[CS_HADAMARD] = {s8("Hadamard"), s8("shaders/hadamard.glsl"), 1},
+	[CS_HERCULES] = {s8("HERCULES"), s8("shaders/hercules.glsl"), 1},
+	[CS_DEMOD]    = {s8("Demod"),    s8("shaders/demod.glsl"),    1},
+	[CS_MIN_MAX]  = {s8("Min/Max"),  s8("shaders/min_max.glsl"),  0},
+	[CS_SUM]      = {s8("Sum"),      s8("shaders/sum.glsl"),      0},
+	[CS_UFORCES]  = {s8("UFORCES"),  s8("shaders/uforces.glsl"),  1},
 };
 
 #ifndef _DEBUG
@@ -174,7 +175,6 @@ compile_shader(Arena a, u32 type, s8 shader)
 static void
 init_fragment_shader_ctx(FragmentShaderCtx *ctx, uv4 out_data_dim)
 {
-	ctx->output    = LoadRenderTexture(out_data_dim.x, out_data_dim.y);
 	ctx->db        = -50.0f;
 	ctx->threshold =  40.0f;
 }
@@ -210,6 +210,7 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		if (shader_id) {
 			glDeleteProgram(csctx->programs[i]);
 			csctx->programs[i] = rlLoadComputeShaderProgram(shader_id);
+			LABEL_GL_OBJECT(GL_PROGRAM, csctx->programs[i], compute_shaders[i].label);
 			ctx->flags |= DO_COMPUTE;
 		}
 
@@ -223,6 +224,7 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 	Shader updated_fs = LoadShader(NULL, "shaders/render.glsl");
 	if (updated_fs.id != rlGetShaderIdDefault()) {
 		UnloadShader(ctx->fsctx.shader);
+		LABEL_GL_OBJECT(GL_PROGRAM, updated_fs.id, s8("Render"));
 		ctx->fsctx.shader       = updated_fs;
 		ctx->fsctx.db_cutoff_id = GetShaderLocation(updated_fs, "u_db_cutoff");
 		ctx->fsctx.threshold_id = GetShaderLocation(updated_fs, "u_threshold");
@@ -306,6 +308,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 	/* NOTE: allocate space for Uniform Buffer but don't send anything yet */
 	glCreateBuffers(1, &ctx->csctx.shared_ubo);
 	glNamedBufferStorage(ctx->csctx.shared_ubo, sizeof(BeamformerParameters), 0, GL_DYNAMIC_STORAGE_BIT);
+	LABEL_GL_OBJECT(GL_BUFFER, ctx->csctx.shared_ubo, s8("Beamformer_Parameters"));
 
 	glGenQueries(ARRAY_COUNT(ctx->csctx.timer_fences) * CS_LAST, (u32 *)ctx->csctx.timer_ids);
 	glGenQueries(ARRAY_COUNT(ctx->export_ctx.timer_ids), ctx->export_ctx.timer_ids);

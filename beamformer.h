@@ -231,4 +231,6 @@ typedef struct BeamformerCtx {
 	BeamformerParametersFull *params;
 } BeamformerCtx;
 
+#define LABEL_GL_OBJECT(type, id, s) glObjectLabel(type, id, (s).len, (c8 *)(s).data)
+
 #endif /*_BEAMFORMER_H_ */
