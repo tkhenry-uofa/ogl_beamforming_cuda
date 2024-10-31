@@ -1,11 +1,14 @@
 /* See LICENSE for license details. */
-static s8 compute_shader_paths[CS_LAST] = {
-	[CS_HADAMARD] = s8("shaders/hadamard.glsl"),
-	[CS_HERCULES] = s8("shaders/hercules.glsl"),
-	[CS_DEMOD]    = s8("shaders/demod.glsl"),
-	[CS_MIN_MAX]  = s8("shaders/min_max.glsl"),
-	[CS_SUM]      = s8("shaders/sum.glsl"),
-	[CS_UFORCES]  = s8("shaders/uforces.glsl"),
+static struct {
+	s8  path;
+	b32 needs_header;
+} compute_shaders[CS_LAST] = {
+	[CS_HADAMARD] = {.path = s8("shaders/hadamard.glsl"), .needs_header = 1},
+	[CS_HERCULES] = {.path = s8("shaders/hercules.glsl"), .needs_header = 1},
+	[CS_DEMOD]    = {.path = s8("shaders/demod.glsl"),    .needs_header = 1},
+	[CS_MIN_MAX]  = {.path = s8("shaders/min_max.glsl"),  .needs_header = 0},
+	[CS_SUM]      = {.path = s8("shaders/sum.glsl"),      .needs_header = 0},
+	[CS_UFORCES]  = {.path = s8("shaders/uforces.glsl"),  .needs_header = 1},
 };
 
 #ifndef _DEBUG
@@ -182,19 +185,28 @@ static void
 reload_shaders(BeamformerCtx *ctx, Arena a)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
+	s8 header_in_arena = push_s8(&a, g_compute_shader_header);
 	for (u32 i = 0; i < ARRAY_COUNT(csctx->programs); i++) {
-		if (!compute_shader_paths[i].len)
+		if (!compute_shaders[i].path.len)
 			continue;
 
 		Arena tmp = a;
-		FileStats fs   = os_get_file_stats((char *)compute_shader_paths[i].data);
-		s8 shader_text = os_read_file(&tmp, (char *)compute_shader_paths[i].data, fs.filesize);
+		FileStats fs   = os_get_file_stats((char *)compute_shaders[i].path.data);
+		s8 shader_text = os_read_file(&tmp, (char *)compute_shaders[i].path.data, fs.filesize);
 		if (shader_text.len == -1) {
 			os_write_err_msg(s8("failed to read shader: "));
-			os_write_err_msg(compute_shader_paths[i]);
+			os_write_err_msg(compute_shaders[i].path);
 			os_write_err_msg(s8("\n"));
+			/* TODO: maybe we don't need to fail here */
 			os_fail();
 		}
+		/* NOTE: arena works as stack (since everything here is 1 byte aligned) */
+		if (compute_shaders[i].needs_header) {
+			shader_text.data -= header_in_arena.len;
+			shader_text.len  += header_in_arena.len;
+			ASSERT(shader_text.data == header_in_arena.data);
+		}
+
 		u32 shader_id  = compile_shader(tmp, GL_COMPUTE_SHADER, shader_text);
 
 		if (shader_id) {

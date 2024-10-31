@@ -1,31 +1,8 @@
 /* See LICENSE for license details. */
-#version 460 core
 layout(local_size_x = 32, local_size_y = 1, local_size_z = 32) in;
 
 layout(std430, binding = 1) readonly restrict buffer buffer_1 {
 	vec2 rf_data[];
-};
-
-layout(std140, binding = 0) uniform parameters {
-	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */
-	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */
-	vec4  xdc_origin[4];          /* [m] Corner of transducer being treated as origin */
-	vec4  xdc_corner1[4];         /* [m] Corner of transducer along first axis (arbitrary) */
-	vec4  xdc_corner2[4];         /* [m] Corner of transducer along second axis (arbitrary) */
-	uvec4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
-	uvec4 output_points;          /* Width * Height * Depth * (Frame Average Count) */
-	vec4  output_min_coord;       /* [m] Top left corner of output region */
-	vec4  output_max_coord;       /* [m] Bottom right corner of output region */
-	uvec2 rf_raw_dim;             /* Raw Data Dimensions */
-	uint  xdc_count;              /* Number of Transducer Arrays (4 max) */
-	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
-	float speed_of_sound;         /* [m/s] */
-	float sampling_frequency;     /* [Hz]  */
-	float center_frequency;       /* [Hz]  */
-	float focal_depth;            /* [m]   */
-	float time_offset;            /* pulse length correction time [s]   */
-	float off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */
-	int   beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 };
 
 layout(rg32f, binding = 0) writeonly uniform image3D u_out_data_tex;

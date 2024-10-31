@@ -14,6 +14,10 @@ typedef float     f32;
 typedef double    f64;
 typedef ptrdiff_t size;
 
+#define ARRAY_COUNT(a) (sizeof(a) / sizeof(*a))
+typedef struct { size len; u8 *data; } s8;
+#define s8(s) (s8){.len = ARRAY_COUNT(s) - 1, .data = (u8 *)s}
+
 #if defined(_WIN32)
 #define LIB_FN __declspec(dllexport)
 #else

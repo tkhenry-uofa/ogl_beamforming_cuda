@@ -22,9 +22,24 @@ mem_clear(u8 *p, u8 c, size len)
 }
 
 static void
+mem_copy(void *src, void *dest, size n)
+{
+	ASSERT(n >= 0);
+	u8 *s = src, *d = dest;
+#if defined(__AVX512BW__)
+	/* TODO: aligned load/store and comparison */
+	for (; n >= 64; n -= 64, s += 64, d += 64)
+		_mm512_storeu_epi8(d, _mm512_loadu_epi8(s));
+#endif
+	for (; n >= 16; n -= 16, s += 16, d += 16)
+		_mm_storeu_si128((__m128i *)d, _mm_loadu_si128((__m128i*)s));
+	for (; n; n--) *d++ = *s++;
+}
+
+static void
 mem_move(u8 *src, u8 *dest, size n)
 {
-	if (dest < src) while (n) { *dest++ = *src++; n--; }
+	if (dest < src) mem_copy(src, dest, n);
 	else            while (n) { n--; dest[n] = src[n]; }
 }
 
@@ -191,6 +206,14 @@ static s8
 s8alloc(Arena *a, size len)
 {
 	return (s8){ .data = alloc(a, u8, len), .len = len };
+}
+
+static s8
+push_s8(Arena *a, s8 str)
+{
+	s8 result = s8alloc(a, str.len);
+	mem_copy(str.data, result.data, result.len);
+	return result;
 }
 
 static b32
