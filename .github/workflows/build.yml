@@ -17,7 +17,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          sudo apt-get install libxkbcommon-dev xorg-dev libwayland-dev ninja-build
+          sudo apt update
+          sudo apt install libxkbcommon-dev xorg-dev libwayland-dev ninja-build
       - name: Build
         run: ./build.sh
 
