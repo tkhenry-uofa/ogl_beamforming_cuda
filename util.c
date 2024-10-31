@@ -66,10 +66,9 @@ stream_alloc(Arena *a, size cap)
 }
 
 static s8
-stream_to_s8(Stream s)
+stream_to_s8(Stream *s)
 {
-	ASSERT(!s.errors);
-	s8 result = {.len = s.widx, .data = s.data};
+	s8 result = {.len = s->widx, .data = s->data};
 	return result;
 }
 
@@ -86,8 +85,8 @@ stream_append_s8(Stream *s, s8 str)
 {
 	s->errors |= (s->cap - s->widx) < str.len;
 	if (!s->errors) {
-		for (size i = 0; i < str.len; i++)
-			s->data[s->widx++] = str.data[i];
+		mem_copy(str.data, s->data + s->widx, str.len);
+		s->widx += str.len;
 	}
 }
 

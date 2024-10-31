@@ -350,9 +350,9 @@ do_value_listing(s8 prefix, s8 suffix, f32 value, Font font, Arena a, Rect r)
 	stream_append_f64(&buf, value, 100);
 	v2 txt_p = {.x = r.pos.x + LISTING_LEFT_COLUMN_WIDTH, .y = r.pos.y};
 
-	draw_text(font, prefix,            r.pos,    0, colour_from_normalized(FG_COLOUR));
-	draw_text(font, stream_to_s8(buf), txt_p,    0, colour_from_normalized(FG_COLOUR));
-	draw_text(font, suffix,            suffix_p, 0, colour_from_normalized(FG_COLOUR));
+	draw_text(font, prefix,             r.pos,    0, colour_from_normalized(FG_COLOUR));
+	draw_text(font, stream_to_s8(&buf), txt_p,    0, colour_from_normalized(FG_COLOUR));
+	draw_text(font, suffix,             suffix_p, 0, colour_from_normalized(FG_COLOUR));
 	r.pos.y  += suffix_s.h + LISTING_LINE_PAD;
 	r.size.y -= suffix_s.h + LISTING_LINE_PAD;
 
@@ -371,7 +371,7 @@ do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx
 		txt_s = measure_text(ctx->font, (s8){.len = ctx->is.buf_len, .data = ctx->is.buf});
 	} else {
 		bmv_sprint(&bmv, &buf);
-		txt_s = measure_text(ctx->font, stream_to_s8(buf));
+		txt_s = measure_text(ctx->font, stream_to_s8(&buf));
 	}
 
 	Rect edit_rect = {
@@ -404,7 +404,7 @@ do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx
 	Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, *hover_t));
 
 	if (!bmv_equal(&bmv, &ctx->is.store)) {
-		draw_text(ctx->font, stream_to_s8(buf), edit_rect.pos, 0, colour);
+		draw_text(ctx->font, stream_to_s8(&buf), edit_rect.pos, 0, colour);
 	} else {
 		do_text_input(ctx, 7, edit_rect, colour);
 	}
@@ -623,9 +623,9 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 		buf.widx = 0;
 		stream_append_f64_e(&buf, cs->last_frame_time[index]);
 		stream_append_s8(&buf, s8(" [s]"));
-		v2 txt_fs = measure_text(ctx->font, stream_to_s8(buf));
+		v2 txt_fs = measure_text(ctx->font, stream_to_s8(&buf));
 		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
-		draw_text(ctx->font, stream_to_s8(buf), rpos, 0, colour_from_normalized(FG_COLOUR));
+		draw_text(ctx->font, stream_to_s8(&buf), rpos, 0, colour_from_normalized(FG_COLOUR));
 
 		compute_time_sum += cs->last_frame_time[index];
 	}
@@ -639,9 +639,9 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 		buf.widx = 0;
 		stream_append_f64_e(&buf, times[i]);
 		stream_append_s8(&buf, s8(" [s]"));
-		v2 txt_fs = measure_text(ctx->font, stream_to_s8(buf));
+		v2 txt_fs = measure_text(ctx->font, stream_to_s8(&buf));
 		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
-		draw_text(ctx->font, stream_to_s8(buf), rpos, 0, colour_from_normalized(FG_COLOUR));
+		draw_text(ctx->font, stream_to_s8(&buf), rpos, 0, colour_from_normalized(FG_COLOUR));
 	}
 
 	{
@@ -701,7 +701,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 			Stream buf = stream_alloc(&arena, 64);
 			stream_append_f64(&buf, -188.8f, 10);
 			stream_append_s8(&buf, s8(" mm"));
-			v2 txt_s = measure_text(ctx->small_font, stream_to_s8(buf));
+			v2 txt_s = measure_text(ctx->small_font, stream_to_s8(&buf));
 
 			rr.pos.x  += 0.02 * rr.size.w;
 			rr.pos.y  += 0.02 * rr.size.h;
@@ -783,7 +783,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 					if (i == 0 && mm > 0) stream_append_byte(&buf, '+');
 					stream_append_f64(&buf, mm, 10);
 					stream_append_s8(&buf, s8(" mm"));
-					draw_text(ctx->small_font, stream_to_s8(buf), txt_pos,
+					draw_text(ctx->small_font, stream_to_s8(&buf), txt_pos,
 					          rot[i], txt_colour);
 					start_pos.E[i] += inc;
 					end_pos.E[i]   += inc;

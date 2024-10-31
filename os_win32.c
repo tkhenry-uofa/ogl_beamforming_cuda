@@ -74,13 +74,6 @@ W32(b32)    VirtualFree(u8 *, size, u32);
 
 static iptr win32_stderr_handle;
 
-static void __attribute__((noreturn))
-os_fail(void)
-{
-	ExitProcess(1);
-	unreachable();
-}
-
 static b32
 os_write_file(iptr file, s8 raw)
 {
@@ -95,6 +88,14 @@ os_write_err_msg(s8 msg)
 	if (!win32_stderr_handle)
 		win32_stderr_handle = GetStdHandle(STD_ERROR_HANDLE);
 	os_write_file(win32_stderr_handle, msg);
+}
+
+static void __attribute__((noreturn))
+os_fatal(s8 msg)
+{
+	os_write_err_msg(msg);
+	ExitProcess(1);
+	unreachable();
 }
 
 static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)

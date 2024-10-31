@@ -53,28 +53,28 @@ gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, co
 	}
 	stream_append_s8(e, (s8){.len = len, .data = (u8 *)msg});
 	stream_append_byte(e, '\n');
-	os_write_err_msg(stream_to_s8(*e));
+	os_write_err_msg(stream_to_s8(e));
 	e->widx = 0;
 }
 
 static void
-get_gl_params(GLParams *gl)
+get_gl_params(GLParams *gl, Stream *err)
 {
 	char *vendor = (char *)glGetString(GL_VENDOR);
 	if (!vendor) {
-		os_write_err_msg(s8("Failed to determine GL Vendor\n"));
-		os_fail();
+		stream_append_s8(err, s8("Failed to determine GL Vendor\n"));
+		os_fatal(stream_to_s8(err));
 	}
 	switch (vendor[0]) {
 	case 'A': gl->vendor_id = GL_VENDOR_AMD;                      break;
 	case 'I': gl->vendor_id = GL_VENDOR_INTEL;                    break;
 	case 'N': gl->vendor_id = GL_VENDOR_NVIDIA;                   break;
-	default: {
-		os_write_err_msg(s8("Unknown GL Vendor: "));
-		os_write_err_msg(cstr_to_s8(vendor));
-		os_write_err_msg(s8("\n"));
-		os_fail();
-	} break;
+	default:
+		stream_append_s8(err, s8("Unknown GL Vendor: "));
+		stream_append_s8(err, cstr_to_s8(vendor));
+		stream_append_byte(err, '\n');
+		os_fatal(stream_to_s8(err));
+		break;
 	}
 
 	glGetIntegerv(GL_MAJOR_VERSION,                 &gl->version_major);
@@ -106,10 +106,8 @@ validate_gl_requirements(GLParams *gl)
 		break;
 	}
 
-	if (invalid) {
-		os_write_err_msg(s8("Only OpenGL Versions 4.5 or newer are supported!\n"));
-		os_fail();
-	}
+	if (invalid)
+		os_fatal(s8("Only OpenGL Versions 4.5 or newer are supported!\n"));
 }
 
 static void
@@ -138,7 +136,7 @@ dump_gl_params(GLParams *gl, Arena a)
 	stream_append_i64(&s, gl->max_ubo_size);
 	stream_append_s8(&s, s8("\n-----------------------\n"));
 	if (!s.errors)
-		os_write_err_msg(stream_to_s8(s));
+		os_write_err_msg(stream_to_s8(&s));
 #endif
 }
 
@@ -194,11 +192,11 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		FileStats fs   = os_get_file_stats((char *)compute_shaders[i].path.data);
 		s8 shader_text = os_read_file(&tmp, (char *)compute_shaders[i].path.data, fs.filesize);
 		if (shader_text.len == -1) {
-			os_write_err_msg(s8("failed to read shader: "));
-			os_write_err_msg(compute_shaders[i].path);
-			os_write_err_msg(s8("\n"));
+			stream_append_s8(&ctx->error_stream, s8("failed to read shader: "));
+			stream_append_s8(&ctx->error_stream, compute_shaders[i].path);
+			stream_append_byte(&ctx->error_stream, '\n');
 			/* TODO: maybe we don't need to fail here */
-			os_fail();
+			os_fatal(stream_to_s8(&ctx->error_stream));
 		}
 		/* NOTE: arena works as stack (since everything here is 1 byte aligned) */
 		if (compute_shaders[i].needs_header) {
@@ -272,7 +270,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 	SetWindowMinSize(INFO_COLUMN_WIDTH * 2, ctx->window_size.h);
 
 	/* NOTE: Gather information about the GPU */
-	get_gl_params(&ctx->gl);
+	get_gl_params(&ctx->gl, &ctx->error_stream);
 	dump_gl_params(&ctx->gl, temp_memory);
 	validate_gl_requirements(&ctx->gl);
 

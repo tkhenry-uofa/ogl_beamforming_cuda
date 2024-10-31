@@ -8,13 +8,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static void __attribute__((noreturn))
-os_fail(void)
-{
-	_exit(1);
-	unreachable();
-}
-
 static b32
 os_write_file(iptr file, s8 raw)
 {
@@ -29,7 +22,15 @@ os_write_file(iptr file, s8 raw)
 static void
 os_write_err_msg(s8 msg)
 {
-	write(STDERR_FILENO, msg.data, msg.len);
+	os_write_file(STDERR_FILENO, msg);
+}
+
+static void __attribute__((noreturn))
+os_fatal(s8 msg)
+{
+	os_write_err_msg(msg);
+	_exit(1);
+	unreachable();
 }
 
 static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
@@ -47,10 +48,8 @@ static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
 		munmap(old.beg, oldsize);
 
 	result.beg = mmap(0, capacity, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
-	if (result.beg == MAP_FAILED) {
-		os_write_err_msg(s8("os_alloc_arena: couldn't allocate memory\n"));
-		os_fail();
-	}
+	if (result.beg == MAP_FAILED)
+		os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
 	result.end = result.beg + capacity;
 	return result;
 }
@@ -201,7 +200,7 @@ os_load_library(char *name, char *temp_name, Stream *e)
 		s8 errs[] = {s8("WARNING: os_load_library("), cstr_to_s8(name), s8("): "),
 		             cstr_to_s8(dlerror()), s8("\n")};
 		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
-		os_write_err_msg(stream_to_s8(*e));
+		os_write_err_msg(stream_to_s8(e));
 		e->widx = 0;
 	}
 
@@ -221,7 +220,7 @@ os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 		s8 errs[] = {s8("WARNING: os_lookup_dynamic_symbol("), cstr_to_s8(name), s8("): "),
 		             cstr_to_s8(dlerror()), s8("\n")};
 		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
-		os_write_err_msg(stream_to_s8(*e));
+		os_write_err_msg(stream_to_s8(e));
 		e->widx = 0;
 	}
 
