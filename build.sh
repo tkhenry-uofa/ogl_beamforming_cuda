@@ -10,7 +10,6 @@ ldflags="-lm"
 debug=${DEBUG}
 
 cc=${CC:-cc}
-system_raylib=${USE_SYSTEM_RAYLIB}
 main=main_generic.c
 
 case $(uname -sm) in
@@ -32,30 +31,26 @@ Linux*)
 	;;
 esac
 
-if [ "$system_raylib" ]; then
-	ldflags="$(pkg-config raylib) $ldflags"
-else
-	if [ ! -f external/lib/libraylib.a ]; then
-		git submodule update --init --depth=1 external/raylib
-		cmake --install-prefix="${PWD}/external" \
-			-G "Ninja" -B external/raylib/build_static -S external/raylib \
-			-D CMAKE_INSTALL_LIBDIR=lib -D CMAKE_BUILD_TYPE="Release" \
-			-D BUILD_SHARED_LIBS=OFF \
-			-DCUSTOMIZE_BUILD=ON -DBUILD_EXAMPLES=OFF -DWITH_PIC=ON \
-			-DOPENGL_VERSION=4.3 -DUSE_AUDIO=OFF -DSUPPORT_MODULE_RAUDIO=OFF
-		cmake --build   external/raylib/build_static
-		cmake --install external/raylib/build_static
+if [ ! -f external/lib/libraylib.a ]; then
+	git submodule update --init --depth=1 external/raylib
+	cmake --install-prefix="${PWD}/external" \
+		-G "Ninja" -B external/raylib/build_static -S external/raylib \
+		-D CMAKE_INSTALL_LIBDIR=lib -D CMAKE_BUILD_TYPE="Release" \
+		-D BUILD_SHARED_LIBS=OFF \
+		-DCUSTOMIZE_BUILD=ON -DBUILD_EXAMPLES=OFF -DWITH_PIC=ON \
+		-DOPENGL_VERSION=4.3 -DUSE_AUDIO=OFF -DSUPPORT_MODULE_RAUDIO=OFF
+	cmake --build   external/raylib/build_static
+	cmake --install external/raylib/build_static
 
-		# NOTE: we also build the dynamic lib for debug purposes
-		cmake --install-prefix="${PWD}/external" \
-			-G "Ninja" -B external/raylib/build_shared -S external/raylib \
-			-D BUILD_SHARED_LIBS=ON \
-			-D CMAKE_INSTALL_LIBDIR=lib -D CMAKE_BUILD_TYPE="Release" \
-			-DCUSTOMIZE_BUILD=ON -DBUILD_EXAMPLES=OFF -DWITH_PIC=ON \
-			-DOPENGL_VERSION=4.3 -DUSE_AUDIO=OFF -DSUPPORT_MODULE_RAUDIO=OFF
-		cmake --build   external/raylib/build_shared
-		cmake --install external/raylib/build_shared
-	fi
+	# NOTE: we also build the dynamic lib for debug purposes
+	cmake --install-prefix="${PWD}/external" \
+		-G "Ninja" -B external/raylib/build_shared -S external/raylib \
+		-D BUILD_SHARED_LIBS=ON \
+		-D CMAKE_INSTALL_LIBDIR=lib -D CMAKE_BUILD_TYPE="Release" \
+		-DCUSTOMIZE_BUILD=ON -DBUILD_EXAMPLES=OFF -DWITH_PIC=ON \
+		-DOPENGL_VERSION=4.3 -DUSE_AUDIO=OFF -DSUPPORT_MODULE_RAUDIO=OFF
+	cmake --build   external/raylib/build_shared
+	cmake --install external/raylib/build_shared
 fi
 
 # Hot Reloading/Debugging
@@ -66,7 +61,7 @@ if [ "$debug" ]; then
 	libcflags="$cflags -fPIC -shared"
 	${cc} $libcflags beamformer.c -o $libname $ldflags
 else
-	[ ! "$system_raylib" ] && ldflags="./external/lib/libraylib.a $ldflags"
+	ldflags="./external/lib/libraylib.a ${ldflags}"
 fi
 
 ${cc} $cflags -o ogl $main $ldflags
