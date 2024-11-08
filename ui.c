@@ -2,10 +2,13 @@
 static void
 ui_start_compute(BeamformerCtx *ctx)
 {
-	ctx->flags |= DO_COMPUTE;
-	if (ctx->params->raw.output_points.w > 1) {
-		for (u32 i = 0; i < ctx->params->raw.output_points.w; i++)
-			glClearTexImage(ctx->csctx.sum_textures[i], 0, GL_RED, GL_FLOAT, 0);
+	/* NOTE: we do not allow ui to start a work if no work was previously completed */
+	Arena a = {0};
+	beamform_work_queue_push(ctx, &a, BW_RECOMPUTE);
+	for (u32 i = 0; i < ARRAY_COUNT(ctx->beamform_frames); i++) {
+		BeamformFrame *frame = ctx->beamform_frames + i;
+		if (frame->dim.w && frame->textures[frame->dim.w - 1])
+			glClearTexImage(frame->textures[frame->dim.w - 1], 0, GL_RED, GL_FLOAT, 0);
 	}
 	ctx->params->upload = 1;
 }
@@ -560,19 +563,21 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	draw_r.pos.y  += 2 * LISTING_LINE_PAD;
 	draw_r.size.y -= 2 * LISTING_LINE_PAD;
 
-	bmv = (BPModifiableValue){&ctx->export_ctx.volume_dim.x, bmv_store_power_of_two,
+	#if 0
+	/* TODO: work this into the work queue */
+	bmv = (BPModifiableValue){&ctx->partial_compute_ctx.volume_dim.x, bmv_store_power_of_two,
 	                          .ilimits = (iv2){.x = 1, .y = ctx->gl.max_3d_texture_dim},
 	                          MV_INT, 1, 1};
 	draw_r = do_text_input_listing(s8("Export Dimension X:"), s8(""), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&ctx->export_ctx.volume_dim.y, bmv_store_power_of_two,
+	bmv = (BPModifiableValue){&ctx->partial_compute_ctx.volume_dim.y, bmv_store_power_of_two,
 	                          .ilimits = (iv2){.x = 1, .y = ctx->gl.max_3d_texture_dim},
 	                          MV_INT, 1, 1};
 	draw_r = do_text_input_listing(s8("Export Dimension Y:"), s8(""), bmv, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&ctx->export_ctx.volume_dim.z, bmv_store_power_of_two,
+	bmv = (BPModifiableValue){&ctx->partial_compute_ctx.volume_dim.z, bmv_store_power_of_two,
 	                          .ilimits = (iv2){.x = 1, .y = ctx->gl.max_3d_texture_dim},
 	                          MV_INT, 1, 1};
 	draw_r = do_text_input_listing(s8("Export Dimension Z:"), s8(""), bmv, ctx, arena,
@@ -582,11 +587,10 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	btn_r.size.h  = ctx->font.baseSize * 1.3;
 	btn_r.size.w *= 0.6;
 	if (do_text_button(ctx, s8("Dump Raw Volume"), btn_r, mouse, hover_t + idx++)) {
-		if (!ctx->export_ctx.state) {
-			ctx->export_ctx.state  = ES_START;
-			ctx->flags            |= DO_COMPUTE;
+		if (!ctx->partial_compute_ctx.state) {
 		}
 	}
+	#endif
 
 	/* NOTE: if C compilers didn't suck this would be a static assert */
 	ASSERT(idx <= ARRAY_COUNT(hover_t));
@@ -631,7 +635,7 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 	}
 
 	static s8 totals[2] = {s8("Compute Total:"), s8("Volume Total:")};
-	f32 times[2]        = {compute_time_sum, ctx->export_ctx.runtime};
+	f32 times[2]        = {compute_time_sum, ctx->partial_compute_ctx.runtime};
 	for (u32 i = 0; i < ARRAY_COUNT(totals); i++) {
 		pos.y    -= measure_text(ctx->font, totals[i]).y;
 		draw_text(ctx->font, totals[i], pos, 0, colour_from_normalized(FG_COLOUR));

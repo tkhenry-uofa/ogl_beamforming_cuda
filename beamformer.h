@@ -29,8 +29,7 @@
 enum program_flags {
 	SHOULD_EXIT    = 1 << 0,
 	RELOAD_SHADERS = 1 << 1,
-	GEN_MIPMAPS    = 1 << 29,
-	DO_COMPUTE     = 1 << 30,
+	GEN_MIPMAPS    = 1 << 30,
 };
 
 enum gl_vendor_ids {
@@ -128,14 +127,6 @@ typedef struct {
 	GLsync timer_fences[MAX_FRAMES_IN_FLIGHT];
 	f32    last_frame_time[CS_LAST];
 
-	/* NOTE: circular buffer of textures for averaging.
-	 * Only allocated up to configured frame average count */
-	u32 sum_textures[16];
-	u32 sum_texture_index;
-
-	/* NOTE: array output textures. Only allocated up to configured array count */
-	u32 array_textures[4];
-
 	/* NOTE: the raw_data_ssbo is allocated at 3x the required size to allow for tiled
 	 * transfers when the GPU is running behind the CPU. It is not mapped on NVIDIA because
 	 * their drivers _will_ store the buffer in the system memory. This doesn't happen
@@ -174,22 +165,32 @@ typedef struct {
 	f32             threshold;
 } FragmentShaderCtx;
 
-enum export_state {
-	ES_START        = (1 <<  0),
-	ES_COMPUTING    = (1 <<  1),
-	ES_TIMER_ACTIVE = (1 <<  2),
+enum {
+	PCS_COMPUTING,
+	PCS_TIMER_ACTIVE,
 };
 
 typedef struct {
-	Arena volume_buf;
+	/* NOTE: we always have one extra texture to sum into; thus the final output data
+	 * is always found in textures[dim.w - 1] */
+	u32 textures[MAX_MULTI_XDC_COUNT + 1];
+	uv4 dim;
+	u32 mips;
+} BeamformFrame;
+
+typedef struct {
+	/* TODO: possibly both of these should be stored elsewhere */
+	Arena export_buf;
 	uv4   volume_dim;
+
+	BeamformFrame frame;
 	u32   timer_ids[2];
 	f32   runtime;
-	u32   volume_texture;
 	u32   rf_data_ssbo;
-	u32   state;
+	u32   shader;
 	u32   dispatch_index;
-} ExportCtx;
+	u32   state;
+} PartialComputeCtx;
 
 typedef struct {
 	enum gl_vendor_ids vendor_id;
@@ -200,6 +201,49 @@ typedef struct {
 	i32  max_ssbo_size;
 	i32  max_ubo_size;
 } GLParams;
+
+enum beamform_work {
+	BW_FULL_COMPUTE,
+	BW_RECOMPUTE,
+	BW_PARTIAL_COMPUTE,
+	BW_SAVE_FRAME,
+	BW_SEND_FRAME,
+	BW_SSBO_COPY,
+};
+
+typedef struct {
+	u32 source_ssbo;
+	u32 dest_ssbo;
+} BeamformSSBOCopy;
+
+typedef struct {
+	BeamformFrame *frame;
+	u32 raw_data_ssbo_index;
+	b32 first_pass;
+} BeamformCompute;
+
+typedef struct {
+	BeamformFrame *frame;
+	iptr output_handle;
+} BeamformOutputFrame;
+
+/* NOTE: discriminated union based on type */
+typedef struct BeamformWork {
+	struct BeamformWork *next;
+	union {
+		BeamformSSBOCopy    ssbo_copy_ctx;
+		BeamformCompute     compute_ctx;
+		BeamformOutputFrame output_frame_ctx;
+	};
+	u32 type;
+} BeamformWork;
+
+typedef struct {
+	BeamformWork *first;
+	BeamformWork *last;
+	BeamformWork *next_free;
+	b32 did_compute_this_frame;
+} BeamformWorkQueue;
 
 typedef struct BeamformerCtx {
 	GLParams gl;
@@ -213,13 +257,14 @@ typedef struct BeamformerCtx {
 
 	InputState is;
 
-	uv4 out_data_dim;
-	u32 out_texture;
-	u32 out_texture_mips;
+	BeamformFrame beamform_frames[MAX_BEAMFORMED_SAVED_FRAMES];
+	u32 displayed_frame_index;
 
+	/* NOTE: this will only be used when we are averaging */
+	BeamformFrame averaged_frame;
 	ComputeShaderCtx  csctx;
 	FragmentShaderCtx fsctx;
-	ExportCtx         export_ctx;
+	PartialComputeCtx partial_compute_ctx;
 
 	Pipe data_pipe;
 	u32  partial_transfer_count;
@@ -228,9 +273,11 @@ typedef struct BeamformerCtx {
 	Platform platform;
 	Stream   error_stream;
 
+	BeamformWorkQueue beamform_work_queue;
+
 	BeamformerParametersFull *params;
 } BeamformerCtx;
 
-#define LABEL_GL_OBJECT(type, id, s) glObjectLabel(type, id, (s).len, (c8 *)(s).data)
+#define LABEL_GL_OBJECT(type, id, s) {s8 _s = (s); glObjectLabel(type, id, _s.len, (c8 *)_s.data);}
 
 #endif /*_BEAMFORMER_H_ */

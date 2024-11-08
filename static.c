@@ -20,7 +20,8 @@ static struct {
 #else
 static void *debug_lib;
 
-typedef void do_beamformer_fn(BeamformerCtx *, Arena);
+/* TODO: move this to a header */
+typedef void do_beamformer_fn(BeamformerCtx *, Arena *);
 static do_beamformer_fn *do_beamformer;
 
 static void
@@ -173,13 +174,6 @@ compile_shader(Arena a, u32 type, s8 shader)
 }
 
 static void
-init_fragment_shader_ctx(FragmentShaderCtx *ctx, uv4 out_data_dim)
-{
-	ctx->db        = -50.0f;
-	ctx->threshold =  40.0f;
-}
-
-static void
 reload_shaders(BeamformerCtx *ctx, Arena a)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
@@ -211,7 +205,6 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 			glDeleteProgram(csctx->programs[i]);
 			csctx->programs[i] = rlLoadComputeShaderProgram(shader_id);
 			LABEL_GL_OBJECT(GL_PROGRAM, csctx->programs[i], compute_shaders[i].label);
-			ctx->flags |= DO_COMPUTE;
 		}
 
 		glDeleteShader(shader_id);
@@ -262,8 +255,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 {
 	ctx->window_size  = (uv2){.w = 1280, .h = 840};
 
-	ctx->out_data_dim          = (uv4){.x = 1, .y = 1, .z = 1};
-	ctx->export_ctx.volume_dim = (uv4){.x = 1, .y = 1, .z = 1};
+	ctx->partial_compute_ctx.volume_dim = (uv4){.x = 1, .y = 1, .z = 1};
 
 	SetConfigFlags(FLAG_VSYNC_HINT);
 	InitWindow(ctx->window_size.w, ctx->window_size.h, "OGL Beamformer");
@@ -280,7 +272,8 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 	ctx->font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
 	ctx->small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 22, 0, 0);
 
-	init_fragment_shader_ctx(&ctx->fsctx, ctx->out_data_dim);
+	ctx->fsctx.db        = -50.0f;
+	ctx->fsctx.threshold =  40.0f;
 
 	ctx->data_pipe = os_open_named_pipe(OS_PIPE_NAME);
 	ctx->params    = os_open_shared_memory_area(OS_SMEM_NAME, sizeof(ctx->params));
@@ -288,7 +281,6 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 	ASSERT(ctx->data_pipe.file != INVALID_FILE);
 	ASSERT(ctx->params);
 
-	ctx->params->raw.output_points = ctx->out_data_dim;
 	/* NOTE: default compute shader pipeline */
 	ctx->params->compute_stages[0]    = CS_HADAMARD;
 	ctx->params->compute_stages[1]    = CS_DEMOD;
@@ -311,15 +303,13 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 	LABEL_GL_OBJECT(GL_BUFFER, ctx->csctx.shared_ubo, s8("Beamformer_Parameters"));
 
 	glGenQueries(ARRAY_COUNT(ctx->csctx.timer_fences) * CS_LAST, (u32 *)ctx->csctx.timer_ids);
-	glGenQueries(ARRAY_COUNT(ctx->export_ctx.timer_ids), ctx->export_ctx.timer_ids);
+	glGenQueries(ARRAY_COUNT(ctx->partial_compute_ctx.timer_ids), ctx->partial_compute_ctx.timer_ids);
 
-	/* NOTE: do not DO_COMPUTE on first frame */
 	reload_shaders(ctx, temp_memory);
-	ctx->flags &= ~DO_COMPUTE;
 }
 
 static void
-do_program_step(BeamformerCtx *ctx, Arena temp_memory)
+do_program_step(BeamformerCtx *ctx, Arena *memory)
 {
 	do_debug(&ctx->error_stream);
 	if (ctx->gl.vendor_id == GL_VENDOR_NVIDIA)
@@ -327,8 +317,8 @@ do_program_step(BeamformerCtx *ctx, Arena temp_memory)
 
 	if (ctx->flags & RELOAD_SHADERS) {
 		ctx->flags &= ~RELOAD_SHADERS;
-		reload_shaders(ctx, temp_memory);
+		reload_shaders(ctx, *memory);
 	}
 
-	do_beamformer(ctx, temp_memory);
+	do_beamformer(ctx, memory);
 }

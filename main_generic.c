@@ -44,7 +44,7 @@ main(void)
 	setup_beamformer(&ctx, temp_memory);
 
 	while(!(ctx.flags & SHOULD_EXIT)) {
-		do_program_step(&ctx, temp_memory);
+		do_program_step(&ctx, &temp_memory);
 	}
 
 	/* NOTE: make sure this will get cleaned up after external

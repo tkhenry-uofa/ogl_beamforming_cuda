@@ -11,6 +11,10 @@
 #define asm __asm__
 #endif
 
+#ifndef typeof
+#define typeof __typeof__
+#endif
+
 #ifndef unreachable
 #ifdef _MSC_VER
 	#define unreachable() __assume(0)
@@ -62,6 +66,7 @@ typedef ptrdiff_t size;
 typedef ptrdiff_t iptr;
 
 typedef struct { u8 *beg, *end; } Arena;
+typedef struct { Arena *arena; u8 *old_beg; } TempArena;
 
 typedef struct { size len; u8 *data; } s8;
 #define s8(s) (s8){.len = ARRAY_COUNT(s) - 1, .data = (u8 *)s}
@@ -79,13 +84,28 @@ typedef union {
 } iv2;
 
 typedef union {
+	struct { i32 x, y, z; };
+	struct { i32 w, h, d; };
+	iv2 xy;
+	i32 E[3];
+} iv3;
+
+typedef union {
 	struct { u32 x, y; };
 	struct { u32 w, h; };
 	u32 E[2];
 } uv2;
 
 typedef union {
+	struct { u32 x, y, z; };
+	struct { u32 w, h, d; };
+	uv2 xy;
+	u32 E[3];
+} uv3;
+
+typedef union {
 	struct { u32 x, y, z, w; };
+	uv3 xyz;
 	u32 E[4];
 } uv4;
 

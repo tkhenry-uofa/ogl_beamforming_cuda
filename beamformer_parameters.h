@@ -11,14 +11,16 @@ enum compute_shaders {
 	CS_LAST
 };
 
+#define MAX_BEAMFORMED_SAVED_FRAMES 16
+#define MAX_MULTI_XDC_COUNT         4
 /* NOTE: This struct follows the OpenGL std140 layout. DO NOT modify unless you have
  * read and understood the rules, particulary with regards to _member alignment_ */
 typedef struct {
 	u16 channel_mapping[512];   /* Transducer Channel to Verasonics Channel */
 	u32 uforces_channels[128];  /* Channels used for virtual UFORCES elements */
-	f32 xdc_origin[16];         /* [m] (4 v4s) Corner of transducer being treated as origin */
-	f32 xdc_corner1[16];        /* [m] (4 v4s) Corner of transducer along first axis (arbitrary) */
-	f32 xdc_corner2[16];        /* [m] (4 v4s) Corner of transducer along second axis (arbitrary) */
+	f32 xdc_origin[4 * MAX_MULTI_XDC_COUNT];  /* [m] Corner of transducer being treated as origin */
+	f32 xdc_corner1[4 * MAX_MULTI_XDC_COUNT]; /* [m] Corner of transducer along first axis */
+	f32 xdc_corner2[4 * MAX_MULTI_XDC_COUNT]; /* [m] Corner of transducer along second axis */
 	uv4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
 	uv4 output_points;          /* Width * Height * Depth * (Frame Average Count) */
 	v4  output_min_coordinate;  /* [m] Back-Top-Left corner of output region (w ignored) */
@@ -36,15 +38,19 @@ typedef struct {
 	f32 _pad[1];
 } BeamformerParameters;
 
+/* NOTE: garbage to get the prepocessor to properly stringize the value of a macro */
+#define str_(x) #x
+#define str(x) str_(x)
+
 #define COMPUTE_SHADER_HEADER "\
 #version 460 core\n\
 \n\
 layout(std140, binding = 0) uniform parameters {\n\
 	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */\n\
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */\n\
-	vec4  xdc_origin[4];          /* [m] Corner of transducer being treated as origin */\n\
-	vec4  xdc_corner1[4];         /* [m] Corner of transducer along first axis (arbitrary) */\n\
-	vec4  xdc_corner2[4];         /* [m] Corner of transducer along second axis (arbitrary) */\n\
+	vec4  xdc_origin[" str(MAX_MULTI_XDC_COUNT) "];          /* [m] Corner of transducer being treated as origin */\n\
+	vec4  xdc_corner1[" str(MAX_MULTI_XDC_COUNT) "];         /* [m] Corner of transducer along first axis (arbitrary) */\n\
+	vec4  xdc_corner2[" str(MAX_MULTI_XDC_COUNT) "];         /* [m] Corner of transducer along second axis (arbitrary) */\n\
 	uvec4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */\n\
 	uvec4 output_points;          /* Width * Height * Depth * (Frame Average Count) */\n\
 	vec4  output_min_coord;       /* [m] Top left corner of output region */\n\

@@ -47,6 +47,10 @@ mem_move(u8 *src, u8 *dest, size n)
 static void *
 alloc_(Arena *a, size len, size align, size count)
 {
+	/* NOTE: special case 0 arena */
+	if (a->beg == 0)
+		return 0;
+
 	size padding   = -(uintptr_t)a->beg & (align - 1);
 	size available = a->end - a->beg - padding;
 	if (available < 0 || count > available / len)
