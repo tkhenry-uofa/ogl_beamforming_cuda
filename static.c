@@ -183,7 +183,7 @@ static void
 reload_shaders(BeamformerCtx *ctx, Arena a)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
-	s8 header_in_arena = push_s8(&a, g_compute_shader_header);
+	s8 header_in_arena = push_s8(&a, s8(COMPUTE_SHADER_HEADER));
 	for (u32 i = 0; i < ARRAY_COUNT(csctx->programs); i++) {
 		if (!compute_shaders[i].path.len)
 			continue;

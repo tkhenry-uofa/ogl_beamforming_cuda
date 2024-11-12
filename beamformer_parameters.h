@@ -36,7 +36,7 @@ typedef struct {
 	f32 _pad[1];
 } BeamformerParameters;
 
-static s8 g_compute_shader_header = s8("\
+#define COMPUTE_SHADER_HEADER "\
 #version 460 core\n\
 \n\
 layout(std140, binding = 0) uniform parameters {\n\
@@ -59,4 +59,4 @@ layout(std140, binding = 0) uniform parameters {\n\
 	float time_offset;            /* pulse length correction time [s]   */\n\
 	float off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */\n\
 	int   beamform_plane;         /* Plane to Beamform in 2D HERCULES */\n\
-};\n\n");
+};\n\n"
