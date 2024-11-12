@@ -255,8 +255,6 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 {
 	ctx->window_size  = (uv2){.w = 1280, .h = 840};
 
-	ctx->partial_compute_ctx.volume_dim = (uv4){.x = 1, .y = 1, .z = 1};
-
 	SetConfigFlags(FLAG_VSYNC_HINT);
 	InitWindow(ctx->window_size.w, ctx->window_size.h, "OGL Beamformer");
 	/* NOTE: do this after initing so that the window starts out floating in tiling wm */
@@ -276,7 +274,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 	ctx->fsctx.threshold =  40.0f;
 
 	ctx->data_pipe = os_open_named_pipe(OS_PIPE_NAME);
-	ctx->params    = os_open_shared_memory_area(OS_SMEM_NAME, sizeof(ctx->params));
+	ctx->params    = os_open_shared_memory_area(OS_SMEM_NAME, sizeof(*ctx->params));
 	/* TODO: properly handle this? */
 	ASSERT(ctx->data_pipe.file != INVALID_FILE);
 	ASSERT(ctx->params);

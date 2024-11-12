@@ -8,8 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static b32
-os_write_file(iptr file, s8 raw)
+static PLATFORM_WRITE_FILE_FN(os_write_file)
 {
 	while (raw.len) {
 		size r = write(file, raw.data, raw.len);
@@ -51,6 +50,19 @@ static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
 	if (result.beg == MAP_FAILED)
 		os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
 	result.end = result.beg + capacity;
+	return result;
+}
+
+static PLATFORM_CLOSE_FN(os_close)
+{
+	close(file);
+}
+
+static PLATFORM_OPEN_FOR_WRITE_FN(os_open_for_write)
+{
+	iptr result = open(fname, O_WRONLY|O_TRUNC);
+	if (result == -1)
+		result = INVALID_FILE;
 	return result;
 }
 

@@ -109,6 +109,8 @@ typedef struct {
 	enum compute_shaders compute_stages[16];
 	u32                  compute_stages_count;
 	b32                  upload;
+	b32                  export_next_frame;
+	c8                   export_pipe_name[1024];
 } BeamformerParametersFull;
 
 #define CS_UNIFORMS                              \
@@ -124,6 +126,7 @@ typedef struct {
 
 	u32    timer_index;
 	u32    timer_ids[MAX_FRAMES_IN_FLIGHT][CS_LAST];
+	b32    timer_active[MAX_FRAMES_IN_FLIGHT][CS_LAST];
 	GLsync timer_fences[MAX_FRAMES_IN_FLIGHT];
 	f32    last_frame_time[CS_LAST];
 
@@ -165,11 +168,6 @@ typedef struct {
 	f32             threshold;
 } FragmentShaderCtx;
 
-enum {
-	PCS_COMPUTING,
-	PCS_TIMER_ACTIVE,
-};
-
 typedef struct {
 	/* NOTE: we always have one extra texture to sum into; thus the final output data
 	 * is always found in textures[dim.w - 1] */
@@ -179,17 +177,13 @@ typedef struct {
 } BeamformFrame;
 
 typedef struct {
-	/* TODO: possibly both of these should be stored elsewhere */
-	Arena export_buf;
-	uv4   volume_dim;
-
 	BeamformFrame frame;
-	u32   timer_ids[2];
-	f32   runtime;
-	u32   rf_data_ssbo;
-	u32   shader;
-	u32   dispatch_index;
-	u32   state;
+	u32 timer_ids[2];
+	f32 runtime;
+	u32 rf_data_ssbo;
+	u32 shader;
+	u32 dispatch_index;
+	b32 timer_active;
 } PartialComputeCtx;
 
 typedef struct {
@@ -218,8 +212,9 @@ typedef struct {
 
 typedef struct {
 	BeamformFrame *frame;
-	u32 raw_data_ssbo_index;
-	b32 first_pass;
+	iptr export_handle;
+	u32  raw_data_ssbo_index;
+	b32  first_pass;
 } BeamformCompute;
 
 typedef struct {
@@ -265,6 +260,8 @@ typedef struct BeamformerCtx {
 	ComputeShaderCtx  csctx;
 	FragmentShaderCtx fsctx;
 	PartialComputeCtx partial_compute_ctx;
+
+	Arena export_buffer;
 
 	Pipe data_pipe;
 	u32  partial_transfer_count;

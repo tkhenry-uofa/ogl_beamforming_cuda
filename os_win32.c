@@ -74,8 +74,7 @@ W32(b32)    VirtualFree(u8 *, size, u32);
 
 static iptr win32_stderr_handle;
 
-static b32
-os_write_file(iptr file, s8 raw)
+static PLATFORM_WRITE_FILE_FN(os_write_file)
 {
 	i32 wlen;
 	WriteFile(file, raw.data, raw.len, &wlen, 0);
@@ -118,6 +117,17 @@ static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
 	if (result.beg == NULL)
 		os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
 	result.end = result.beg + capacity;
+	return result;
+}
+
+static PLATFORM_CLOSE_FN(os_close)
+{
+	CloseHandle(file);
+}
+
+static PLATFORM_OPEN_FOR_WRITE_FN(os_open_for_write)
+{
+	iptr result = CreateFileA(name, GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
 	return result;
 }
 

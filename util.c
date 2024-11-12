@@ -15,8 +15,9 @@ static i32 hadamard_12_12_transpose[] = {
 };
 
 static void *
-mem_clear(u8 *p, u8 c, size len)
+mem_clear(void *p_, u8 c, size len)
 {
+	u8 *p = p_;
 	while (len) p[--len] = c;
 	return p;
 }

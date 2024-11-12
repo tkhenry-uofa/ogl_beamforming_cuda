@@ -164,6 +164,12 @@ typedef struct {
 #define PLATFORM_ALLOC_ARENA_FN(name) Arena name(Arena old, size capacity)
 typedef PLATFORM_ALLOC_ARENA_FN(platform_alloc_arena_fn);
 
+#define PLATFORM_CLOSE_FN(name) void name(iptr file)
+typedef PLATFORM_CLOSE_FN(platform_close_fn);
+
+#define PLATFORM_OPEN_FOR_WRITE_FN(name) iptr name(c8 *fname)
+typedef PLATFORM_OPEN_FOR_WRITE_FN(platform_open_for_write_fn);
+
 #define PLATFORM_POLL_PIPE_FN(name) b32 name(Pipe p)
 typedef PLATFORM_POLL_PIPE_FN(platform_poll_pipe_fn);
 
@@ -173,11 +179,17 @@ typedef PLATFORM_READ_PIPE_FN(platform_read_pipe_fn);
 #define PLATFORM_WRITE_NEW_FILE_FN(name) b32 name(char *fname, s8 raw)
 typedef PLATFORM_WRITE_NEW_FILE_FN(platform_write_new_file_fn);
 
+#define PLATFORM_WRITE_FILE_FN(name) b32 name(iptr file, s8 raw)
+typedef PLATFORM_WRITE_FILE_FN(platform_write_file_fn);
+
 #define PLATFORM_FNS      \
 	X(alloc_arena)    \
+	X(close)          \
+	X(open_for_write) \
 	X(poll_pipe)      \
 	X(read_pipe)      \
-	X(write_new_file)
+	X(write_new_file) \
+	X(write_file)
 
 #define X(name) platform_ ## name ## _fn *name;
 typedef struct { PLATFORM_FNS } Platform;
