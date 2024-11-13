@@ -127,7 +127,7 @@ static PLATFORM_CLOSE_FN(os_close)
 
 static PLATFORM_OPEN_FOR_WRITE_FN(os_open_for_write)
 {
-	iptr result = CreateFileA(name, GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
+	iptr result = CreateFileA(fname, GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
 	return result;
 }
 
