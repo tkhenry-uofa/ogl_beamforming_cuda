@@ -40,7 +40,7 @@ main(void)
 
 	Pipe data_pipe    = os_open_named_pipe(OS_PIPE_NAME);
 	input.pipe_handle = data_pipe.file;
-	ASSERT(data_pipe.file == INVALID_FILE);
+	ASSERT(data_pipe.file != INVALID_FILE);
 
 	#define X(name) ctx.platform.name = os_ ## name;
 	PLATFORM_FNS
