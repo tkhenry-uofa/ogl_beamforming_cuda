@@ -171,9 +171,8 @@ typedef PLATFORM_CLOSE_FN(platform_close_fn);
 typedef PLATFORM_OPEN_FOR_WRITE_FN(platform_open_for_write_fn);
 
 #define PLATFORM_POLL_PIPE_FN(name) b32 name(Pipe p)
-typedef PLATFORM_POLL_PIPE_FN(platform_poll_pipe_fn);
 
-#define PLATFORM_READ_PIPE_FN(name) size name(Pipe p, void *buf, size len)
+#define PLATFORM_READ_PIPE_FN(name) size name(iptr pipe, void *buf, size len)
 typedef PLATFORM_READ_PIPE_FN(platform_read_pipe_fn);
 
 #define PLATFORM_WRITE_NEW_FILE_FN(name) b32 name(char *fname, s8 raw)
@@ -186,7 +185,6 @@ typedef PLATFORM_WRITE_FILE_FN(platform_write_file_fn);
 	X(alloc_arena)    \
 	X(close)          \
 	X(open_for_write) \
-	X(poll_pipe)      \
 	X(read_pipe)      \
 	X(write_new_file) \
 	X(write_file)
@@ -194,6 +192,11 @@ typedef PLATFORM_WRITE_FILE_FN(platform_write_file_fn);
 #define X(name) platform_ ## name ## _fn *name;
 typedef struct { PLATFORM_FNS } Platform;
 #undef X
+
+typedef struct {
+	b32  pipe_data_available;
+	iptr pipe_handle;
+} BeamformerInput;
 
 #include "util.c"
 

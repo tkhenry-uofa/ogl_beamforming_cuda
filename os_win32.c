@@ -218,7 +218,7 @@ static PLATFORM_POLL_PIPE_FN(os_poll_pipe)
 static PLATFORM_READ_PIPE_FN(os_read_pipe)
 {
 	i32 total_read = 0;
-	ReadFile(p.file, buf, len, &total_read, 0);
+	ReadFile(pipe, buf, len, &total_read, 0);
 	return total_read;
 }
 

@@ -263,9 +263,6 @@ typedef struct BeamformerCtx {
 
 	Arena export_buffer;
 
-	Pipe data_pipe;
-	u32  partial_transfer_count;
-
 	CudaLib  cuda_lib;
 	Platform platform;
 	Stream   error_stream;
@@ -276,5 +273,9 @@ typedef struct BeamformerCtx {
 } BeamformerCtx;
 
 #define LABEL_GL_OBJECT(type, id, s) {s8 _s = (s); glObjectLabel(type, id, _s.len, (c8 *)_s.data);}
+
+#define BEAMFORMER_FRAME_STEP_FN(name) void name(BeamformerCtx *ctx, Arena *arena, \
+                                                 BeamformerInput *input)
+typedef BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step_fn);
 
 #endif /*_BEAMFORMER_H_ */

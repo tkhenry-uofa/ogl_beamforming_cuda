@@ -586,8 +586,7 @@ check_compute_timers(ComputeShaderCtx *cs, PartialComputeCtx *pc, BeamformerPara
 
 #include "ui.c"
 
-DEBUG_EXPORT void
-do_beamformer(BeamformerCtx *ctx, Arena *arena)
+DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 {
 	dt_for_frame = GetFrameTime();
 
@@ -601,8 +600,7 @@ do_beamformer(BeamformerCtx *ctx, Arena *arena)
 
 	BeamformerParameters *bp = &ctx->params->raw;
 	/* NOTE: Check for and Load RF Data into GPU */
-	/* TODO: move pipe polling out of the beamformer */
-	if (ctx->platform.poll_pipe(ctx->data_pipe)) {
+	if (input->pipe_data_available) {
 		BeamformWork *work = beamform_work_queue_push(ctx, arena, BW_FULL_COMPUTE);
 		/* NOTE: we can only read in the new data if we get back a work item.
 		 * otherwise we have too many frames in flight and should wait until the
@@ -642,7 +640,7 @@ do_beamformer(BeamformerCtx *ctx, Arena *arena)
 
 			alloc_output_image(ctx, bp->output_points);
 
-			size rlen = ctx->platform.read_pipe(ctx->data_pipe, rf_data_buf, rf_raw_size);
+			size rlen = ctx->platform.read_pipe(input->pipe_handle, rf_data_buf, rf_raw_size);
 			if (rlen != rf_raw_size) {
 				stream_append_s8(&ctx->error_stream, s8("Partial Read Occurred: "));
 				stream_append_i64(&ctx->error_stream, rlen);

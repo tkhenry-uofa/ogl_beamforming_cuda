@@ -138,7 +138,7 @@ static PLATFORM_READ_PIPE_FN(os_read_pipe)
 	do {
 		if (r != -1)
 			total_read += r;
-		r = read(p.file, buf + total_read, len - total_read);
+		r = read(pipe, buf + total_read, len - total_read);
 	} while (r);
 	return total_read;
 }

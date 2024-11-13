@@ -33,9 +33,14 @@
 int
 main(void)
 {
-	BeamformerCtx ctx = {0};
+	BeamformerCtx   ctx   = {0};
+	BeamformerInput input = {0};
 	Arena temp_memory = os_alloc_arena((Arena){0}, 16 * MEGABYTE);
 	ctx.error_stream  = stream_alloc(&temp_memory, 1 * MEGABYTE);
+
+	Pipe data_pipe    = os_open_named_pipe(OS_PIPE_NAME);
+	input.pipe_handle = data_pipe.file;
+	ASSERT(data_pipe.file == INVALID_FILE);
 
 	#define X(name) ctx.platform.name = os_ ## name;
 	PLATFORM_FNS
@@ -44,7 +49,18 @@ main(void)
 	setup_beamformer(&ctx, temp_memory);
 
 	while(!(ctx.flags & SHOULD_EXIT)) {
-		do_program_step(&ctx, &temp_memory);
+		do_debug(&ctx.error_stream);
+		if (ctx.gl.vendor_id == GL_VENDOR_NVIDIA)
+			check_and_load_cuda_lib(&ctx.cuda_lib, &ctx.error_stream);
+
+		if (ctx.flags & RELOAD_SHADERS) {
+			ctx.flags &= ~RELOAD_SHADERS;
+			reload_shaders(&ctx, temp_memory);
+		}
+
+		input.pipe_data_available = os_poll_pipe(data_pipe);
+
+		beamformer_frame_step(&ctx, &temp_memory, &input);
 	}
 
 	/* NOTE: make sure this will get cleaned up after external
@@ -52,5 +68,5 @@ main(void)
 	os_remove_shared_memory(OS_SMEM_NAME);
 
 	/* NOTE: garbage code needed for Linux */
-	os_close_named_pipe(ctx.data_pipe);
+	os_close_named_pipe(data_pipe);
 }

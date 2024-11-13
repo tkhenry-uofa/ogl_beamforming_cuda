@@ -20,9 +20,7 @@ static struct {
 #else
 static void *debug_lib;
 
-/* TODO: move this to a header */
-typedef void do_beamformer_fn(BeamformerCtx *, Arena *);
-static do_beamformer_fn *do_beamformer;
+static beamformer_frame_step_fn *beamformer_frame_step;
 
 static void
 do_debug(Stream *error_stream)
@@ -32,7 +30,7 @@ do_debug(Stream *error_stream)
 	if (test_stats.filesize > 32 && test_stats.timestamp > updated_time) {
 		os_unload_library(debug_lib);
 		debug_lib = os_load_library(OS_DEBUG_LIB_NAME, OS_DEBUG_LIB_TEMP_NAME, error_stream);
-		do_beamformer = os_lookup_dynamic_symbol(debug_lib, "do_beamformer", error_stream);
+		beamformer_frame_step = os_lookup_dynamic_symbol(debug_lib, "beamformer_frame_step", error_stream);
 		updated_time  = test_stats.timestamp;
 	}
 }
@@ -275,10 +273,8 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 	ctx->fsctx.db        = -50.0f;
 	ctx->fsctx.threshold =  40.0f;
 
-	ctx->data_pipe = os_open_named_pipe(OS_PIPE_NAME);
-	ctx->params    = os_open_shared_memory_area(OS_SMEM_NAME, sizeof(*ctx->params));
+	ctx->params = os_open_shared_memory_area(OS_SMEM_NAME, sizeof(*ctx->params));
 	/* TODO: properly handle this? */
-	ASSERT(ctx->data_pipe.file != INVALID_FILE);
 	ASSERT(ctx->params);
 
 	/* NOTE: default compute shader pipeline */
@@ -306,19 +302,4 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 	glGenQueries(ARRAY_COUNT(ctx->partial_compute_ctx.timer_ids), ctx->partial_compute_ctx.timer_ids);
 
 	reload_shaders(ctx, temp_memory);
-}
-
-static void
-do_program_step(BeamformerCtx *ctx, Arena *memory)
-{
-	do_debug(&ctx->error_stream);
-	if (ctx->gl.vendor_id == GL_VENDOR_NVIDIA)
-		check_and_load_cuda_lib(&ctx->cuda_lib, &ctx->error_stream);
-
-	if (ctx->flags & RELOAD_SHADERS) {
-		ctx->flags &= ~RELOAD_SHADERS;
-		reload_shaders(ctx, *memory);
-	}
-
-	do_beamformer(ctx, memory);
 }
