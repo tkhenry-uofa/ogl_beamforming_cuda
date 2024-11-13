@@ -204,6 +204,8 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 		if (shader_id) {
 			glDeleteProgram(csctx->programs[i]);
 			csctx->programs[i] = rlLoadComputeShaderProgram(shader_id);
+			glUseProgram(csctx->programs[csctx->programs[i]]);
+			glBindBufferBase(GL_UNIFORM_BUFFER, 0, csctx->shared_ubo);
 			LABEL_GL_OBJECT(GL_PROGRAM, csctx->programs[i], compute_shaders[i].label);
 		}
 

@@ -333,7 +333,6 @@ do_partial_compute_step(BeamformerCtx *ctx, BeamformFrame *frame)
 	cs->timer_active[cs->timer_index][pc->shader] = 1;
 
 	glUseProgram(cs->programs[pc->shader]);
-	glBindBufferBase(GL_UNIFORM_BUFFER, 0, cs->shared_ubo);
 
 	/* NOTE: We must tile this otherwise GL will kill us for taking too long */
 	/* TODO: this could be based on multiple dimensions */
@@ -366,7 +365,6 @@ do_compute_shader(BeamformerCtx *ctx, BeamformFrame *frame, u32 raw_data_index,
 	csctx->timer_active[csctx->timer_index][shader] = 1;
 
 	glUseProgram(csctx->programs[shader]);
-	glBindBufferBase(GL_UNIFORM_BUFFER, 0, csctx->shared_ubo);
 
 	u32 output_ssbo_idx = !csctx->last_output_ssbo_index;
 	u32 input_ssbo_idx  = csctx->last_output_ssbo_index;
@@ -422,7 +420,6 @@ do_compute_shader(BeamformerCtx *ctx, BeamformFrame *frame, u32 raw_data_index,
 		do_beamform_shader(csctx, &ctx->params->raw, frame, rf_ssbo, dispatch_dim, (iv3){0}, 0);
 		if (frame->dim.w > 1) {
 			glUseProgram(csctx->programs[CS_SUM]);
-			glBindBufferBase(GL_UNIFORM_BUFFER, 0, csctx->shared_ubo);
 			u32 input_texture_count = frame->dim.w - 1;
 			do_sum_shader(csctx, frame->textures, input_texture_count,
 			              1 / (f32)input_texture_count, frame->textures[frame->dim.w - 1],
