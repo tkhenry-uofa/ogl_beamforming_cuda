@@ -136,7 +136,7 @@ static b32
 os_read_pipe(Pipe p, void *buf, size read_size)
 {
 	i32 total_read = 0;
-	ReadFile(p.file, buf, len, &total_read, 0);
+	ReadFile(p.file, buf, read_size, &total_read, 0);
 	return total_read == read_size;
 }
 
@@ -163,7 +163,8 @@ os_open_shared_memory_area(char *name)
 		return 0;
 
 	BeamformerParametersFull *new;
-	new = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(*new));
+	iptr view = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(*new));
+	new = (BeamformerParametersFull *)view;
 	CloseHandle(h);
 
 	return new;
