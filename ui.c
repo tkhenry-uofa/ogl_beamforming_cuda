@@ -833,9 +833,9 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input)
 			if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
 				InteractionState *is  = &ui->interaction;
 				is->hot_state         = IS_DISPLAY;
-				is->hot.store         = &ctx->fsctx.db;
+				is->hot.store         = &ctx->fsctx.threshold;
 				is->hot.type          = VT_F32;
-				is->hot.f32_limits    = (v2){.x = -120};
+				is->hot.f32_limits    = (v2){.y = 240};
 				is->hot.flags         = V_GEN_MIPMAPS;
 				is->hot.display_scale = 1;
 				is->hot.scroll_scale  = 1;
