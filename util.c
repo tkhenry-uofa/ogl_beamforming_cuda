@@ -62,6 +62,35 @@ alloc_(Arena *a, size len, size align, size count)
 	return mem_clear(p, 0, count * len);
 }
 
+static Arena
+sub_arena(Arena *a, size size)
+{
+	Arena result = {0};
+	if ((a->end - a->beg) >= size) {
+		result.beg  = a->beg;
+		result.end  = a->beg + size;
+		a->beg     += size;
+	}
+	return result;
+}
+
+static TempArena
+begin_temp_arena(Arena *a)
+{
+	TempArena result = {.arena = a, .old_beg = a->beg};
+	return result;
+}
+
+static void
+end_temp_arena(TempArena ta)
+{
+	Arena *a = ta.arena;
+	if (a) {
+		ASSERT(a->beg >= ta.old_beg)
+		a->beg = ta.old_beg;
+	}
+}
+
 static Stream
 stream_alloc(Arena *a, size cap)
 {
@@ -185,6 +214,21 @@ stream_append_f64_e(Stream *s, f64 f)
 	for (i32 i = prec / 10; i > 1; i /= 10)
 		stream_append_byte(s, '0');
 	stream_append_u64(s, ABS(scale));
+}
+
+static void
+stream_append_variable(Stream *s, Variable *var)
+{
+	switch (var->type) {
+	case VT_F32:
+		f32 *f32_val = var->store;
+		stream_append_f64(s, *f32_val * var->display_scale, 100);
+		break;
+	case VT_I32:
+		i32 *i32_val = var->store;
+		stream_append_i64(s, *i32_val * var->display_scale);
+	default: INVALID_CODE_PATH;
+	}
 }
 
 static s8

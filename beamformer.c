@@ -595,6 +595,10 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		ctx->window_size.w = GetScreenWidth();
 	}
 
+	if (input->executable_reloaded) {
+		ui_init(ctx, ctx->ui_backing_store);
+	}
+
 	/* NOTE: Store the compute time for the last frame. */
 	check_compute_timers(&ctx->csctx, &ctx->partial_compute_ctx, ctx->params);
 
@@ -695,7 +699,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		ctx->flags &= ~GEN_MIPMAPS;
 	}
 
-	draw_ui(ctx, *arena);
+	draw_ui(ctx, input);
 
 	if (IsKeyPressed(KEY_R)) {
 		ctx->flags |= RELOAD_SHADERS;

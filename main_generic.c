@@ -38,9 +38,13 @@ main(void)
 	Arena temp_memory = os_alloc_arena((Arena){0}, 16 * MEGABYTE);
 	ctx.error_stream  = stream_alloc(&temp_memory, 1 * MEGABYTE);
 
+	ctx.ui_backing_store = sub_arena(&temp_memory, 2 * MEGABYTE);
+
 	Pipe data_pipe    = os_open_named_pipe(OS_PIPE_NAME);
 	input.pipe_handle = data_pipe.file;
 	ASSERT(data_pipe.file != INVALID_FILE);
+
+	input.executable_reloaded = 1;
 
 	#define X(name) ctx.platform.name = os_ ## name;
 	PLATFORM_FNS
@@ -61,6 +65,8 @@ main(void)
 		input.pipe_data_available = os_poll_pipe(data_pipe);
 
 		beamformer_frame_step(&ctx, &temp_memory, &input);
+
+		input.executable_reloaded = 0;
 	}
 
 	/* NOTE: make sure this will get cleaned up after external

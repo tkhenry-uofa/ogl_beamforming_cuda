@@ -1,18 +1,4 @@
 /* See LICENSE for license details. */
-static void
-ui_start_compute(BeamformerCtx *ctx)
-{
-	/* NOTE: we do not allow ui to start a work if no work was previously completed */
-	Arena a = {0};
-	beamform_work_queue_push(ctx, &a, BW_RECOMPUTE);
-	for (u32 i = 0; i < ARRAY_COUNT(ctx->beamform_frames); i++) {
-		BeamformFrame *frame = ctx->beamform_frames + i;
-		if (frame->dim.w && frame->textures[frame->dim.w - 1])
-			glClearTexImage(frame->textures[frame->dim.w - 1], 0, GL_RED, GL_FLOAT, 0);
-	}
-	ctx->params->upload = 1;
-}
-
 static Color
 colour_from_normalized(v4 rgba)
 {
@@ -25,21 +11,6 @@ fade(Color a, f32 alpha)
 {
 	a.a = (u8)((f32)a.a * alpha);
 	return a;
-}
-
-static f32
-move_towards_f32(f32 current, f32 target, f32 delta)
-{
-	if (target < current) {
-		current -= delta;
-		if (current < target)
-			current = target;
-	} else {
-		current += delta;
-		if (current > target)
-			current = target;
-	}
-	return current;
 }
 
 static f32
@@ -131,201 +102,6 @@ center_align_text_in_rect(Rect r, s8 text, Font font)
 }
 
 static b32
-bmv_equal(BPModifiableValue *a, BPModifiableValue *b)
-{
-	b32 result = (uintptr_t)a->value == (uintptr_t)b->value;
-	return result;
-}
-
-static f32
-bmv_value(BPModifiableValue *a)
-{
-	/* TODO: this is broken for very large integer values */
-	f32 result;
-	if (a->flags & MV_FLOAT) result = *(f32 *)a->value;
-	else                     result = *(i32 *)a->value;
-	return result;
-}
-
-static void
-bmv_store_common(BeamformerCtx *ctx, BPModifiableValue *bmv)
-{
-	if (bmv->flags & MV_CAUSES_COMPUTE)
-		ui_start_compute(ctx);
-	if (bmv->flags & MV_GEN_MIPMAPS)
-		ctx->flags |= GEN_MIPMAPS;
-}
-
-static BMV_STORE_FN(bmv_store_generic)
-{
-	if (bmv->flags & MV_FLOAT) {
-		f32 *value = bmv->value;
-		if (new_val == *value)
-			return;
-		*value = CLAMP(new_val, bmv->flimits.x, bmv->flimits.y);
-	} else {
-		ASSERT(bmv->flags & MV_INT);
-		i32 *value = bmv->value;
-		if (new_val == *value)
-			return;
-		*value = CLAMP(new_val, bmv->ilimits.x, bmv->ilimits.y);
-	}
-	bmv_store_common(ctx, bmv);
-}
-
-static BMV_STORE_FN(bmv_store_power_of_two)
-{
-	ASSERT(bmv->flags & MV_INT);
-	i32 *value = bmv->value;
-	if (new_val == *value)
-		return;
-	if (from_scroll && new_val > *value) *value <<= 1;
-	else                                 *value = round_down_power_of_2(new_val);
-	*value = CLAMP(*value, bmv->ilimits.x, bmv->ilimits.y);
-	bmv_store_common(ctx, bmv);
-}
-
-static void
-bmv_sprint(BPModifiableValue *bmv, Stream *s)
-{
-	if (bmv->flags & MV_FLOAT) {
-		f32 *value = bmv->value;
-		stream_append_f64(s, *value * bmv->display_scale, 100);
-	} else {
-		ASSERT(bmv->flags & MV_INT);
-		i32 *value = bmv->value;
-		stream_append_i64(s, *value * bmv->display_scale);
-	}
-}
-
-static void
-do_text_input(BeamformerCtx *ctx, i32 max_disp_chars, Rect r, Color colour)
-{
-	v2 ts  = measure_text(ctx->font, (s8){.len = ctx->is.buf_len, .data = ctx->is.buf});
-	v2 pos = {.x = r.pos.x, .y = r.pos.y + (r.size.y - ts.y) / 2};
-
-	i32 buf_delta = ctx->is.buf_len - max_disp_chars;
-	if (buf_delta < 0) buf_delta = 0;
-	s8 buf = {.len = ctx->is.buf_len - buf_delta, .data = ctx->is.buf + buf_delta};
-	{
-		/* NOTE: drop a char if the subtext still doesn't fit */
-		v2 nts = measure_text(ctx->font, buf);
-		if (nts.w > 0.96 * r.size.w) {
-			buf.data++;
-			buf.len--;
-		}
-	}
-	draw_text(ctx->font, buf, pos, 0, colour);
-
-	ctx->is.cursor_blink_t = move_towards_f32(ctx->is.cursor_blink_t,
-	                                          ctx->is.cursor_blink_target, 1.5 * dt_for_frame);
-	if (ctx->is.cursor_blink_t == ctx->is.cursor_blink_target) {
-		if (ctx->is.cursor_blink_target == 0) ctx->is.cursor_blink_target = 1;
-		else                                  ctx->is.cursor_blink_target = 0;
-	}
-
-	v4 bg = FOCUSED_COLOUR;
-	bg.a  = 0;
-	Color cursor_colour = colour_from_normalized(lerp_v4(bg, FOCUSED_COLOUR,
-	                                                     ctx->is.cursor_blink_t));
-
-	/* NOTE: guess a cursor position */
-	if (ctx->is.cursor == -1) {
-		/* NOTE: extra offset to help with putting a cursor at idx 0 */
-		#define TEXT_HALF_CHAR_WIDTH 10
-		f32 x_off = TEXT_HALF_CHAR_WIDTH, x_bounds = r.size.w * ctx->is.cursor_hover_p;
-		i32 i;
-		for (i = 0; i < ctx->is.buf_len && x_off < x_bounds; i++) {
-			/* NOTE: assumes font glyphs are ordered ASCII */
-			i32 idx  = ctx->is.buf[i] - 0x20;
-			x_off   += ctx->font.glyphs[idx].advanceX;
-			if (ctx->font.glyphs[idx].advanceX == 0)
-				x_off += ctx->font.recs[idx].width;
-		}
-		ctx->is.cursor = i;
-	}
-
-	buf.len = ctx->is.cursor - buf_delta;
-	v2 sts = measure_text(ctx->font, buf);
-	f32 cursor_x = r.pos.x + sts.x;
-	f32 cursor_width;
-	if (ctx->is.cursor == ctx->is.buf_len) cursor_width = MIN(ctx->window_size.w * 0.03, 20);
-	else                                   cursor_width = MIN(ctx->window_size.w * 0.01, 6);
-
-	Rect cursor_r = {
-		.pos  = {.x = cursor_x,     .y = pos.y},
-		.size = {.w = cursor_width, .h = ts.h},
-	};
-
-	DrawRectanglePro(cursor_r.rl, (Vector2){0}, 0, cursor_colour);
-
-	/* NOTE: handle multiple input keys on a single frame */
-	i32 key = GetCharPressed();
-	while (key > 0) {
-		if (ctx->is.buf_len == ARRAY_COUNT(ctx->is.buf))
-			break;
-
-		b32 allow_key = ((key >= '0' && key <= '9') || (key == '.') ||
-		                 (key == '-' && ctx->is.cursor == 0));
-		if (allow_key) {
-			mem_move(ctx->is.buf + ctx->is.cursor,
-			         ctx->is.buf + ctx->is.cursor + 1,
-			         ctx->is.buf_len - ctx->is.cursor + 1);
-
-			ctx->is.buf[ctx->is.cursor++] = key;
-			ctx->is.buf_len++;
-		}
-		key = GetCharPressed();
-	}
-
-	if ((IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) && ctx->is.cursor > 0)
-		ctx->is.cursor--;
-
-	if ((IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) &&
-	    ctx->is.cursor < ctx->is.buf_len)
-		ctx->is.cursor++;
-
-	if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) &&
-	    ctx->is.cursor > 0) {
-		ctx->is.cursor--;
-		mem_move(ctx->is.buf + ctx->is.cursor + 1,
-		         ctx->is.buf + ctx->is.cursor,
-		         ctx->is.buf_len - ctx->is.cursor);
-		ctx->is.buf_len--;
-	}
-	if ((IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) &&
-	    ctx->is.cursor < ctx->is.buf_len) {
-		mem_move(ctx->is.buf + ctx->is.cursor + 1,
-		         ctx->is.buf + ctx->is.cursor,
-		         ctx->is.buf_len - ctx->is.cursor);
-		ctx->is.buf_len--;
-	}
-}
-
-static void
-set_text_input_idx(BeamformerCtx *ctx, BPModifiableValue bmv, Rect r, v2 mouse)
-{
-	if (ctx->is.store.value && !bmv_equal(&ctx->is.store, &bmv)) {
-		f32 new_val = parse_f64((s8){.len = ctx->is.buf_len, .data = ctx->is.buf});
-		ctx->is.store.store_fn(ctx, &ctx->is.store, new_val / ctx->is.store.display_scale, 0);
-	}
-
-	ctx->is.store  = bmv;
-	ctx->is.cursor = -1;
-
-	if (ctx->is.store.value == NULL)
-		return;
-
-	Stream s = {.cap = ARRAY_COUNT(ctx->is.buf), .data = ctx->is.buf};
-	bmv_sprint(&bmv, &s);
-	ASSERT(!s.errors);
-	ctx->is.buf_len = s.widx;
-
-	ASSERT(CheckCollisionPointRec(mouse.rl, r.rl));
-	ctx->is.cursor_hover_p = CLAMP01((mouse.x - r.pos.x) / r.size.w);
-}
-
-static b32
 hover_text(v2 mouse, Rect text_rect, f32 *hover_t, b32 can_advance)
 {
 	b32 hovering = CheckCollisionPointRec(mouse.rl, text_rect.rl);
@@ -363,18 +139,21 @@ do_value_listing(s8 prefix, s8 suffix, f32 value, Font font, Arena a, Rect r)
 }
 
 static Rect
-do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx *ctx, Arena a,
+do_text_input_listing(s8 prefix, s8 suffix, Variable var, BeamformerCtx *ctx, Arena a,
                       Rect r, v2 mouse, f32 *hover_t)
 {
+	BeamformerUI *ui = ctx->ui;
+	InputState   *is = &ui->text_input_state;
+	b32 text_input_active = ui->interaction.active.store == var.store;
+
 	Stream buf = stream_alloc(&a, 64);
 	v2 txt_s;
 
-	b32 bmv_active = bmv_equal(&bmv, &ctx->is.store);
-	if (bmv_active) {
-		txt_s = measure_text(ctx->font, (s8){.len = ctx->is.buf_len, .data = ctx->is.buf});
+	if (text_input_active) {
+		txt_s = measure_text(ui->font, (s8){.len = is->buf_len, .data = is->buf});
 	} else {
-		bmv_sprint(&bmv, &buf);
-		txt_s = measure_text(ctx->font, stream_to_s8(&buf));
+		stream_append_variable(&buf, &var);
+		txt_s = measure_text(ui->font, stream_to_s8(&buf));
 	}
 
 	Rect edit_rect = {
@@ -382,40 +161,73 @@ do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx
 		.size = {.x = txt_s.w + TEXT_BOX_EXTRA_X, .y = txt_s.h}
 	};
 
-	b32 hovering = hover_text(mouse, edit_rect, hover_t, !bmv_active);
-	if (hovering) {
-		f32 mouse_scroll = GetMouseWheelMove();
-		if (mouse_scroll) {
-			if (bmv_active)
-				set_text_input_idx(ctx, (BPModifiableValue){0}, (Rect){0}, mouse);
-			f32 old_val = bmv_value(&bmv);
-			bmv.store_fn(ctx, &bmv, old_val + bmv.scroll_scale * mouse_scroll, 1);
-			buf.widx = 0;
-			bmv_sprint(&bmv, &buf);
+	b32 hovering = hover_text(mouse, edit_rect, hover_t, !text_input_active);
+	if (hovering)
+		ui->interaction.hot = var;
+
+	/* TODO: where should this go? */
+	if (text_input_active && is->cursor == -1) {
+		/* NOTE: extra offset to help with putting a cursor at idx 0 */
+		#define TEXT_HALF_CHAR_WIDTH 10
+		f32 hover_p = CLAMP01((mouse.x - edit_rect.pos.x) / edit_rect.size.w);
+		f32 x_off = TEXT_HALF_CHAR_WIDTH, x_bounds = edit_rect.size.w * hover_p;
+		i32 i;
+		for (i = 0; i < is->buf_len && x_off < x_bounds; i++) {
+			/* NOTE: assumes font glyphs are ordered ASCII */
+			i32 idx  = is->buf[i] - 0x20;
+			x_off   += ui->font.glyphs[idx].advanceX;
+			if (ui->font.glyphs[idx].advanceX == 0)
+				x_off += ui->font.recs[idx].width;
 		}
+		is->cursor = i;
 	}
-
-	if (!hovering && bmv_equal(&bmv, &ctx->is.store) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-		set_text_input_idx(ctx, (BPModifiableValue){0}, (Rect){0}, mouse);
-		buf.widx = 0;
-		bmv_sprint(&bmv, &buf);
-	}
-
-	if (hovering && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-		set_text_input_idx(ctx, bmv, edit_rect, mouse);
 
 	Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, *hover_t));
 
-	if (!bmv_equal(&bmv, &ctx->is.store)) {
-		draw_text(ctx->font, stream_to_s8(&buf), edit_rect.pos, 0, colour);
+	if (text_input_active) {
+		s8 buf = {.len = is->buf_len, .data = is->buf};
+		v2 ts  = measure_text(ui->font, buf);
+		v2 pos = {.x = edit_rect.pos.x, .y = edit_rect.pos.y + (edit_rect.size.y - ts.y) / 2};
+
+		#define MAX_DISP_CHARS 7
+		i32 buf_delta = is->buf_len - MAX_DISP_CHARS;
+		if (buf_delta < 0) buf_delta = 0;
+		buf.len  -= buf_delta;
+		buf.data += buf_delta;
+		{
+			/* NOTE: drop a char if the subtext still doesn't fit */
+			v2 nts = measure_text(ui->font, buf);
+			if (nts.w > 0.96 * edit_rect.size.w) {
+				buf.data++;
+				buf.len--;
+			}
+		}
+		draw_text(ui->font, buf, pos, 0, colour);
+
+		v4 bg = FOCUSED_COLOUR;
+		bg.a  = 0;
+		Color cursor_colour = colour_from_normalized(lerp_v4(bg, FOCUSED_COLOUR,
+		                                                     CLAMP01(is->cursor_blink_t)));
+		buf.len = is->cursor - buf_delta;
+		v2 sts = measure_text(ui->font, buf);
+		f32 cursor_x = pos.x + sts.x;
+		f32 cursor_width;
+		if (is->cursor == is->buf_len) cursor_width = MIN(ctx->window_size.w * 0.03, 20);
+		else                           cursor_width = MIN(ctx->window_size.w * 0.01, 6);
+		Rect cursor_r = {
+			.pos  = {.x = cursor_x,     .y = pos.y},
+			.size = {.w = cursor_width, .h = ts.h},
+		};
+
+		DrawRectanglePro(cursor_r.rl, (Vector2){0}, 0, cursor_colour);
 	} else {
-		do_text_input(ctx, 7, edit_rect, colour);
+		draw_text(ui->font, stream_to_s8(&buf), edit_rect.pos, 0, colour);
 	}
 
-	v2 suffix_s = measure_text(ctx->font, suffix);
+	v2 suffix_s = measure_text(ui->font, suffix);
 	v2 suffix_p = {.x = r.pos.x + r.size.w - suffix_s.w, .y = r.pos.y};
-	draw_text(ctx->font, prefix, r.pos,    0, colour_from_normalized(FG_COLOUR));
-	draw_text(ctx->font, suffix, suffix_p, 0, colour_from_normalized(FG_COLOUR));
+	draw_text(ui->font, prefix, r.pos,    0, colour_from_normalized(FG_COLOUR));
+	draw_text(ui->font, suffix, suffix_p, 0, colour_from_normalized(FG_COLOUR));
 
 	r.pos.y  += suffix_s.h + LISTING_LINE_PAD;
 	r.size.y -= suffix_s.h + LISTING_LINE_PAD;
@@ -424,29 +236,25 @@ do_text_input_listing(s8 prefix, s8 suffix, BPModifiableValue bmv, BeamformerCtx
 }
 
 static Rect
-do_text_toggle_listing(s8 prefix, s8 text0, s8 text1, b32 toggle, BPModifiableValue bmv,
-                       BeamformerCtx *ctx, Rect r, v2 mouse, f32 *hover_t)
+do_text_toggle_listing(s8 prefix, s8 text0, s8 text1, Variable var,
+                       BeamformerUI *ui, Rect r, v2 mouse, f32 *hover_t)
 {
+	b32 toggle = *(b32 *)var.store;
 	v2 txt_s;
-	if (toggle) txt_s = measure_text(ctx->font, text1);
-	else        txt_s = measure_text(ctx->font, text0);
+	if (toggle) txt_s = measure_text(ui->font, text1);
+	else        txt_s = measure_text(ui->font, text0);
 
 	Rect edit_rect = {
 		.pos  = {.x = r.pos.x + LISTING_LEFT_COLUMN_WIDTH, .y = r.pos.y},
 		.size = {.x = txt_s.w + TEXT_BOX_EXTRA_X, .y = txt_s.h}
 	};
 
-	b32 hovering = hover_text(mouse, edit_rect, hover_t, 1);
-
-	b32 pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
-	if (hovering && (pressed || GetMouseWheelMove())) {
-		toggle = !toggle;
-		bmv.store_fn(ctx, &bmv, toggle, 0);
-	}
+	if (hover_text(mouse, edit_rect, hover_t, 1))
+		ui->interaction.hot = var;
 
 	Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, *hover_t));
-	draw_text(ctx->font, prefix, r.pos, 0, colour_from_normalized(FG_COLOUR));
-	draw_text(ctx->font, toggle? text1: text0, edit_rect.pos, 0, colour);
+	draw_text(ui->font, prefix, r.pos, 0, colour_from_normalized(FG_COLOUR));
+	draw_text(ui->font, toggle? text1: text0, edit_rect.pos, 0, colour);
 
 	r.pos.y  += txt_s.h + LISTING_LINE_PAD;
 	r.size.y -= txt_s.h + LISTING_LINE_PAD;
@@ -455,7 +263,7 @@ do_text_toggle_listing(s8 prefix, s8 text0, s8 text1, b32 toggle, BPModifiableVa
 }
 
 static b32
-do_text_button(BeamformerCtx *ctx, s8 text, Rect r, v2 mouse, f32 *hover_t)
+do_text_button(BeamformerUI *ui, s8 text, Rect r, v2 mouse, f32 *hover_t)
 {
 	b32 hovering = hover_text(mouse, r, hover_t, 1);
 	b32 pressed  = 0;
@@ -472,12 +280,12 @@ do_text_button(BeamformerCtx *ctx, s8 text, Rect r, v2 mouse, f32 *hover_t)
 	DrawRectangleRounded(sb.rl, RECT_BTN_ROUNDNESS, 0, RECT_BTN_BORDER_COLOUR);
 	DrawRectangleRounded(sr.rl, RECT_BTN_ROUNDNESS, 0, RECT_BTN_COLOUR);
 
-	v2 tpos   = center_align_text_in_rect(r, text, ctx->font);
+	v2 tpos   = center_align_text_in_rect(r, text, ui->font);
 	v2 spos   = {.x = tpos.x + 1.75, .y = tpos.y + 2};
 	v4 colour = lerp_v4(FG_COLOUR, HOVERED_COLOUR, *hover_t);
 
-	draw_text(ctx->font, text, spos, 0, fade(BLACK, 0.8));
-	draw_text(ctx->font, text, tpos, 0, colour_from_normalized(colour));
+	draw_text(ui->font, text, spos, 0, fade(BLACK, 0.8));
+	draw_text(ui->font, text, tpos, 0, colour_from_normalized(colour));
 
 	return pressed;
 }
@@ -485,9 +293,7 @@ do_text_button(BeamformerCtx *ctx, s8 text, Rect r, v2 mouse, f32 *hover_t)
 static void
 draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 {
-	if (IsKeyPressed(KEY_ENTER) && ctx->is.store.value)
-		set_text_input_idx(ctx, (BPModifiableValue){0}, (Rect){0}, mouse);
-
+	BeamformerUI *ui         = ctx->ui;
 	BeamformerParameters *bp = &ctx->params->raw;
 
 	f32 minx = bp->output_min_coordinate.x + 1e-6, maxx = bp->output_max_coordinate.x - 1e-6;
@@ -500,64 +306,100 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	draw_r.size.y -= 20;
 
 	draw_r = do_value_listing(s8("Sampling Frequency:"), s8("[MHz]"),
-	                          bp->sampling_frequency * 1e-6, ctx->font, arena, draw_r);
+	                          bp->sampling_frequency * 1e-6, ui->font, arena, draw_r);
 
 	static f32 hover_t[14];
 	i32 idx = 0;
 
-	BPModifiableValue bmv;
-	bmv = (BPModifiableValue){&bp->center_frequency, bmv_store_generic,
-	                          .flimits = (v2){.y = 100e6}, MV_FLOAT|MV_CAUSES_COMPUTE, 1e5, 1e-6};
-	draw_r = do_text_input_listing(s8("Center Frequency:"), s8("[MHz]"), bmv, ctx, arena,
+	Variable var;
+
+	var.store         = &bp->center_frequency;
+	var.type          = VT_F32;
+	var.f32_limits    = (v2){.y = 100e6};
+	var.flags         = V_CAUSES_COMPUTE;
+	var.display_scale = 1e-6;
+	var.scroll_scale  = 1e5;
+	draw_r = do_text_input_listing(s8("Center Frequency:"), s8("[MHz]"), var, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&bp->speed_of_sound, bmv_store_generic,
-	                          .flimits = (v2){.y = 1e6}, MV_FLOAT|MV_CAUSES_COMPUTE, 10, 1};
-	draw_r = do_text_input_listing(s8("Speed of Sound:"), s8("[m/s]"), bmv, ctx, arena,
+	var.store         = &bp->speed_of_sound;
+	var.type          = VT_F32;
+	var.f32_limits    = (v2){.y = 1e6};
+	var.flags         = V_CAUSES_COMPUTE;
+	var.display_scale = 1;
+	var.scroll_scale  = 10;
+	draw_r = do_text_input_listing(s8("Speed of Sound:"), s8("[m/s]"), var, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&bp->output_min_coordinate.x, bmv_store_generic,
-	                          .flimits = (v2){.x = -1e3, .y = maxx}, MV_FLOAT|MV_CAUSES_COMPUTE,
-	                          0.5e-3, 1e3};
-	draw_r = do_text_input_listing(s8("Min Lateral Point:"), s8("[mm]"), bmv, ctx, arena,
+	var.store         = &bp->output_min_coordinate.x;
+	var.type          = VT_F32;
+	var.f32_limits    = (v2){.x = -1e3, .y = maxx};
+	var.flags         = V_CAUSES_COMPUTE;
+	var.display_scale = 1e3;
+	var.scroll_scale  = 0.5e-3;
+	draw_r = do_text_input_listing(s8("Min Lateral Point:"), s8("[mm]"), var, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&bp->output_max_coordinate.x, bmv_store_generic,
-	                          .flimits = (v2){.x = minx, .y = 1e3}, MV_FLOAT|MV_CAUSES_COMPUTE,
-	                          0.5e-3, 1e3};
-	draw_r = do_text_input_listing(s8("Max Lateral Point:"), s8("[mm]"), bmv, ctx, arena,
+	var.store         = &bp->output_max_coordinate.x;
+	var.type          = VT_F32;
+	var.f32_limits    = (v2){.x = minx, .y = 1e3};
+	var.flags         = V_CAUSES_COMPUTE;
+	var.display_scale = 1e3;
+	var.scroll_scale  = 0.5e-3;
+	draw_r = do_text_input_listing(s8("Max Lateral Point:"), s8("[mm]"), var, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&bp->output_min_coordinate.z, bmv_store_generic,
-	                          .flimits = (v2){.y = maxz}, MV_FLOAT|MV_CAUSES_COMPUTE, 0.5e-3, 1e3};
-	draw_r = do_text_input_listing(s8("Min Axial Point:"), s8("[mm]"), bmv, ctx, arena,
+	var.store         = &bp->output_min_coordinate.z;
+	var.type          = VT_F32;
+	var.f32_limits    = (v2){.y = maxz};
+	var.flags         = V_CAUSES_COMPUTE;
+	var.display_scale = 1e3;
+	var.scroll_scale  = 0.5e-3;
+	draw_r = do_text_input_listing(s8("Min Axial Point:"), s8("[mm]"), var, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&bp->output_max_coordinate.z, bmv_store_generic,
-	                          .flimits = (v2){.x = minz, .y = 1e3}, MV_FLOAT|MV_CAUSES_COMPUTE,
-	                          0.5e-3, 1e3};
-	draw_r = do_text_input_listing(s8("Max Axial Point:"), s8("[mm]"), bmv, ctx, arena,
+	var.store         = &bp->output_max_coordinate.z;
+	var.type          = VT_F32;
+	var.f32_limits    = (v2){.x = minz, .y = 1e3};
+	var.flags         = V_CAUSES_COMPUTE;
+	var.display_scale = 1e3;
+	var.scroll_scale  = 0.5e-3;
+	draw_r = do_text_input_listing(s8("Max Axial Point:"), s8("[mm]"), var, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&bp->off_axis_pos, bmv_store_generic,
-	                          .flimits = (v2){.x = minx, .y = maxx}, MV_FLOAT|MV_CAUSES_COMPUTE,
-	                          0.5e-3, 1e3};
-	draw_r = do_text_input_listing(s8("Off Axis Position:"), s8("[mm]"), bmv, ctx, arena,
+	var.store         = &bp->off_axis_pos;
+	var.type          = VT_F32;
+	var.f32_limits    = (v2){.x = minx, .y = maxx};
+	var.flags         = V_CAUSES_COMPUTE;
+	var.display_scale = 1e3;
+	var.scroll_scale  = 0.5e-3;
+	draw_r = do_text_input_listing(s8("Off Axis Position:"), s8("[mm]"), var, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&bp->beamform_plane, bmv_store_generic, .ilimits = (iv2){.y = 1},
-	                          MV_INT|MV_CAUSES_COMPUTE, 1, 1};
-	draw_r = do_text_toggle_listing(s8("Beamform Plane:"), s8("XZ"), s8("YZ"), bp->beamform_plane,
-	                                bmv, ctx, draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&ctx->fsctx.db, bmv_store_generic, .flimits = (v2){.x = -120},
-	                          MV_FLOAT|MV_GEN_MIPMAPS, 1, 1};
-	draw_r = do_text_input_listing(s8("Dynamic Range:"), s8("[dB]"), bmv, ctx, arena,
+	var       = (Variable){0};
+	var.store = &bp->beamform_plane;
+	var.type  = VT_B32;
+	var.flags = V_CAUSES_COMPUTE;
+	draw_r = do_text_toggle_listing(s8("Beamform Plane:"), s8("XZ"), s8("YZ"), var, ui,
+	                                draw_r, mouse, hover_t + idx++);
+
+	var.store         = &ctx->fsctx.db;
+	var.type          = VT_F32;
+	var.f32_limits    = (v2){.x = -120};
+	var.flags         = V_GEN_MIPMAPS;
+	var.display_scale = 1;
+	var.scroll_scale  = 1;
+	draw_r = do_text_input_listing(s8("Dynamic Range:"), s8("[dB]"), var, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-	bmv = (BPModifiableValue){&ctx->fsctx.threshold, bmv_store_generic, .flimits = (v2){.y = 240},
-	                          MV_FLOAT|MV_GEN_MIPMAPS, 1, 1};
-	draw_r = do_text_input_listing(s8("Threshold:"), s8(""), bmv, ctx, arena,
+	var.store         = &ctx->fsctx.threshold;
+	var.type          = VT_F32;
+	var.f32_limits    = (v2){.y = 240};
+	var.flags         = V_GEN_MIPMAPS;
+	var.display_scale = 1;
+	var.scroll_scale  = 1;
+	draw_r = do_text_input_listing(s8("Threshold:"), s8(""), var, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
 	draw_r.pos.y  += 2 * LISTING_LINE_PAD;
@@ -599,8 +441,6 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 static void
 draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 {
-	uv2 ws = ctx->window_size;
-
 	static s8 labels[CS_LAST] = {
 		[CS_CUDA_DECODE]  = s8("CUDA Decoding:"),
 		[CS_CUDA_HILBERT] = s8("CUDA Hilbert:"),
@@ -612,7 +452,9 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 		[CS_UFORCES]      = s8("UFORCES:"),
 	};
 
+	BeamformerUI *ui     = ctx->ui;
 	ComputeShaderCtx *cs = &ctx->csctx;
+	uv2 ws = ctx->window_size;
 
 	Stream buf = stream_alloc(&arena, 64);
 	v2 pos     = {.x = 20, .y = ws.h - 10};
@@ -621,15 +463,15 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 	u32 stages = ctx->params->compute_stages_count;
 	for (u32 i = 0; i < stages; i++) {
 		u32 index  = ctx->params->compute_stages[i];
-		pos.y     -= measure_text(ctx->font, labels[index]).y;
-		draw_text(ctx->font, labels[index], pos, 0, colour_from_normalized(FG_COLOUR));
+		pos.y     -= measure_text(ui->font, labels[index]).y;
+		draw_text(ui->font, labels[index], pos, 0, colour_from_normalized(FG_COLOUR));
 
 		buf.widx = 0;
 		stream_append_f64_e(&buf, cs->last_frame_time[index]);
 		stream_append_s8(&buf, s8(" [s]"));
-		v2 txt_fs = measure_text(ctx->font, stream_to_s8(&buf));
+		v2 txt_fs = measure_text(ui->font, stream_to_s8(&buf));
 		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
-		draw_text(ctx->font, stream_to_s8(&buf), rpos, 0, colour_from_normalized(FG_COLOUR));
+		draw_text(ui->font, stream_to_s8(&buf), rpos, 0, colour_from_normalized(FG_COLOUR));
 
 		compute_time_sum += cs->last_frame_time[index];
 	}
@@ -637,15 +479,15 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 	static s8 totals[2] = {s8("Compute Total:"), s8("Volume Total:")};
 	f32 times[2]        = {compute_time_sum, ctx->partial_compute_ctx.runtime};
 	for (u32 i = 0; i < ARRAY_COUNT(totals); i++) {
-		pos.y    -= measure_text(ctx->font, totals[i]).y;
-		draw_text(ctx->font, totals[i], pos, 0, colour_from_normalized(FG_COLOUR));
+		pos.y    -= measure_text(ui->font, totals[i]).y;
+		draw_text(ui->font, totals[i], pos, 0, colour_from_normalized(FG_COLOUR));
 
 		buf.widx = 0;
 		stream_append_f64_e(&buf, times[i]);
 		stream_append_s8(&buf, s8(" [s]"));
-		v2 txt_fs = measure_text(ctx->font, stream_to_s8(&buf));
+		v2 txt_fs = measure_text(ui->font, stream_to_s8(&buf));
 		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
-		draw_text(ctx->font, stream_to_s8(&buf), rpos, 0, colour_from_normalized(FG_COLOUR));
+		draw_text(ui->font, stream_to_s8(&buf), rpos, 0, colour_from_normalized(FG_COLOUR));
 	}
 
 	{
@@ -655,8 +497,8 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 		static s8 txt[2]    = { s8("-_-"), s8("^_^") };
 		static v2 ts[2];
 		if (ts[0].x == 0) {
-			ts[0] = measure_text(ctx->font, txt[0]);
-			ts[1] = measure_text(ctx->font, txt[1]);
+			ts[0] = measure_text(ui->font, txt[0]);
+			ts[1] = measure_text(ui->font, txt[1]);
 		}
 
 		pos.x += 130 * dt_for_frame * scale.x;
@@ -674,14 +516,268 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 			scale.y *= -1.0;
 		}
 
-		draw_text(ctx->font, txt[txt_idx], pos, 0, RED);
+		draw_text(ui->font, txt[txt_idx], pos, 0, RED);
 	}
 }
 
 static void
-draw_ui(BeamformerCtx *ctx, Arena arena)
+ui_store_variable(Variable *var, void *new_value)
+{
+	/* TODO: special cases (eg. power of 2) */
+	switch (var->type) {
+	case VT_F32: {
+		f32  f32_val = *(f32 *)new_value;
+		f32 *f32_var = var->store;
+		*f32_var     = CLAMP(f32_val, var->f32_limits.x, var->f32_limits.y);
+	} break;
+	case VT_I32: {
+		i32  i32_val = *(i32 *)new_value;
+		i32 *i32_var = var->store;
+		*i32_var     = CLAMP(i32_val, var->i32_limits.x, var->i32_limits.y);
+	} break;
+	default: INVALID_CODE_PATH;
+	}
+}
+
+static void
+begin_text_input(InputState *is, Variable *var)
+{
+	ASSERT(var->store != NULL);
+
+	Stream s = {.cap = ARRAY_COUNT(is->buf), .data = is->buf};
+	stream_append_variable(&s, var);
+	ASSERT(!s.errors);
+	is->buf_len = s.widx;
+	is->cursor  = -1;
+}
+
+static void
+end_text_input(InputState *is, Variable *var)
+{
+	f32 value = parse_f64((s8){.len = is->buf_len, .data = is->buf}) / var->display_scale;
+	ui_store_variable(var, &value);
+}
+
+static void
+update_text_input(InputState *is)
+{
+	if (is->cursor == -1)
+		return;
+
+	is->cursor_blink_t += is->cursor_blink_scale * dt_for_frame;
+	if (is->cursor_blink_t >= 1) is->cursor_blink_scale = -1.5f;
+	if (is->cursor_blink_t <= 0) is->cursor_blink_scale =  1.5f;
+
+	/* NOTE: handle multiple input keys on a single frame */
+	i32 key = GetCharPressed();
+	while (key > 0) {
+		if (is->buf_len == ARRAY_COUNT(is->buf))
+			break;
+
+		b32 allow_key = ((key >= '0' && key <= '9') || (key == '.') ||
+		                 (key == '-' && is->cursor == 0));
+		if (allow_key) {
+			mem_move(is->buf + is->cursor,
+			         is->buf + is->cursor + 1,
+			         is->buf_len - is->cursor + 1);
+
+			is->buf[is->cursor++] = key;
+			is->buf_len++;
+		}
+		key = GetCharPressed();
+	}
+
+	if ((IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) && is->cursor > 0)
+		is->cursor--;
+
+	if ((IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) && is->cursor < is->buf_len)
+		is->cursor++;
+
+	if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && is->cursor > 0) {
+		is->cursor--;
+		mem_move(is->buf + is->cursor + 1,
+		         is->buf + is->cursor,
+		         is->buf_len - is->cursor);
+		is->buf_len--;
+	}
+
+	if ((IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) && is->cursor < is->buf_len) {
+		mem_move(is->buf + is->cursor + 1,
+		         is->buf + is->cursor,
+		         is->buf_len - is->cursor);
+		is->buf_len--;
+	}
+}
+
+static void
+ui_start_compute(BeamformerCtx *ctx)
+{
+	/* NOTE: we do not allow ui to start a work if no work was previously completed */
+	Arena a = {0};
+	beamform_work_queue_push(ctx, &a, BW_RECOMPUTE);
+	for (u32 i = 0; i < ARRAY_COUNT(ctx->beamform_frames); i++) {
+		BeamformFrame *frame = ctx->beamform_frames + i;
+		if (frame->dim.w && frame->textures[frame->dim.w - 1])
+			glClearTexImage(frame->textures[frame->dim.w - 1], 0, GL_RED, GL_FLOAT, 0);
+	}
+	ctx->params->upload = 1;
+}
+
+static void
+ui_gen_mipmaps(BeamformerCtx *ctx)
+{
+	if (ctx->fsctx.output.texture.id)
+		ctx->flags |= GEN_MIPMAPS;
+}
+
+static void
+ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll)
+{
+	InteractionState *is = &ui->interaction;
+	if (is->hot_state != IS_NONE) {
+		is->state = is->hot_state;
+	} else {
+		switch (is->hot.type) {
+		case VT_NULL:  is->state = IS_NOP; break;
+		case VT_B32:   is->state = IS_SET; break;
+		case VT_GROUP: is->state = IS_SET; break;
+		case VT_F32: {
+			if (scroll) {
+				is->state = IS_SCROLL;
+			} else {
+				is->state = IS_TEXT;
+				begin_text_input(&ui->text_input_state, &is->hot);
+			}
+		} break;
+		}
+	}
+	if (is->state != IS_NONE) {
+		is->active = is->hot;
+	}
+}
+
+static void
+ui_end_interact(BeamformerCtx *ctx, BeamformerUI *ui)
+{
+	InteractionState *is = &ui->interaction;
+	switch (is->state) {
+	case IS_NONE: break;
+	case IS_NOP:  break;
+	case IS_SET: {
+		switch (is->active.type) {
+		case VT_B32: {
+			b32 *val = is->active.store;
+			*val = !(*val);
+		} break;
+		}
+	} break;
+	case IS_DISPLAY:
+	case IS_SCROLL: {
+		f32 delta = GetMouseWheelMove() * is->active.scroll_scale;
+		switch (is->active.type) {
+		case VT_B32: {
+			b32 *old_val = is->active.store;
+			b32  new_val = !(*old_val);
+			ui_store_variable(&is->active, &new_val);
+		} break;
+		case VT_F32: {
+			f32 *old_val = is->active.store;
+			f32  new_val = *old_val + delta;
+			ui_store_variable(&is->active, &new_val);
+		} break;
+		case VT_I32: {
+			i32 *old_val = is->active.store;
+			i32  new_val = *old_val + delta;
+			ui_store_variable(&is->active, &new_val);
+		} break;
+		}
+	} break;
+	case IS_TEXT: end_text_input(&ui->text_input_state, &is->active); break;
+	}
+
+	if (is->active.flags & V_CAUSES_COMPUTE)
+		ui_start_compute(ctx);
+
+	if (is->active.flags & V_GEN_MIPMAPS)
+		ui_gen_mipmaps(ctx);
+
+	is->state  = IS_NONE;
+	is->active = NULL_VARIABLE;
+}
+
+static void
+ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
+{
+	BeamformerUI *ui     = ctx->ui;
+	InteractionState *is = &ui->interaction;
+	if (is->state != IS_NONE) {
+		if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+			ui_end_interact(ctx, ui);
+			ui_begin_interact(ui, input, 0);
+		}
+
+		if (GetMouseWheelMove()) {
+			ui_end_interact(ctx, ui);
+			ui_begin_interact(ui, input, 1);
+		}
+
+		if (IsKeyPressed(KEY_ENTER))
+			ui_end_interact(ctx, ui);
+
+	} else {
+		if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+			ui_begin_interact(ui, input, 0);
+		}
+		if (GetMouseWheelMove()) {
+			ui_begin_interact(ui, input, 1);
+		}
+	}
+
+	switch (is->state) {
+	case IS_DISPLAY: ui_end_interact(ctx, ui); break;
+	case IS_SCROLL:  ui_end_interact(ctx, ui); break;
+	case IS_SET:     ui_end_interact(ctx, ui); break;
+	case IS_TEXT:    update_text_input(&ui->text_input_state); break;
+	case IS_DRAG: {
+		if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+			ui_end_interact(ctx, ui);
+		} else {
+			switch (is->active.type) {
+			}
+		}
+	} break;
+	}
+
+	is->hot_state = IS_NONE;
+	is->hot       = NULL_VARIABLE;
+}
+
+static void
+ui_init(BeamformerCtx *ctx, Arena store)
+{
+	/* NOTE: store the ui at the base of the passed in arena and use the rest for
+	 * temporary allocations within the ui. If needed we can recall this function
+	 * to completely clear the ui state */
+	BeamformerUI *ui = ctx->ui = alloc(&store, typeof(*ctx->ui), 1);
+	ui->arena_for_frame = store;
+
+	/* TODO: build these into the binary */
+	ui->font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
+	ui->small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 22, 0, 0);
+}
+
+static void
+draw_ui(BeamformerCtx *ctx, BeamformerInput *input)
 {
 	BeamformerParameters *bp = &ctx->params->raw;
+	BeamformerUI *ui = ctx->ui;
+
+	end_temp_arena(ui->frame_temporary_arena);
+	ui->frame_temporary_arena = begin_temp_arena(&ui->arena_for_frame);
+
+	/* NOTE: process interactions first because the used interacted with
+	 * the ui that was presented last frame */
+	ui_interact(ctx, input);
 
 	BeginDrawing();
 		ClearBackground(colour_from_normalized(BG_COLOUR));
@@ -702,10 +798,10 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 		rr.pos.x  = lr.pos.x  + lr.size.w;
 
 		if (output_dim.x > 1e-6 && output_dim.y > 1e-6) {
-			Stream buf = stream_alloc(&arena, 64);
+			Stream buf = stream_alloc(&ui->arena_for_frame, 64);
 			stream_append_f64(&buf, -188.8f, 10);
 			stream_append_s8(&buf, s8(" mm"));
-			v2 txt_s = measure_text(ctx->small_font, stream_to_s8(&buf));
+			v2 txt_s = measure_text(ui->small_font, stream_to_s8(&buf));
 
 			rr.pos.x  += 0.02 * rr.size.w;
 			rr.pos.y  += 0.02 * rr.size.h;
@@ -734,11 +830,15 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 			NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
 			DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
 
-			/* NOTE: check mouse wheel for adjusting dynamic range of image */
 			if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
-				f32 delta = GetMouseWheelMove();
-				ctx->fsctx.db = CLAMP(ctx->fsctx.db + delta, -120, 0);
-				if (delta) ctx->flags |= GEN_MIPMAPS;
+				InteractionState *is  = &ui->interaction;
+				is->hot_state         = IS_DISPLAY;
+				is->hot.store         = &ctx->fsctx.db;
+				is->hot.type          = VT_F32;
+				is->hot.f32_limits    = (v2){.x = -120};
+				is->hot.flags         = V_GEN_MIPMAPS;
+				is->hot.display_scale = 1;
+				is->hot.scroll_scale  = 1;
 			}
 
 			static f32 txt_colour_t[2];
@@ -762,6 +862,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 
 				/* TODO: don't do this nonsense; this code will need to get
 				 * split into a seperate function */
+				/* TODO: pass this through the interaction system */
 				u32 coord_idx = i == 0? 0 : 2;
 				if (hover_text(mouse, tick_rect, txt_colour_t + i, 1)) {
 					f32 scale[2]   = {0.5e-3, 1e-3};
@@ -787,7 +888,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 					if (i == 0 && mm > 0) stream_append_byte(&buf, '+');
 					stream_append_f64(&buf, mm, 10);
 					stream_append_s8(&buf, s8(" mm"));
-					draw_text(ctx->small_font, stream_to_s8(&buf), txt_pos,
+					draw_text(ui->small_font, stream_to_s8(&buf), txt_pos,
 					          rot[i], txt_colour);
 					start_pos.E[i] += inc;
 					end_pos.E[i]   += inc;
@@ -797,7 +898,7 @@ draw_ui(BeamformerCtx *ctx, Arena arena)
 			}
 		}
 
-		draw_settings_ui(ctx, arena, lr, mouse);
-		draw_debug_overlay(ctx, arena, lr);
+		draw_settings_ui(ctx, ui->arena_for_frame, lr, mouse);
+		draw_debug_overlay(ctx, ui->arena_for_frame, lr);
 	EndDrawing();
 }

@@ -266,10 +266,6 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 	dump_gl_params(&ctx->gl, temp_memory);
 	validate_gl_requirements(&ctx->gl);
 
-	/* TODO: build these into the binary */
-	ctx->font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
-	ctx->small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 22, 0, 0);
-
 	ctx->fsctx.db        = -50.0f;
 	ctx->fsctx.threshold =  40.0f;
 

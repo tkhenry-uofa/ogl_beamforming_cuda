@@ -35,6 +35,8 @@
 	#define ASSERT(c)
 #endif
 
+#define INVALID_CODE_PATH ASSERT(0)
+
 #define static_assert _Static_assert
 
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof(*a))
@@ -105,7 +107,7 @@ typedef union {
 
 typedef union {
 	struct { u32 x, y, z, w; };
-	uv3 xyz;
+	struct { uv3 xyz; u32 _w; };
 	u32 E[4];
 } uv4;
 
@@ -161,6 +163,41 @@ typedef struct {
 	b32   errors;
 } Stream;
 
+enum variable_type {
+	VT_NULL,
+	VT_B32,
+	VT_F32,
+	VT_I32,
+	VT_GROUP,
+};
+
+enum variable_group_type {
+	VG_LISTING,
+	VG_V2,
+	VG_V4,
+	VG_UV4,
+};
+
+typedef struct {
+	void *store;
+	union {
+		v2  f32_limits;
+		iv2 i32_limits;
+	};
+	f32 display_scale;
+	f32 scroll_scale;
+	u32 type;
+	u32 flags;
+} Variable;
+
+typedef struct {
+	Variable *first;
+	Variable *last;
+	u32 type;
+} VariableGroup;
+
+#define NULL_VARIABLE (Variable){.store = 0, .type = VT_NULL}
+
 #define PLATFORM_ALLOC_ARENA_FN(name) Arena name(Arena old, size capacity)
 typedef PLATFORM_ALLOC_ARENA_FN(platform_alloc_arena_fn);
 
@@ -194,8 +231,12 @@ typedef struct { PLATFORM_FNS } Platform;
 #undef X
 
 typedef struct {
+	b32  executable_reloaded;
 	b32  pipe_data_available;
 	iptr pipe_handle;
+
+	v2 mouse;
+	v2 last_mouse;
 } BeamformerInput;
 
 #include "util.c"

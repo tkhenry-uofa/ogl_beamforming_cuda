@@ -38,38 +38,50 @@ enum gl_vendor_ids {
 	GL_VENDOR_NVIDIA,
 };
 
-enum modifiable_value_flags {
-	MV_FLOAT          = 1 << 0,
-	MV_INT            = 1 << 1,
-	MV_CAUSES_COMPUTE = 1 << 29,
-	MV_GEN_MIPMAPS    = 1 << 30,
-};
-
-typedef struct BeamformerCtx BeamformerCtx;
-typedef struct BPModifiableValue BPModifiableValue;
-
-#define BMV_STORE_FN(name) void name(BeamformerCtx *ctx, BPModifiableValue *bmv, f32 new_val, b32 from_scroll)
-typedef BMV_STORE_FN(bmv_store_fn);
-BMV_STORE_FN(bmv_store_fn_stub) {}
-
-typedef struct BPModifiableValue {
-	void         *value;
-	bmv_store_fn *store_fn;
-	union        {v2 flimits; iv2 ilimits;};
-	u32          flags;
-	f32          scroll_scale;
-	f32          display_scale;
-} BPModifiableValue;
-
 typedef struct {
 	u8   buf[64];
-	BPModifiableValue store;
 	i32  buf_len;
 	i32  cursor;
-	f32  cursor_hover_p;
 	f32  cursor_blink_t;
-	f32  cursor_blink_target;
+	f32  cursor_blink_scale;
 } InputState;
+
+enum variable_flags {
+	V_CAUSES_COMPUTE = 1 << 29,
+	V_GEN_MIPMAPS    = 1 << 30,
+};
+
+enum interaction_states {
+	IS_NONE,
+	IS_NOP,
+	IS_SET,
+	IS_DRAG,
+	IS_SCROLL,
+	IS_TEXT,
+
+	IS_DISPLAY,
+	IS_SCALE_BAR,
+};
+
+typedef struct {
+	Variable hot;
+	Variable next_hot;
+	Variable active;
+	u32      hot_state;
+	u32      state;
+	b32      var_changed_last_frame;
+} InteractionState;
+
+typedef struct {
+	TempArena frame_temporary_arena;
+	Arena     arena_for_frame;
+
+	Font font;
+	Font small_font;
+
+	InteractionState interaction;
+	InputState       text_input_state;
+} BeamformerUI;
 
 #define MAX_FRAMES_IN_FLIGHT 3
 
@@ -246,11 +258,8 @@ typedef struct BeamformerCtx {
 	uv2 window_size;
 	u32 flags;
 
-	/* UI Theming */
-	Font font;
-	Font small_font;
-
-	InputState is;
+	Arena ui_backing_store;
+	BeamformerUI *ui;
 
 	BeamformFrame beamform_frames[MAX_BEAMFORMED_SAVED_FRAMES];
 	u32 displayed_frame_index;
