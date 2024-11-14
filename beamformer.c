@@ -697,8 +697,10 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 
 	draw_ui(ctx, *arena);
 
-	if (IsKeyPressed(KEY_R))
+	if (IsKeyPressed(KEY_R)) {
 		ctx->flags |= RELOAD_SHADERS;
+		ui_start_compute(ctx);
+	}
 	if (WindowShouldClose())
 		ctx->flags |= SHOULD_EXIT;
 }
