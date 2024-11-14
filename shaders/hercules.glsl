@@ -84,7 +84,7 @@ void main()
 	float apod_arg = f_num * 0.5 * radians(360) / abs(image_point.z);
 
 	/* NOTE: lerp along a line from one edge of the xdc to the other in the imaging plane */
-	vec3 delta      = edge1 / float(dec_data_dim.y);
+	vec3 delta      = vec3(edge1.x, edge2.y, 0) / float(dec_data_dim.y);
 	vec3 xdc_start  = xdc_origin[u_xdc_index].xyz;
 	xdc_start      += edge2 / 2;
 
