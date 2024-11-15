@@ -9,7 +9,7 @@ layout(rg32f, binding = 0) writeonly uniform image3D u_out_data_tex;
 
 layout(location = 2) uniform int   u_volume_export_pass;
 layout(location = 3) uniform ivec3 u_volume_export_dim_offset;
-layout(location = 4) uniform mat3  u_xdc_transform;
+layout(location = 4) uniform mat4  u_xdc_transform;
 layout(location = 5) uniform int   u_xdc_index;
 
 #define C_SPLINE 0.5
@@ -50,14 +50,14 @@ vec3 calc_image_point(vec3 voxel)
 {
 	ivec3 out_data_dim = imageSize(u_out_data_tex);
 	vec4 output_size   = abs(output_max_coord - output_min_coord);
-	vec3 image_point   = output_min_coord.xyz + voxel * output_size.xyz / out_data_dim.xyz;
+	vec4 image_point   = vec4(output_min_coord.xyz + voxel * output_size.xyz / out_data_dim, 1);
 
 	/* TODO: fix the math so that the image plane can be aritrary */
 	image_point.y = 0;
 
 	/* NOTE: move the image point into xdc space */
 	image_point = u_xdc_transform * image_point;
-	return image_point;
+	return image_point.xyz;
 }
 
 void main()
@@ -69,6 +69,10 @@ void main()
 	vec3 edge1         = xdc_corner1[u_xdc_index].xyz - xdc_origin[u_xdc_index].xyz;
 	vec3 edge2         = xdc_corner2[u_xdc_index].xyz - xdc_origin[u_xdc_index].xyz;
 	vec3 image_point   = calc_image_point(voxel);
+	vec3 delta;
+	/* TODO: there should be a smarter way of detecting this */
+	if (edge2.x != 0) delta = vec3(edge2.x, 0, 0) / float(dec_data_dim.y);
+	else              delta = vec3(edge1.x, 0, 0) / float(dec_data_dim.y);
 
 	/* NOTE: used for constant F# dynamic receive apodization. This is implemented as:
 	 *
@@ -80,13 +84,6 @@ void main()
 	float f_num    = 0.5;
 	float apod_arg = f_num * 0.5 * radians(360) / abs(image_point.z);
 
-	/* NOTE: lerp along a line from one edge of the xdc to the other in the imaging plane */
-	vec3 delta      = edge1 / float(dec_data_dim.y);
-	vec3 xdc_start  = xdc_origin[u_xdc_index].xyz;
-	xdc_start      += edge2 / 2;
-
-	vec3 starting_point = image_point - xdc_start;
-
 	vec2 sum   = vec2(0);
 	/* NOTE: skip over channels corresponding to other arrays */
 	uint ridx  = u_xdc_index * (dec_data_dim.y / xdc_count) * dec_data_dim.x * dec_data_dim.z;
@@ -97,9 +94,9 @@ void main()
 		uint base_idx = (i - uforces) / 4;
 		uint sub_idx  = (i - uforces) % 4;
 
-		vec3  focal_point   = uforces_channels[base_idx][sub_idx] * delta + xdc_start;
+		vec3  focal_point   = uforces_channels[base_idx][sub_idx] * delta;
 		float transmit_dist = distance(image_point, focal_point);
-		vec3 rdist = starting_point;
+		vec3 rdist = image_point;
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float dist = transmit_dist + length(rdist);
 			float time = dist / speed_of_sound + time_offset;

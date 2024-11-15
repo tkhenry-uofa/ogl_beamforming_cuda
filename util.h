@@ -134,10 +134,10 @@ typedef union {
 } v4;
 
 typedef union {
-	struct { v3 x, y, z; };
-	v3  c[3];
-	f32 E[9];
-} m3;
+	struct { v4 x, y, z, w; };
+	v4  c[4];
+	f32 E[16];
+} m4;
 
 typedef union {
 	struct { v2 pos, size; };
