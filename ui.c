@@ -308,7 +308,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	draw_r = do_value_listing(s8("Sampling Frequency:"), s8("[MHz]"),
 	                          bp->sampling_frequency * 1e-6, ui->font, arena, draw_r);
 
-	static f32 hover_t[14];
+	static f32 hover_t[15];
 	i32 idx = 0;
 
 	Variable var;
@@ -376,13 +376,21 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	draw_r = do_text_input_listing(s8("Off Axis Position:"), s8("[mm]"), var, ctx, arena,
 	                               draw_r, mouse, hover_t + idx++);
 
-
 	var       = (Variable){0};
 	var.store = &bp->beamform_plane;
 	var.type  = VT_B32;
 	var.flags = V_CAUSES_COMPUTE;
 	draw_r = do_text_toggle_listing(s8("Beamform Plane:"), s8("XZ"), s8("YZ"), var, ui,
 	                                draw_r, mouse, hover_t + idx++);
+
+	var.store         = &bp->f_number;
+	var.type          = VT_F32;
+	var.f32_limits    = (v2){.y = 1e3};
+	var.flags         = V_CAUSES_COMPUTE;
+	var.display_scale = 1;
+	var.scroll_scale  = 0.1;
+	draw_r = do_text_input_listing(s8("F#:"), s8(""), var, ctx, arena,
+	                               draw_r, mouse, hover_t + idx++);
 
 	var.store         = &ctx->fsctx.db;
 	var.type          = VT_F32;

@@ -81,8 +81,7 @@ void main()
 	 *                  \        |z_e - z_i|/
 	 *
 	 * where x,z_e are transducer element positions and x,z_i are image positions. */
-	float f_num    = 0.5;
-	float apod_arg = f_num * 0.5 * radians(360) / abs(image_point.z);
+	float apod_arg = f_number * 0.5 * radians(360) / abs(image_point.z);
 
 	vec2 sum   = vec2(0);
 	/* NOTE: skip over channels corresponding to other arrays */

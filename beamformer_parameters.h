@@ -35,7 +35,7 @@ typedef struct {
 	f32 time_offset;            /* pulse length correction time [s]   */
 	f32 off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */
 	i32 beamform_plane;         /* Plane to Beamform in 2D HERCULES */
-	f32 _pad[1];
+	f32 f_number;               /* F# (set to 0 to disable) */
 } BeamformerParameters;
 
 /* NOTE: garbage to get the prepocessor to properly stringize the value of a macro */
@@ -65,4 +65,5 @@ layout(std140, binding = 0) uniform parameters {\n\
 	float time_offset;            /* pulse length correction time [s]   */\n\
 	float off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */\n\
 	int   beamform_plane;         /* Plane to Beamform in 2D HERCULES */\n\
+	float f_number;               /* F# (set to 0 to disable) */\n\
 };\n\n"
