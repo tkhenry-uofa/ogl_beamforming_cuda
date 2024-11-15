@@ -92,6 +92,16 @@ end_temp_arena(TempArena ta)
 }
 
 static Stream
+arena_stream(Arena *a)
+{
+	Stream result = {0};
+	result.data   = a->beg;
+	result.cap    = a->end - a->beg;
+	a->beg = a->end;
+	return result;
+}
+
+static Stream
 stream_alloc(Arena *a, size cap)
 {
 	Stream result = {.cap = cap};

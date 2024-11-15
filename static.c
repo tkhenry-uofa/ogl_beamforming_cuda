@@ -115,7 +115,7 @@ dump_gl_params(GLParams *gl, Arena a)
 {
 	(void)gl; (void)a;
 #ifdef _DEBUG
-	Stream s = stream_alloc(&a, 1 * MEGABYTE);
+	Stream s = arena_stream(&a);
 	stream_append_s8(&s, s8("---- GL Parameters ----\n"));
 	switch (gl->vendor_id) {
 	case GL_VENDOR_AMD:    stream_append_s8(&s, s8("Vendor: AMD\n"));    break;

@@ -120,12 +120,12 @@ hover_text(v2 mouse, Rect text_rect, f32 *hover_t, b32 can_advance)
 #define LISTING_LINE_PAD           6.0f
 
 static Rect
-do_value_listing(s8 prefix, s8 suffix, f32 value, Font font, Arena a, Rect r)
+do_value_listing(s8 prefix, s8 suffix, Arena a, f32 value, Font font, Rect r)
 {
 	v2 suffix_s = measure_text(font, suffix);
 	v2 suffix_p = {.x = r.pos.x + r.size.w - suffix_s.w, .y = r.pos.y};
 
-	Stream buf = stream_alloc(&a, 64);
+	Stream buf = arena_stream(&a);
 	stream_append_f64(&buf, value, 100);
 	v2 txt_p = {.x = r.pos.x + LISTING_LEFT_COLUMN_WIDTH, .y = r.pos.y};
 
@@ -139,14 +139,14 @@ do_value_listing(s8 prefix, s8 suffix, f32 value, Font font, Arena a, Rect r)
 }
 
 static Rect
-do_text_input_listing(s8 prefix, s8 suffix, Variable var, BeamformerCtx *ctx, Arena a,
-                      Rect r, v2 mouse, f32 *hover_t)
+do_text_input_listing(s8 prefix, s8 suffix, Variable var, BeamformerUI *ui, Rect r,
+                      v2 mouse, f32 *hover_t)
 {
-	BeamformerUI *ui = ctx->ui;
 	InputState   *is = &ui->text_input_state;
 	b32 text_input_active = ui->interaction.active.store == var.store;
 
-	Stream buf = stream_alloc(&a, 64);
+	Arena  arena = ui->arena_for_frame;
+	Stream buf   = arena_stream(&arena);
 	v2 txt_s;
 
 	if (text_input_active) {
@@ -212,8 +212,8 @@ do_text_input_listing(s8 prefix, s8 suffix, Variable var, BeamformerCtx *ctx, Ar
 		v2 sts = measure_text(ui->font, buf);
 		f32 cursor_x = pos.x + sts.x;
 		f32 cursor_width;
-		if (is->cursor == is->buf_len) cursor_width = MIN(ctx->window_size.w * 0.03, 20);
-		else                           cursor_width = MIN(ctx->window_size.w * 0.01, 6);
+		if (is->cursor == is->buf_len) cursor_width = 20;
+		else                           cursor_width = 4;
 		Rect cursor_r = {
 			.pos  = {.x = cursor_x,     .y = pos.y},
 			.size = {.w = cursor_width, .h = ts.h},
@@ -291,7 +291,7 @@ do_text_button(BeamformerUI *ui, s8 text, Rect r, v2 mouse, f32 *hover_t)
 }
 
 static void
-draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
+draw_settings_ui(BeamformerCtx *ctx, Rect r, v2 mouse)
 {
 	BeamformerUI *ui         = ctx->ui;
 	BeamformerParameters *bp = &ctx->params->raw;
@@ -305,8 +305,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	draw_r.size.x -= 20;
 	draw_r.size.y -= 20;
 
-	draw_r = do_value_listing(s8("Sampling Frequency:"), s8("[MHz]"),
-	                          bp->sampling_frequency * 1e-6, ui->font, arena, draw_r);
+	draw_r = do_value_listing(s8("Sampling Frequency:"), s8("[MHz]"), ui->arena_for_frame,
+	                          bp->sampling_frequency * 1e-6, ui->font, draw_r);
 
 	static f32 hover_t[15];
 	i32 idx = 0;
@@ -319,8 +319,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	var.flags         = V_CAUSES_COMPUTE;
 	var.display_scale = 1e-6;
 	var.scroll_scale  = 1e5;
-	draw_r = do_text_input_listing(s8("Center Frequency:"), s8("[MHz]"), var, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
+	draw_r = do_text_input_listing(s8("Center Frequency:"), s8("[MHz]"), var, ui, draw_r,
+	                               mouse, hover_t + idx++);
 
 	var.store         = &bp->speed_of_sound;
 	var.type          = VT_F32;
@@ -328,8 +328,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	var.flags         = V_CAUSES_COMPUTE;
 	var.display_scale = 1;
 	var.scroll_scale  = 10;
-	draw_r = do_text_input_listing(s8("Speed of Sound:"), s8("[m/s]"), var, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
+	draw_r = do_text_input_listing(s8("Speed of Sound:"), s8("[m/s]"), var, ui, draw_r,
+	                               mouse, hover_t + idx++);
 
 	var.store         = &bp->output_min_coordinate.x;
 	var.type          = VT_F32;
@@ -337,8 +337,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	var.flags         = V_CAUSES_COMPUTE;
 	var.display_scale = 1e3;
 	var.scroll_scale  = 0.5e-3;
-	draw_r = do_text_input_listing(s8("Min Lateral Point:"), s8("[mm]"), var, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
+	draw_r = do_text_input_listing(s8("Min Lateral Point:"), s8("[mm]"), var, ui, draw_r,
+	                               mouse, hover_t + idx++);
 
 	var.store         = &bp->output_max_coordinate.x;
 	var.type          = VT_F32;
@@ -346,8 +346,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	var.flags         = V_CAUSES_COMPUTE;
 	var.display_scale = 1e3;
 	var.scroll_scale  = 0.5e-3;
-	draw_r = do_text_input_listing(s8("Max Lateral Point:"), s8("[mm]"), var, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
+	draw_r = do_text_input_listing(s8("Max Lateral Point:"), s8("[mm]"), var, ui, draw_r,
+	                               mouse, hover_t + idx++);
 
 	var.store         = &bp->output_min_coordinate.z;
 	var.type          = VT_F32;
@@ -355,8 +355,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	var.flags         = V_CAUSES_COMPUTE;
 	var.display_scale = 1e3;
 	var.scroll_scale  = 0.5e-3;
-	draw_r = do_text_input_listing(s8("Min Axial Point:"), s8("[mm]"), var, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
+	draw_r = do_text_input_listing(s8("Min Axial Point:"), s8("[mm]"), var, ui, draw_r,
+	                               mouse, hover_t + idx++);
 
 	var.store         = &bp->output_max_coordinate.z;
 	var.type          = VT_F32;
@@ -364,8 +364,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	var.flags         = V_CAUSES_COMPUTE;
 	var.display_scale = 1e3;
 	var.scroll_scale  = 0.5e-3;
-	draw_r = do_text_input_listing(s8("Max Axial Point:"), s8("[mm]"), var, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
+	draw_r = do_text_input_listing(s8("Max Axial Point:"), s8("[mm]"), var, ui, draw_r,
+	                               mouse, hover_t + idx++);
 
 	var.store         = &bp->off_axis_pos;
 	var.type          = VT_F32;
@@ -373,8 +373,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	var.flags         = V_CAUSES_COMPUTE;
 	var.display_scale = 1e3;
 	var.scroll_scale  = 0.5e-3;
-	draw_r = do_text_input_listing(s8("Off Axis Position:"), s8("[mm]"), var, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
+	draw_r = do_text_input_listing(s8("Off Axis Position:"), s8("[mm]"), var, ui, draw_r,
+	                               mouse, hover_t + idx++);
 
 	var       = (Variable){0};
 	var.store = &bp->beamform_plane;
@@ -389,8 +389,7 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	var.flags         = V_CAUSES_COMPUTE;
 	var.display_scale = 1;
 	var.scroll_scale  = 0.1;
-	draw_r = do_text_input_listing(s8("F#:"), s8(""), var, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
+	draw_r = do_text_input_listing(s8("F#:"), s8(""), var, ui, draw_r, mouse, hover_t + idx++);
 
 	var.store         = &ctx->fsctx.db;
 	var.type          = VT_F32;
@@ -398,8 +397,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	var.flags         = V_GEN_MIPMAPS;
 	var.display_scale = 1;
 	var.scroll_scale  = 1;
-	draw_r = do_text_input_listing(s8("Dynamic Range:"), s8("[dB]"), var, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
+	draw_r = do_text_input_listing(s8("Dynamic Range:"), s8("[dB]"), var, ui, draw_r,
+	                               mouse, hover_t + idx++);
 
 	var.store         = &ctx->fsctx.threshold;
 	var.type          = VT_F32;
@@ -407,8 +406,8 @@ draw_settings_ui(BeamformerCtx *ctx, Arena arena, Rect r, v2 mouse)
 	var.flags         = V_GEN_MIPMAPS;
 	var.display_scale = 1;
 	var.scroll_scale  = 1;
-	draw_r = do_text_input_listing(s8("Threshold:"), s8(""), var, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
+	draw_r = do_text_input_listing(s8("Threshold:"), s8(""), var, ui, draw_r,
+	                               mouse, hover_t + idx++);
 
 	draw_r.pos.y  += 2 * LISTING_LINE_PAD;
 	draw_r.size.y -= 2 * LISTING_LINE_PAD;
@@ -906,7 +905,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input)
 			}
 		}
 
-		draw_settings_ui(ctx, ui->arena_for_frame, lr, mouse);
+		draw_settings_ui(ctx, lr, mouse);
 		draw_debug_overlay(ctx, ui->arena_for_frame, lr);
 	EndDrawing();
 }
