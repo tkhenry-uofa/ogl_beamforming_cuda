@@ -220,13 +220,14 @@ static void
 stream_append_variable(Stream *s, Variable *var)
 {
 	switch (var->type) {
-	case VT_F32:
+	case VT_F32: {
 		f32 *f32_val = var->store;
 		stream_append_f64(s, *f32_val * var->display_scale, 100);
-		break;
-	case VT_I32:
+	} break;
+	case VT_I32: {
 		i32 *i32_val = var->store;
 		stream_append_i64(s, *i32_val * var->display_scale);
+	} break;
 	default: INVALID_CODE_PATH;
 	}
 }
