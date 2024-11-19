@@ -122,7 +122,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		ctx->cuda_lib.register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
 		                                    cs->raw_data_ssbo);
 		ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E,
-		                                      bp->channel_mapping, bp->channel_offset > 0);
+		                                      bp->channel_mapping, bp->channel_offset);
 		break;
 	}
 
