@@ -418,8 +418,7 @@ do_compute_shader(BeamformerCtx *ctx, BeamformFrame *frame, u32 raw_data_index,
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
 	} break;
-	case CS_HERCULES:
-	case CS_UFORCES: {
+	case CS_DAS: {
 		u32 rf_ssbo      = csctx->rf_data_ssbos[input_ssbo_idx];
 		iv3 dispatch_dim = {.x = frame->dim.x, .y = frame->dim.y, .z = frame->dim.z};
 		do_beamform_shader(csctx, &ctx->params->raw, frame, rf_ssbo, dispatch_dim, (iv3){0}, 0);
@@ -483,9 +482,7 @@ do_beamform_work(BeamformerCtx *ctx, Arena *a)
 				u32 stage_count = ctx->params->compute_stages_count;
 				enum compute_shaders *stages = ctx->params->compute_stages;
 				for (u32 i = 0; i < stage_count; i++) {
-					if (stages[i] == CS_UFORCES || stages[i] == CS_HERCULES) {
-						/* TODO: this is not a proper solution if we have
-						 * more beamforming shaders */
+					if (stages[i] == CS_DAS) {
 						ctx->partial_compute_ctx.shader = stages[i];
 						break;
 					}

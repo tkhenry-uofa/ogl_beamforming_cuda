@@ -125,13 +125,13 @@ typedef struct {
 	c8                   export_pipe_name[1024];
 } BeamformerParametersFull;
 
-#define CS_UNIFORMS                              \
-	X(CS_HERCULES, volume_export_dim_offset) \
-	X(CS_HERCULES, volume_export_pass)       \
-	X(CS_MIN_MAX,  mips_level)               \
-	X(CS_SUM,      sum_prescale)             \
-	X(CS_UFORCES,  xdc_index)                \
-	X(CS_UFORCES,  xdc_transform)
+#define CS_UNIFORMS                             \
+	X(CS_DAS,     volume_export_dim_offset) \
+	X(CS_DAS,     volume_export_pass)       \
+	X(CS_DAS,     xdc_index)                \
+	X(CS_DAS,     xdc_transform)            \
+	X(CS_MIN_MAX, mips_level)               \
+	X(CS_SUM,     sum_prescale)
 
 typedef struct {
 	u32 programs[CS_LAST];

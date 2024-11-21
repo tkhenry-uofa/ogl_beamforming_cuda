@@ -2,14 +2,16 @@
 enum compute_shaders {
 	CS_CUDA_DECODE           = 0,
 	CS_CUDA_HILBERT          = 1,
-	CS_DEMOD                 = 2,
-	CS_HADAMARD              = 3,
-	CS_HERCULES              = 4,
+	CS_DAS                   = 2,
+	CS_DEMOD                 = 3,
+	CS_HADAMARD              = 4,
 	CS_MIN_MAX               = 5,
 	CS_SUM                   = 6,
-	CS_UFORCES               = 7,
 	CS_LAST
 };
+
+#define DAS_ID_UFORCES  0
+#define DAS_ID_HERCULES 1
 
 #define MAX_BEAMFORMED_SAVED_FRAMES 16
 #define MAX_MULTI_XDC_COUNT         4
@@ -36,6 +38,8 @@ typedef struct {
 	f32 off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */
 	i32 beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 	f32 f_number;               /* F# (set to 0 to disable) */
+	u32 das_shader_id;
+	f32 _pad[3];
 } BeamformerParameters;
 
 /* NOTE: garbage to get the prepocessor to properly stringize the value of a macro */
@@ -66,4 +70,9 @@ layout(std140, binding = 0) uniform parameters {\n\
 	float off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */\n\
 	int   beamform_plane;         /* Plane to Beamform in 2D HERCULES */\n\
 	float f_number;               /* F# (set to 0 to disable) */\n\
-};\n\n"
+	uint  das_shader_id;\n\
+};\n\
+\n\
+#define DAS_ID_UFORCES  " str(DAS_ID_UFORCES) "\n\
+#define DAS_ID_HERCULES " str(DAS_ID_HERCULES) "\n\
+\n"

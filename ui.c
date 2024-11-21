@@ -451,12 +451,11 @@ draw_debug_overlay(BeamformerCtx *ctx, Arena arena, Rect r)
 	static s8 labels[CS_LAST] = {
 		[CS_CUDA_DECODE]  = s8("CUDA Decoding:"),
 		[CS_CUDA_HILBERT] = s8("CUDA Hilbert:"),
+		[CS_DAS]          = s8("DAS:"),
 		[CS_DEMOD]        = s8("Demodulation:"),
 		[CS_HADAMARD]     = s8("Decoding:"),
-		[CS_HERCULES]     = s8("HERCULES:"),
 		[CS_MIN_MAX]      = s8("Min/Max:"),
 		[CS_SUM]          = s8("Sum:"),
-		[CS_UFORCES]      = s8("UFORCES:"),
 	};
 
 	BeamformerUI *ui     = ctx->ui;

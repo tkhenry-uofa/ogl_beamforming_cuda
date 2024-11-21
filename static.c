@@ -5,11 +5,10 @@ static struct {
 	b32 needs_header;
 } compute_shaders[CS_LAST] = {
 	[CS_HADAMARD] = {s8("Hadamard"), s8("shaders/hadamard.glsl"), 1},
-	[CS_HERCULES] = {s8("HERCULES"), s8("shaders/hercules.glsl"), 1},
+	[CS_DAS]      = {s8("DAS"),      s8("shaders/das.glsl"),      1},
 	[CS_DEMOD]    = {s8("Demod"),    s8("shaders/demod.glsl"),    1},
 	[CS_MIN_MAX]  = {s8("Min/Max"),  s8("shaders/min_max.glsl"),  0},
 	[CS_SUM]      = {s8("Sum"),      s8("shaders/sum.glsl"),      0},
-	[CS_UFORCES]  = {s8("UFORCES"),  s8("shaders/uforces.glsl"),  1},
 };
 
 #ifndef _DEBUG
@@ -275,10 +274,9 @@ setup_beamformer(BeamformerCtx *ctx, Arena temp_memory)
 
 	/* NOTE: default compute shader pipeline */
 	ctx->params->compute_stages[0]    = CS_HADAMARD;
-	ctx->params->compute_stages[1]    = CS_DEMOD;
-	ctx->params->compute_stages[2]    = CS_UFORCES;
-	ctx->params->compute_stages[3]    = CS_MIN_MAX;
-	ctx->params->compute_stages_count = 4;
+	ctx->params->compute_stages[1]    = CS_DAS;
+	ctx->params->compute_stages[2]    = CS_MIN_MAX;
+	ctx->params->compute_stages_count = 3;
 
 	/* NOTE: make sure function pointers are valid even if we are not using the cuda lib */
 	validate_cuda_lib(&ctx->cuda_lib);

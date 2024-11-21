@@ -212,12 +212,11 @@ set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 		switch (stages[i]) {
 		case CS_CUDA_DECODE:
 		case CS_CUDA_HILBERT:
+		case CS_DAS:
 		case CS_DEMOD:
 		case CS_HADAMARD:
-		case CS_HERCULES:
 		case CS_MIN_MAX:
 		case CS_SUM:
-		case CS_UFORCES:
 			g_bp->compute_stages[i] = stages[i];
 			break;
 		default:
