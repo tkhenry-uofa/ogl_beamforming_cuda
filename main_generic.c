@@ -62,6 +62,8 @@ main(void)
 			reload_shaders(&ctx, temp_memory);
 		}
 
+		input.last_mouse = input.mouse;
+		input.mouse.rl   = GetMousePosition();
 		input.pipe_data_available = os_poll_pipe(data_pipe);
 
 		beamformer_frame_step(&ctx, &temp_memory, &input);

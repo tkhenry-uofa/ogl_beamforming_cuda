@@ -143,7 +143,8 @@ do_text_input_listing(s8 prefix, s8 suffix, Variable var, BeamformerUI *ui, Rect
                       v2 mouse, f32 *hover_t)
 {
 	InputState   *is = &ui->text_input_state;
-	b32 text_input_active = ui->interaction.active.store == var.store;
+	b32 text_input_active = (ui->interaction.state == IS_TEXT) &&
+	                        (var.store == ui->interaction.active.store);
 
 	Arena  arena = ui->arena_for_frame;
 	Stream buf   = arena_stream(&arena);
@@ -678,6 +679,8 @@ ui_end_interact(BeamformerCtx *ctx, BeamformerUI *ui)
 		}
 	} break;
 	case IS_DISPLAY:
+		is->last_mouse_click_p = (v2){0};
+		/* FALLTHROUGH */
 	case IS_SCROLL: {
 		f32 delta = GetMouseWheelMove() * is->active.scroll_scale;
 		switch (is->active.type) {
@@ -714,33 +717,29 @@ ui_end_interact(BeamformerCtx *ctx, BeamformerUI *ui)
 static void
 ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
 {
-	BeamformerUI *ui     = ctx->ui;
-	InteractionState *is = &ui->interaction;
-	if (is->state != IS_NONE) {
-		if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+	BeamformerUI *ui       = ctx->ui;
+	InteractionState *is   = &ui->interaction;
+	b32 mouse_left_pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+	b32 wheel_moved        = GetMouseWheelMove();
+	if (mouse_left_pressed || wheel_moved) {
+		if (is->state != IS_NONE)
 			ui_end_interact(ctx, ui);
-			ui_begin_interact(ui, input, 0);
-		}
-
-		if (GetMouseWheelMove()) {
-			ui_end_interact(ctx, ui);
-			ui_begin_interact(ui, input, 1);
-		}
-
-		if (IsKeyPressed(KEY_ENTER))
-			ui_end_interact(ctx, ui);
-
-	} else {
-		if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-			ui_begin_interact(ui, input, 0);
-		}
-		if (GetMouseWheelMove()) {
-			ui_begin_interact(ui, input, 1);
-		}
+		ui_begin_interact(ui, input, wheel_moved);
 	}
 
+	if (IsKeyPressed(KEY_ENTER) && is->state == IS_TEXT)
+		ui_end_interact(ctx, ui);
+
 	switch (is->state) {
-	case IS_DISPLAY: ui_end_interact(ctx, ui); break;
+	case IS_DISPLAY: {
+		b32 should_end  = wheel_moved || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) ||
+		                  (is->active.store != is->hot.store);
+		if (should_end) {
+			ui_end_interact(ctx, ui);
+		} else if (mouse_left_pressed) {
+			is->last_mouse_click_p = input->mouse;
+		}
+	} break;
 	case IS_SCROLL:  ui_end_interact(ctx, ui); break;
 	case IS_SET:     ui_end_interact(ctx, ui); break;
 	case IS_TEXT:    update_text_input(&ui->text_input_state); break;
@@ -796,18 +795,20 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input)
 			.y = bp->output_max_coordinate.z - bp->output_min_coordinate.z,
 		};
 
-		v2 mouse = { .rl = GetMousePosition() };
+		v2 mouse = input->mouse;
 		Rect wr = {.size = {.w = (f32)ctx->window_size.w, .h = (f32)ctx->window_size.h}};
 		Rect lr = wr, rr = wr;
 		lr.size.w = INFO_COLUMN_WIDTH;
 		rr.size.w = wr.size.w - lr.size.w;
 		rr.pos.x  = lr.pos.x  + lr.size.w;
 
+		Rect vr = INVERTED_INFINITY_RECT;
 		if (output_dim.x > 1e-6 && output_dim.y > 1e-6) {
 			Stream buf = stream_alloc(&ui->arena_for_frame, 64);
 			stream_append_f64(&buf, -188.8f, 10);
 			stream_append_s8(&buf, s8(" mm"));
 			v2 txt_s = measure_text(ui->small_font, stream_to_s8(&buf));
+			buf.widx = 0;
 
 			rr.pos.x  += 0.02 * rr.size.w;
 			rr.pos.y  += 0.02 * rr.size.h;
@@ -817,7 +818,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input)
 			f32 tick_len = 20;
 			f32 pad      = 1.2 * txt_s.x + tick_len;
 
-			Rect vr    = rr;
+			vr         = rr;
 			vr.pos.x  += 0.5 * txt_s.y;
 			vr.pos.y  += 0.5 * txt_s.y;
 			vr.size.h  = rr.size.h - pad;
@@ -835,17 +836,6 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input)
 			Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
 			NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
 			DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
-
-			if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
-				InteractionState *is  = &ui->interaction;
-				is->hot_state         = IS_DISPLAY;
-				is->hot.store         = &ctx->fsctx.threshold;
-				is->hot.type          = VT_F32;
-				is->hot.f32_limits    = (v2){.y = 240};
-				is->hot.flags         = V_GEN_MIPMAPS;
-				is->hot.display_scale = 1;
-				is->hot.scroll_scale  = 1;
-			}
 
 			static f32 txt_colour_t[2];
 			for (u32 i = 0; i < 2; i++) {
@@ -906,5 +896,39 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input)
 
 		draw_settings_ui(ctx, lr, mouse);
 		draw_debug_overlay(ctx, ui->arena_for_frame, lr);
+
+		if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
+			InteractionState *is  = &ui->interaction;
+			is->hot_state         = IS_DISPLAY;
+			is->hot.store         = &ctx->fsctx.threshold;
+			is->hot.type          = VT_F32;
+			is->hot.f32_limits    = (v2){.y = 240};
+			is->hot.flags         = V_GEN_MIPMAPS;
+			is->hot.display_scale = 1;
+			is->hot.scroll_scale  = 1;
+
+			/* NOTE: check and draw Ruler */
+			if (CheckCollisionPointRec(is->last_mouse_click_p.rl, vr.rl)) {
+				Stream buf = arena_stream(&ui->arena_for_frame);
+
+				Color colour = colour_from_normalized(HOVERED_COLOUR);
+				DrawCircleV(is->last_mouse_click_p.rl, 3, colour);
+				DrawLineEx(mouse.rl, is->last_mouse_click_p.rl, 2, colour);
+				v2 pixels_to_mm = output_dim;
+				pixels_to_mm.x /= vr.size.x * 1e-3;
+				pixels_to_mm.y /= vr.size.y * 1e-3;
+
+				v2 pixel_delta = sub_v2(is->last_mouse_click_p, mouse);
+				v2 mm_delta    = mul_v2(pixels_to_mm, pixel_delta);
+
+				stream_append_f64(&buf, magnitude_v2(mm_delta), 100);
+				stream_append_s8(&buf, s8(" mm"));
+				v2 txt_p = is->last_mouse_click_p;
+				v2 txt_s = measure_text(ui->small_font, stream_to_s8(&buf));
+				if (pixel_delta.y < 0) txt_p.y -= txt_s.y;
+				if (pixel_delta.x < 0) txt_p.x -= txt_s.x;
+				draw_text(ui->small_font, stream_to_s8(&buf), txt_p, 0, colour);
+			}
+		}
 	EndDrawing();
 }

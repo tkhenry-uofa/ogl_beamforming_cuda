@@ -69,7 +69,7 @@ typedef struct {
 	Variable active;
 	u32      hot_state;
 	u32      state;
-	b32      var_changed_last_frame;
+	v2       last_mouse_click_p;
 } InteractionState;
 
 typedef struct {

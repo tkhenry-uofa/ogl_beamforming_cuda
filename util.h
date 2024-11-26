@@ -51,7 +51,8 @@
 #define MEGABYTE (1024ULL * 1024ULL)
 #define GIGABYTE (1024ULL * 1024ULL * 1024ULL)
 
-#define U32_MAX  (0xFFFFFFFFUL)
+#define U32_MAX        (0xFFFFFFFFUL)
+#define F32_INFINITY   (__builtin_inff())
 
 typedef char      c8;
 typedef uint8_t   u8;
@@ -143,6 +144,8 @@ typedef union {
 	struct { v2 pos, size; };
 	Rectangle rl;
 } Rect;
+#define INVERTED_INFINITY_RECT (Rect){.pos  = {.x = -F32_INFINITY, .y = -F32_INFINITY}, \
+                                      .size = {.x = -F32_INFINITY, .y = -F32_INFINITY}}
 
 typedef struct {
 	iptr  file;

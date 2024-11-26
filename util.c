@@ -325,6 +325,37 @@ normalize_v3(v3 a)
 	return result;
 }
 
+static v2
+sub_v2(v2 a, v2 b)
+{
+	v2 result = {
+		.x = a.x - b.x,
+		.y = a.y - b.y,
+	};
+	return result;
+}
+
+static v2
+mul_v2(v2 a, v2 b)
+{
+	v2 result = {
+		.x = a.x * b.x,
+		.y = a.y * b.y,
+	};
+	return result;
+}
+
+
+static f32
+magnitude_v2(v2 a)
+{
+	v4 result;
+	__m128 av = _mm_set_ps(0, 0, a.x, a.y);
+	av = _mm_mul_ps(av, av);
+	_mm_store_ps(result.E, _mm_sqrt_ps(_mm_hadd_ps(av, av)));
+	return result.x;
+}
+
 static f64
 parse_f64(s8 s)
 {
