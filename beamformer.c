@@ -209,12 +209,17 @@ beamform_work_queue_push(BeamformerCtx *ctx, Arena *a, enum beamform_work work_t
 			result->compute_ctx.frame = ctx->beamform_frames + ctx->displayed_frame_index;
 			result->compute_ctx.first_pass = 1;
 
-			uv4 try_dim = ctx->params->raw.output_points;
-			try_dim.w   = ctx->params->raw.xdc_count;
-			if (!uv4_equal(result->compute_ctx.frame->dim, try_dim)) {
-				alloc_beamform_frame(&ctx->gl, result->compute_ctx.frame, try_dim,
-				                     ctx->displayed_frame_index,
-				                     s8("Beamformed_Data"));
+			u32 needed_frames = ctx->params->raw.output_points.w;
+			for (u32 i = 0; i < needed_frames; i++) {
+				u32 frame_index = (ctx->displayed_frame_index - i) %
+				                   ARRAY_COUNT(ctx->beamform_frames);
+				BeamformFrame *frame = ctx->beamform_frames + frame_index;
+				uv4 try_dim = ctx->params->raw.output_points;
+				try_dim.w   = ctx->params->raw.xdc_count;
+				if (!uv4_equal(frame->dim, try_dim)) {
+					alloc_beamform_frame(&ctx->gl, frame, try_dim, frame_index,
+					                     s8("Beamformed_Data"));
+				}
 			}
 		} break;
 		case BW_PARTIAL_COMPUTE:
@@ -436,6 +441,7 @@ do_compute_shader(BeamformerCtx *ctx, BeamformFrame *frame, u32 raw_data_index,
 		for (u32 i = 0; i < frame_count; i++) {
 			u32 idx = (ctx->displayed_frame_index - i) % ARRAY_COUNT(ctx->beamform_frames);
 			BeamformFrame *frame = ctx->beamform_frames + idx;
+			ASSERT(frame->dim.w);
 			in_textures[i]       = frame->textures[frame->dim.w - 1];
 		}
 		do_sum_shader(csctx, in_textures, frame_count, 1 / (f32)frame_count,
