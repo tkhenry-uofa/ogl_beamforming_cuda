@@ -49,6 +49,9 @@ W32(iptr) MapViewOfFile(iptr, u32, u32, u32, u64);
 W32(iptr) OpenFileMappingA(u32, b32, c8 *);
 W32(b32)  ReadFile(iptr, u8 *, i32, i32 *, void *);
 W32(b32)  WriteFile(iptr, u8 *, i32, i32 *, void *);
+W32(void) Sleep(i32);
+W32(i32)  GetLastError();
+W32(b32)  PeekNamedPipe(iptr, void*, i32, i32*, i32*, i32*);
 
 #else
 #error Unsupported Platform
@@ -118,13 +121,7 @@ os_open_shared_memory_area(char *name)
 
 #elif defined(_WIN32)
 
-static Pipe
-os_open_read_pipe(char *name)
-{
-	iptr file = CreateNamedPipeA(name, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE, 1,
-	                             0, 1024UL * 1024UL, 0, 0);
-	return (Pipe){.file = file, .name = name};
-}
+
 
 static void
 os_close_read_pipe(Pipe p)
@@ -132,13 +129,7 @@ os_close_read_pipe(Pipe p)
 	CloseHandle(p.file);
 }
 
-static b32
-os_read_pipe(Pipe p, void *buf, size read_size)
-{
-	i32 total_read = 0;
-	ReadFile(p.file, buf, read_size, &total_read, 0);
-	return total_read == read_size;
-}
+
 
 static Pipe
 os_open_named_pipe(char *name)
@@ -183,6 +174,35 @@ void mexWarnMsgIdAndTxt(const c8 *, c8 *, ...);
 #define error_msg(...)
 #define warning_msg(...)
 #endif
+
+static Pipe
+os_open_read_pipe(char *name)
+{
+	iptr file = CreateNamedPipeA(name, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE, 1,
+				0, 1024UL * 1024UL, 0, 0);
+
+	i32 error = GetLastError();
+
+	warning_msg("Create pipe error: %i", error);
+	return (Pipe){.file = file, .name = name};
+}
+
+static b32
+os_read_pipe(Pipe p, void* buf, size read_size)
+{
+	i32 total_read = 0;
+	b32 result = ReadFile(p.file, buf, read_size, &total_read, 0);
+
+	i32 error_code = GetLastError();
+
+	if (!result)
+	{
+		warning_msg("Read from pipe failed\n");
+	}
+
+	warning_msg("Read size: %i, Total read: %i, Error code: %i\n", read_size, total_read, error_code);
+	return total_read == read_size;
+}
 
 static b32
 check_shared_memory(char *name)
@@ -318,8 +338,45 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_
 		return;
 	}
 
-	size output_size = output_points.x * output_points.y * output_points.z * 2 * sizeof(f32);
-	b32 success = os_read_pipe(pipe, out_data, output_size);
+	u32 elapsed = 0;
+	u32 poll_period = 100; // ms
+	u32 timeout = 20000; // 20 s
+
+	b32 pipe_ready = 0;
+	i32 bytes_available = 0;
+
+	b32 success = 0;
+
+	while (elapsed <= timeout)
+	{
+		pipe_ready = PeekNamedPipe(pipe.file, NULL, 0, 0, &bytes_available, 0);
+
+		if (pipe_ready && bytes_available > 0)
+		{
+			success = os_read_pipe(pipe, out_data, bytes_available);
+
+			i32 total_read = 0;
+			b32 result = ReadFile(pipe.file, out_data, bytes_available, &total_read, 0);
+
+			i32 error_code = GetLastError();
+
+			if (!result)
+			{
+				warning_msg("Read from pipe failed\n");
+			}
+
+			warning_msg("Read size: %i, Total read: %i, Error code: %i\n", bytes_available, total_read, error_code);
+			success = total_read == bytes_available;
+
+			break;
+		}
+		else
+		{
+			Sleep(poll_period);
+			elapsed += poll_period;
+		}
+	}
+
 	os_close_read_pipe(pipe);
 
 	if (!success)

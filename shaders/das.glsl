@@ -104,7 +104,7 @@ vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodizat
 
 	uint ridx      = starting_offset;
 	vec3 rdist     = image_point;
-	int  direction = beamform_plane * (u_volume_export_pass ^ 1);
+	int  direction = beamform_plane;// *(u_volume_export_pass ^ 1);
 
 	vec2 sum = vec2(0);
 	/* NOTE: For Each Acquistion in Raw Data */

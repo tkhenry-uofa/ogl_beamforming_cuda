@@ -458,6 +458,7 @@
     <None Include="external\raylib\src\minshell.html" />
     <None Include="external\raylib\src\shell.html" />
     <None Include="LICENSE" />
+    <None Include="shaders\das.glsl" />
     <None Include="shaders\demod.glsl" />
     <None Include="shaders\hadamard.glsl" />
     <None Include="shaders\hercules.glsl" />
