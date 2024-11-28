@@ -18,7 +18,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install libxkbcommon-dev xorg-dev libwayland-dev ninja-build
+          sudo apt install libxkbcommon-dev xorg-dev ninja-build
       - name: Build
         run: ./build.sh
 
