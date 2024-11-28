@@ -86,7 +86,7 @@ typedef struct {
 
 #define MAX_FRAMES_IN_FLIGHT 3
 
-#define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims, u16 *channel_mapping, b32 rx_cols)
+#define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims, u16 *channel_mapping)
 typedef INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_fn);
 INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_stub) {}
 
@@ -94,7 +94,7 @@ INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_stub) {}
 typedef REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_fn);
 REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_stub) {}
 
-#define CUDA_DECODE_FN(name) void name(size_t input_offset, u32 output_buffer_idx)
+#define CUDA_DECODE_FN(name) void name(size_t input_offset, u32 output_buffer_idx, u32 rf_channel_offset)
 typedef CUDA_DECODE_FN(cuda_decode_fn);
 CUDA_DECODE_FN(cuda_decode_stub) {}
 

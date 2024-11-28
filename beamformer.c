@@ -122,7 +122,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		ctx->cuda_lib.register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
 		                                    cs->raw_data_ssbo);
 		ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E,
-		                                      bp->channel_mapping, bp->channel_offset);
+		                                      bp->channel_mapping);
 		break;
 	}
 
@@ -393,7 +393,8 @@ do_compute_shader(BeamformerCtx *ctx, BeamformFrame *frame, u32 raw_data_index,
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_CUDA_DECODE:
-		ctx->cuda_lib.cuda_decode(raw_data_index * rf_raw_size, output_ssbo_idx);
+		ctx->cuda_lib.cuda_decode(raw_data_index * rf_raw_size, output_ssbo_idx,
+		                          ctx->params->raw.channel_offset);
 		csctx->raw_data_fences[raw_data_index] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
