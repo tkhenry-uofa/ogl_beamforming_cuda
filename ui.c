@@ -911,7 +911,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input)
 			if (CheckCollisionPointRec(is->last_mouse_click_p.rl, vr.rl)) {
 				Stream buf = arena_stream(&ui->arena_for_frame);
 
-				Color colour = colour_from_normalized(HOVERED_COLOUR);
+				Color colour = colour_from_normalized(RULER_COLOUR);
 				DrawCircleV(is->last_mouse_click_p.rl, 3, colour);
 				DrawLineEx(mouse.rl, is->last_mouse_click_p.rl, 2, colour);
 				v2 pixels_to_mm = output_dim;
