@@ -209,7 +209,9 @@ beamform_work_queue_push(BeamformerCtx *ctx, Arena *a, enum beamform_work work_t
 			result->compute_ctx.frame = ctx->beamform_frames + ctx->displayed_frame_index;
 			result->compute_ctx.first_pass = 1;
 
-			u32 needed_frames = ctx->params->raw.output_points.w;
+			u32 needed_frames = 1;
+			if (ctx->params->raw.output_points.w > 0)
+				needed_frames = ctx->params->raw.output_points.w;
 			for (u32 i = 0; i < needed_frames; i++) {
 				u32 frame_index = (ctx->displayed_frame_index - i) %
 				                   ARRAY_COUNT(ctx->beamform_frames);
