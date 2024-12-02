@@ -39,6 +39,8 @@ typedef struct {
 	i32 beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 	f32 f_number;               /* F# (set to 0 to disable) */
 	u32 das_shader_id;
+	u32 readi_group_id;			/* Which readi group this data is from*/
+	u32 readi_group_size;		/* Size of readi transmit group */
 	f32 _pad[3];
 } BeamformerParameters;
 
@@ -70,6 +72,8 @@ layout(std140, binding = 0) uniform parameters {\n\
 	float off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */\n\
 	int   beamform_plane;         /* Plane to Beamform in 2D HERCULES */\n\
 	float f_number;               /* F# (set to 0 to disable) */\n\
+	uint  readi_group_id;			/* Which readi group this data is from*/ \n\
+	uint  readi_group_size;		/* Size of readi transmit group */ \n\
 	uint  das_shader_id;\n\
 };\n\
 \n\

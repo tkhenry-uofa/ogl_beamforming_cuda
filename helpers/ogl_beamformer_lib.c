@@ -301,17 +301,13 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_
 
 	Pipe pipe = os_open_read_pipe(OS_EXPORT_PIPE_NAME);
 	if (pipe.file == INVALID_FILE) {
-		error_msg("failed to open export pipe");
+
+		i32 error = GetLastError();
+		error_msg("failed to open export pipe with error %i", error);
 		return;
 	}
 
-	if (g_pipe.file == INVALID_FILE) {
-		g_pipe = os_open_named_pipe(pipe_name);
-		if (g_pipe.file == INVALID_FILE) {
-			error_msg("failed to open data pipe");
-			return;
-		}
-	}
+	
 
 	g_bp->raw.rf_raw_dim      = data_dim;
 	g_bp->raw.output_points.x = output_points.x;
@@ -330,11 +326,93 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_
 
 	g_bp->upload = 1;
 
+	if (g_pipe.file == INVALID_FILE) {
+
+		warning_msg("Opening data pipe");
+		g_pipe = os_open_named_pipe(pipe_name);
+		if (g_pipe.file == INVALID_FILE) {
+			error_msg("failed to open data pipe");
+			return;
+		}
+	}
+
 	size data_size = data_dim.x * data_dim.y * sizeof(i16);
 	size written   = os_write_to_pipe(g_pipe, data, data_size);
 	if (written != data_size) {
 		/* error */
-		error_msg("failed to write full data to pipe: wrote: %ld", written);
+		error_msg("failed to write full data to pipe: wrote: %ld, error: %i", written, GetLastError());
+
+		CloseHandle(g_pipe.file);
+		return;
+	}
+
+	CloseHandle(g_pipe.file);
+	g_pipe.file = INVALID_FILE;
+
+	
+	size output_size = output_points.x * output_points.y * output_points.z * 2 * sizeof(f32);
+	b32 success = os_read_pipe(pipe, out_data, output_size);
+	os_close_read_pipe(pipe);
+
+	if (!success)
+		warning_msg("failed to read full export data from pipe\n");
+}
+
+void
+beamform_data_synchronized_f32(char* pipe_name, char* shm_name, f32* data, uv2 data_dim,
+	uv3 output_points, f32* out_data)
+{
+	if (!check_shared_memory(shm_name))
+		return;
+
+	if (output_points.x == 0) output_points.x = 1;
+	if (output_points.y == 0) output_points.y = 1;
+	if (output_points.z == 0) output_points.z = 1;
+
+	Pipe pipe = os_open_read_pipe(OS_EXPORT_PIPE_NAME);
+	if (pipe.file == INVALID_FILE) {
+
+		i32 error = GetLastError();
+		error_msg("failed to open export pipe with error %i", error);
+		return;
+	}
+
+
+
+	g_bp->raw.rf_raw_dim = data_dim;
+	g_bp->raw.output_points.x = output_points.x;
+	g_bp->raw.output_points.y = output_points.y;
+	g_bp->raw.output_points.z = output_points.z;
+	g_bp->export_next_frame = 1;
+
+	s8 export_name = s8(OS_EXPORT_PIPE_NAME);
+	if (export_name.len > ARRAY_COUNT(g_bp->export_pipe_name)) {
+		error_msg("export pipe name too long");
+		return;
+	}
+
+	for (u32 i = 0; i < export_name.len; i++)
+		g_bp->export_pipe_name[i] = export_name.data[i];
+
+	g_bp->upload = 1;
+
+	if (g_pipe.file == INVALID_FILE) {
+
+		warning_msg("Opening data pipe");
+		g_pipe = os_open_named_pipe(pipe_name);
+		if (g_pipe.file == INVALID_FILE) {
+			error_msg("failed to open data pipe");
+			return;
+		}
+	}
+
+	size data_size = data_dim.x * data_dim.y * sizeof(f32);
+	size written = os_write_to_pipe(g_pipe, data, data_size);
+	if (written != data_size) {
+		/* error */
+		error_msg("failed to write full data to pipe: wrote: %ld, error: %i", written, GetLastError());
+
+		CloseHandle(g_pipe.file);
 		return;
 	}
 
