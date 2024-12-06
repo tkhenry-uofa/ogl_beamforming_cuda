@@ -62,6 +62,7 @@ vec3 calc_image_point(vec3 voxel)
 		image_point.y = 0;
 		break;
 	case DAS_ID_HERCULES:
+	case DAS_ID_RCA:
 		if (u_volume_export_pass == 0)
 			image_point.y = off_axis_pos;
 		break;
@@ -82,10 +83,65 @@ vec3 row_column_point_scale(bool tx_rows)
 	return vec3(float(!tx_rows), float(tx_rows), 1);
 }
 
+vec3 world_space_to_rca_space(vec3 image_point, int transmit_orientation)
+{
+	return (u_xdc_transform * vec4(image_point, 1)).xyz * row_column_point_scale(transmit_orientation != TX_ROWS);
+}
+
 float sample_index(float distance)
 {
 	float  time = distance / speed_of_sound + time_offset;
 	return time * sampling_frequency;
+}
+
+float planewave_transmit_distance(vec3 point, float transmit_angle)
+{
+	return dot(point, vec3(sin(transmit_angle), sin(transmit_angle), cos(transmit_angle)));
+}
+
+vec2 RCA(vec3 image_point, vec3 delta, uint starting_offset, float apodization_arg)
+{
+	/* TODO: pass this in (there is a problem in that it depends on the orientation
+	 * of the array relative to the target/subject). */
+	int  transmit_orientation = TX_ROWS;
+	uint ridx      = starting_offset;
+	int  direction = beamform_plane * (u_volume_export_pass ^ 1);
+	if (direction == TX_COLS) image_point = image_point.yxz;
+
+	vec3 transmit_point = image_point * row_column_point_scale(transmit_orientation == TX_ROWS);
+	vec3 recieve_point  = world_space_to_rca_space(image_point, transmit_orientation);
+	// vec3  recieve_point  = (u_xdc_transform * vec4(image_point, 1)).xyz;
+
+	vec2 sum = vec2(0);
+	/* NOTE: For Each Acquistion in Raw Data */
+	// uint i = (dec_data_dim.z - 1) * uint(clamp(u_cycle_t, 0, 1)); {
+	for (uint i = 0; i < dec_data_dim.z; i++) {
+		uint base_idx = i / 4;
+		uint sub_idx  = i % 4;
+
+		float focal_depth    = focal_depths[base_idx][sub_idx];
+		float transmit_angle = transmit_angles[base_idx][sub_idx];
+		float tdist;
+		if (isinf(focal_depth)) {
+			tdist = planewave_transmit_distance(transmit_point, transmit_angle);
+		} else {
+			vec3 f  = vec3(sin(transmit_angle), sin(transmit_angle), cos(transmit_angle));
+			f      *= focal_depth * row_column_point_scale(transmit_orientation == TX_ROWS);
+			tdist   = distance(transmit_point, f);
+		}
+
+		vec3 rdist = recieve_point;
+		/* NOTE: For Each Receiver */
+		// uint j = (dec_data_dim.z - 1) * uint(clamp(u_cycle_t, 0, 1)); {
+		for (uint j = 0; j < dec_data_dim.y; j++) {
+			float sidx  = sample_index(tdist + length(rdist));
+			vec2 valid  = vec2(sidx < dec_data_dim.x);
+			sum        += apodize(cubic(ridx, sidx), apodization_arg, rdist[0]) * valid;
+			rdist[0]   -= delta[0];
+			ridx       += dec_data_dim.x;
+		}
+	}
+	return sum;
 }
 
 vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodization_arg)
@@ -93,19 +149,19 @@ vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodizat
 	/* TODO: pass this in (there is a problem in that it depends on the orientation
 	 * of the array relative to the target/subject). */
 	int   transmit_orientation = TX_ROWS;
-	float transmit_dist;
+	float focal_depth    = focal_depths[0][0];
+	float transmit_angle = transmit_angles[0][0];
 	vec3  transmit_point = image_point * row_column_point_scale(transmit_orientation == TX_ROWS);
+	//vec3  recieve_point  = world_space_to_rca_space(image_point, transmit_orientation);
 	vec3  recieve_point  = (u_xdc_transform * vec4(image_point, 1)).xyz;
 
+	float tdist;
 	if (isinf(focal_depth)) {
-		/* NOTE: plane wave */
-		transmit_dist = image_point.z;
+		tdist = planewave_transmit_distance(transmit_point, transmit_angle);
 	} else {
-		/* NOTE: cylindrical diverging wave */
-		if (transmit_orientation == TX_ROWS)
-			transmit_dist = length(vec2(image_point.y, image_point.z - focal_depth));
-		else
-			transmit_dist = length(vec2(image_point.x, image_point.z - focal_depth));
+		vec3 f  = vec3(sin(transmit_angle), sin(transmit_angle), cos(transmit_angle));
+		f      *= focal_depth * row_column_point_scale(transmit_orientation == TX_ROWS);
+		tdist   = distance(transmit_point, f);
 	}
 
 	uint ridx      = starting_offset;
@@ -117,10 +173,8 @@ vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodizat
 	for (uint i = 0; i < dec_data_dim.z; i++) {
 		/* NOTE: For Each Virtual Source */
 		for (uint j = 0; j < dec_data_dim.y; j++) {
-			float sidx = sample_index(transmit_dist + length(rdist));
+			float sidx = sample_index(tdist + length(rdist));
 			vec2 valid = vec2(sidx < dec_data_dim.x);
-			/* NOTE: tribal knowledge; this is a problem with the imaging sequence */
-			if (i == 0) valid *= inversesqrt(128);
 
 			sum += apodize(cubic(ridx, sidx), apodization_arg, rdist.x) * valid;
 
@@ -201,6 +255,12 @@ void main()
 		if (edge2.x != 0) delta = vec3(edge2.x, edge1.y, 0) / float(dec_data_dim.y);
 		else              delta = vec3(edge1.x, edge2.y, 0) / float(dec_data_dim.y);
 		sum = HERCULES(image_point, delta, starting_offset, apod_arg);
+		break;
+	case DAS_ID_RCA:
+		/* TODO: there should be a smarter way of detecting this */
+		if (edge2.x != 0) delta = vec3(edge2.x, edge1.y, 0) / float(dec_data_dim.y);
+		else              delta = vec3(edge1.x, edge2.y, 0) / float(dec_data_dim.y);
+		sum = RCA(image_point, delta, starting_offset, apod_arg);
 		break;
 	}
 

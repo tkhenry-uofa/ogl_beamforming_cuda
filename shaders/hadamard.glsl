@@ -24,9 +24,6 @@ void main()
 	uint channel     = gl_GlobalInvocationID.y;
 	uint acq         = gl_GlobalInvocationID.z;
 
-	/* NOTE: offset to get the correct column in hadamard matrix */
-	uint hoff = dec_data_dim.z * acq;
-
 	/* NOTE: offsets for storing the results in the output data */
 	uint out_off = dec_data_dim.x * dec_data_dim.y * acq + dec_data_dim.x * channel + time_sample;
 
@@ -53,10 +50,18 @@ void main()
 
 	/* NOTE: Compute N-D dot product */
 	int sum = 0;
-	for (int i = 0; i < dec_data_dim.z; i++) {
-		int data = (rf_data[ridx] << lfs) >> 16;
-		sum  += hadamard[hoff + i] * data;
-		ridx += ridx_delta;
+	if (decode == 1) {
+		/* NOTE: offset to get the correct column in hadamard matrix */
+		uint hoff = dec_data_dim.z * acq;
+
+		for (int i = 0; i < dec_data_dim.z; i++) {
+			int data = (rf_data[ridx] << lfs) >> 16;
+			sum  += hadamard[hoff + i] * data;
+			ridx += ridx_delta;
+		}
+	} else {
+		ridx += ridx_delta * acq;
+		sum   = (rf_data[ridx] << lfs) >> 16;
 	}
 	out_data[out_off] = vec2(float(sum), 0);
 }
