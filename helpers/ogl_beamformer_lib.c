@@ -417,7 +417,7 @@ beamform_data_synchronized_f32(char* pipe_name, char* shm_name, f32* data, uv2 d
 	}
 
 	u32 elapsed = 0;
-	u32 poll_period = 100; // ms
+	u32 poll_period = 20; // ms
 	u32 timeout = 20000; // 20 s
 
 	b32 pipe_ready = 0;
@@ -434,7 +434,7 @@ beamform_data_synchronized_f32(char* pipe_name, char* shm_name, f32* data, uv2 d
 			success = os_read_pipe(pipe, out_data, bytes_available);
 
 			i32 total_read = 0;
-			b32 result = ReadFile(pipe.file, out_data, bytes_available, &total_read, 0);
+			b32 result = ReadFile(pipe.file, (u8*)out_data, bytes_available, &total_read, 0);
 
 			i32 error_code = GetLastError();
 
