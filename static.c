@@ -4,11 +4,9 @@ static struct {
 	s8  path;
 	b32 needs_header;
 } compute_shaders[CS_LAST] = {
-	[CS_HADAMARD] = {s8("Hadamard"), s8("shaders/hadamard.glsl"), 1},
-	[CS_DAS]      = {s8("DAS"),      s8("shaders/das.glsl"),      1},
-	[CS_DEMOD]    = {s8("Demod"),    s8("shaders/demod.glsl"),    1},
-	[CS_MIN_MAX]  = {s8("Min/Max"),  s8("shaders/min_max.glsl"),  0},
-	[CS_SUM]      = {s8("Sum"),      s8("shaders/sum.glsl"),      0},
+	#define X(e, n, s, h, pn) [CS_##e] = {s8(#e), s8("shaders/" s ".glsl"), h},
+	COMPUTE_SHADERS
+	#undef X
 };
 
 #ifndef _DEBUG
@@ -176,11 +174,11 @@ reload_shaders(BeamformerCtx *ctx, Arena a)
 	ComputeShaderCtx *csctx = &ctx->csctx;
 	s8 header_in_arena = push_s8(&a, s8(COMPUTE_SHADER_HEADER));
 	for (u32 i = 0; i < ARRAY_COUNT(csctx->programs); i++) {
-		if (!compute_shaders[i].path.len)
+		FileStats fs = os_get_file_stats((char *)compute_shaders[i].path.data);
+		if (fs.filesize <= 0)
 			continue;
 
 		Arena tmp = a;
-		FileStats fs   = os_get_file_stats((char *)compute_shaders[i].path.data);
 		s8 shader_text = os_read_file(&tmp, (char *)compute_shaders[i].path.data, fs.filesize);
 		if (shader_text.len == -1) {
 			stream_append_s8(&ctx->error_stream, s8("failed to read shader: "));

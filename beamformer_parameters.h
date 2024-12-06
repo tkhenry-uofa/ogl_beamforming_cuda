@@ -1,12 +1,19 @@
 /* See LICENSE for license details. */
+
+/* X(enumarant, number, shader file name, needs header, pretty name) */
+#define COMPUTE_SHADERS                                    \
+	X(CUDA_DECODE,  0, "",         0, "CUDA Decoding") \
+	X(CUDA_HILBERT, 1, "",         0, "CUDA Hilbert")  \
+	X(DAS,          2, "das",      1, "DAS")           \
+	X(DEMOD,        3, "demod",    1, "Demodulation")  \
+	X(HADAMARD,     4, "hadamard", 1, "Decoding")      \
+	X(MIN_MAX,      5, "min_max",  0, "Min/Max")       \
+	X(SUM,          6, "sum",      0, "Sum")
+
 enum compute_shaders {
-	CS_CUDA_DECODE           = 0,
-	CS_CUDA_HILBERT          = 1,
-	CS_DAS                   = 2,
-	CS_DEMOD                 = 3,
-	CS_HADAMARD              = 4,
-	CS_MIN_MAX               = 5,
-	CS_SUM                   = 6,
+	#define X(e, n, s, h, pn) CS_ ##e = n,
+	COMPUTE_SHADERS
+	#undef X
 	CS_LAST
 };
 
