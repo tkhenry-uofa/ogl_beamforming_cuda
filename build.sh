@@ -1,10 +1,10 @@
 #!/bin/sh
 set -e
 
-cflags="-march=native -std=c11 -O3 -Wall -I./external/include"
+cflags="-march=native -std=c11 -O3 -Wall -I./external/include -fno-builtin"
 #cflags="${cflags} -fproc-stat-report"
 #cflags="${cflags} -Rpass-missed=.*"
-libcflags="$cflags -fPIC -shared -Wno-unused-variable -fno-builtin"
+libcflags="$cflags -fPIC -shared -Wno-unused-variable"
 ldflags="-lm"
 
 debug=${DEBUG}
