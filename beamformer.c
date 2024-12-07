@@ -11,6 +11,17 @@ decoded_data_size(ComputeShaderCtx *cs)
 	return result;
 }
 
+static uv4
+make_valid_test_dim(uv4 in)
+{
+	uv4 result;
+	result.x = MAX(in.x, 1);
+	result.y = MAX(in.y, 1);
+	result.z = MAX(in.z, 1);
+	result.w = 1;
+	return result;
+}
+
 static void
 alloc_beamform_frame(GLParams *gp, BeamformFrame *out, uv4 out_dim, u32 frame_index, s8 name)
 {
@@ -48,8 +59,7 @@ alloc_beamform_frame(GLParams *gp, BeamformFrame *out, uv4 out_dim, u32 frame_in
 static void
 alloc_output_image(BeamformerCtx *ctx, uv4 output_dim)
 {
-	uv4 try_dim = {.xyz = output_dim.xyz};
-	try_dim.w   = 1;
+	uv4 try_dim = make_valid_test_dim(output_dim);
 	if (!uv4_equal(try_dim, ctx->averaged_frame.dim)) {
 		alloc_beamform_frame(&ctx->gl, &ctx->averaged_frame, try_dim, 0,
 		                     s8("Beamformed_Averaged_Data"));
