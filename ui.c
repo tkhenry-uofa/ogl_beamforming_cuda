@@ -617,11 +617,14 @@ ui_start_compute(BeamformerCtx *ctx)
 {
 	/* NOTE: we do not allow ui to start a work if no work was previously completed */
 	Arena a = {0};
-	beamform_work_queue_push(ctx, &a, BW_RECOMPUTE);
-	for (u32 i = 0; i < ARRAY_COUNT(ctx->beamform_frames); i++) {
-		BeamformFrame *frame = ctx->beamform_frames + i;
-		if (frame->dim.w && frame->textures[frame->dim.w - 1])
-			glClearTexImage(frame->textures[frame->dim.w - 1], 0, GL_RED, GL_FLOAT, 0);
+	if (ctx->beamform_work_queue.compute_in_flight == 0) {
+		beamform_work_queue_push(ctx, &a, BW_RECOMPUTE);
+		BeamformFrameIterator bfi = beamform_frame_iterator(ctx);
+		for (BeamformFrame *frame = frame_next(&bfi); frame; frame = frame_next(&bfi)) {
+			if (frame->dim.w && frame->textures[frame->dim.w - 1])
+				glClearTexImage(frame->textures[frame->dim.w - 1], 0,
+				                GL_RED, GL_FLOAT, 0);
+		}
 	}
 	ctx->params->upload = 1;
 }
@@ -776,7 +779,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input)
 	end_temp_arena(ui->frame_temporary_arena);
 	ui->frame_temporary_arena = begin_temp_arena(&ui->arena_for_frame);
 
-	/* NOTE: process interactions first because the used interacted with
+	/* NOTE: process interactions first because the user interacted with
 	 * the ui that was presented last frame */
 	ui_interact(ctx, input);
 
@@ -859,8 +862,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input)
 				if (hover_text(mouse, tick_rect, txt_colour_t + i, 1)) {
 					f32 scale[2]   = {0.5e-3, 1e-3};
 					f32 size_delta = GetMouseWheelMove() * scale[i];
-					/* TODO: smooth scroll this? */
-					if (coord_idx== 0)
+					if (coord_idx == 0)
 						bp->output_min_coordinate.E[coord_idx] -= size_delta;
 					bp->output_max_coordinate.E[coord_idx] += size_delta;
 					if (size_delta)

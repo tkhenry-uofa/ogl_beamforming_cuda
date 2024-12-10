@@ -22,6 +22,29 @@ make_valid_test_dim(uv4 in)
 	return result;
 }
 
+static BeamformFrameIterator
+beamform_frame_iterator(BeamformerCtx *ctx)
+{
+	BeamformFrameIterator result;
+	result.frames        = ctx->beamform_frames;
+	result.offset        = ctx->displayed_frame_index;
+	result.capacity      = ARRAY_COUNT(ctx->beamform_frames);
+	result.cursor        = 0;
+	result.needed_frames = ORONE(ctx->params->raw.output_points.w);
+	return result;
+}
+
+static BeamformFrame *
+frame_next(BeamformFrameIterator *bfi)
+{
+	BeamformFrame *result = 0;
+	if (bfi->cursor != bfi->needed_frames) {
+		u32 index = (bfi->offset - bfi->cursor++) % bfi->capacity;
+		result    = bfi->frames + index;
+	}
+	return result;
+}
+
 static void
 alloc_beamform_frame(GLParams *gp, BeamformFrame *out, uv4 out_dim, u32 frame_index, s8 name)
 {

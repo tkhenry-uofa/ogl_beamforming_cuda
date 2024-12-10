@@ -254,6 +254,14 @@ typedef struct {
 	b32 did_compute_this_frame;
 } BeamformWorkQueue;
 
+typedef struct {
+	BeamformFrame *frames;
+	u32 capacity;
+	u32 offset;
+	u32 cursor;
+	u32 needed_frames;
+} BeamformFrameIterator;
+
 typedef struct BeamformerCtx {
 	GLParams gl;
 
