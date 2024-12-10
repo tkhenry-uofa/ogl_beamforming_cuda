@@ -251,17 +251,13 @@ beamform_work_queue_push(BeamformerCtx *ctx, Arena *a, enum beamform_work work_t
 			result->compute_ctx.frame = ctx->beamform_frames + ctx->displayed_frame_index;
 			result->compute_ctx.first_pass = 1;
 
-			u32 needed_frames = 1;
-			if (ctx->params->raw.output_points.w > 0)
-				needed_frames = ctx->params->raw.output_points.w;
-			for (u32 i = 0; i < needed_frames; i++) {
-				u32 frame_index = (ctx->displayed_frame_index - i) %
-				                   ARRAY_COUNT(ctx->beamform_frames);
-				BeamformFrame *frame = ctx->beamform_frames + frame_index;
+			BeamformFrameIterator bfi = beamform_frame_iterator(ctx);
+			for (BeamformFrame *frame = frame_next(&bfi); frame; frame = frame_next(&bfi)) {
 				uv4 try_dim = ctx->params->raw.output_points;
 				try_dim.w   = ctx->params->raw.xdc_count;
 				if (!uv4_equal(frame->dim, try_dim)) {
-					alloc_beamform_frame(&ctx->gl, frame, try_dim, frame_index,
+					u32 index = (bfi.offset - bfi.cursor) % bfi.capacity;
+					alloc_beamform_frame(&ctx->gl, frame, try_dim, index,
 					                     s8("Beamformed_Data"));
 				}
 			}
@@ -411,7 +407,7 @@ do_partial_compute_step(BeamformerCtx *ctx, BeamformFrame *frame)
 }
 
 static void
-do_compute_shader(BeamformerCtx *ctx, BeamformFrame *frame, u32 raw_data_index,
+do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, u32 raw_data_index,
                   enum compute_shaders shader)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
@@ -484,13 +480,12 @@ do_compute_shader(BeamformerCtx *ctx, BeamformFrame *frame, u32 raw_data_index,
 		}
 	} break;
 	case CS_SUM: {
-		u32 frame_count = ctx->params->raw.output_points.w;
-		u32 in_textures[MAX_BEAMFORMED_SAVED_FRAMES];
-		for (u32 i = 0; i < frame_count; i++) {
-			u32 idx = (ctx->displayed_frame_index - i) % ARRAY_COUNT(ctx->beamform_frames);
-			BeamformFrame *frame = ctx->beamform_frames + idx;
+		u32 frame_count  = 0;
+		u32 *in_textures = alloc(&arena, u32, MAX_BEAMFORMED_SAVED_FRAMES);
+		BeamformFrameIterator bfi = beamform_frame_iterator(ctx);
+		for (BeamformFrame *frame = frame_next(&bfi); frame; frame = frame_next(&bfi)) {
 			ASSERT(frame->dim.w);
-			in_textures[i]       = frame->textures[frame->dim.w - 1];
+			in_textures[frame_count++] = frame->textures[frame->dim.w - 1];
 		}
 		do_sum_shader(csctx, in_textures, frame_count, 1 / (f32)frame_count,
 		              ctx->averaged_frame.textures[0], ctx->averaged_frame.dim);
@@ -540,7 +535,7 @@ do_beamform_work(BeamformerCtx *ctx, Arena *a)
 						ctx->partial_compute_ctx.shader = stages[i];
 						break;
 					}
-					do_compute_shader(ctx, frame,
+					do_compute_shader(ctx, *a, frame,
 					                  work->compute_ctx.raw_data_ssbo_index,
 					                  stages[i]);
 				}
@@ -579,7 +574,7 @@ do_beamform_work(BeamformerCtx *ctx, Arena *a)
 			u32 stage_count = ctx->params->compute_stages_count;
 			enum compute_shaders *stages = ctx->params->compute_stages;
 			for (u32 i = 0; i < stage_count; i++)
-				do_compute_shader(ctx, frame, work->compute_ctx.raw_data_ssbo_index,
+				do_compute_shader(ctx, *a, frame, work->compute_ctx.raw_data_ssbo_index,
 					          stages[i]);
 
 			if (work->compute_ctx.export_handle != INVALID_FILE) {
