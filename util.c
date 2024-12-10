@@ -419,10 +419,14 @@ static void
 fill_hadamard_transpose(i32 *out, i32 *tmp, u32 dim)
 {
 	ASSERT(dim);
-	b32 power_of_2 = ISPOWEROF2(dim);
+	b32 power_of_2     = ISPOWEROF2(dim);
+	b32 multiple_of_12 = dim % 12 == 0;
+
+	if (!power_of_2 && !multiple_of_12)
+		return;
 
 	if (!power_of_2) {
-		ASSERT(dim % 12 == 0);
+		ASSERT(multiple_of_12);
 		dim /= 12;
 	}
 
