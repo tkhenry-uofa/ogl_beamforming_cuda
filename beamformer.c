@@ -2,6 +2,7 @@
 #include "beamformer.h"
 
 static f32 dt_for_frame;
+static f32 cycle_t;
 
 static size
 decoded_data_size(ComputeShaderCtx *cs)
@@ -640,6 +641,10 @@ check_compute_timers(ComputeShaderCtx *cs, PartialComputeCtx *pc, BeamformerPara
 DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 {
 	dt_for_frame = GetFrameTime();
+
+	cycle_t += dt_for_frame;
+	if (cycle_t > 1) cycle_t -= 1;
+	glProgramUniform1f(ctx->csctx.programs[CS_DAS], ctx->csctx.cycle_t_id, cycle_t);
 
 	if (IsWindowResized()) {
 		ctx->window_size.h = GetScreenHeight();

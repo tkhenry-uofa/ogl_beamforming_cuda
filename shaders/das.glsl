@@ -11,6 +11,7 @@ layout(location = 2) uniform int   u_volume_export_pass;
 layout(location = 3) uniform ivec3 u_volume_export_dim_offset;
 layout(location = 4) uniform mat4  u_xdc_transform;
 layout(location = 5) uniform int   u_xdc_index;
+layout(location = 6) uniform float u_cycle_t;
 
 #define C_SPLINE 0.5
 
