@@ -23,17 +23,10 @@ mem_clear(void *p_, u8 c, size len)
 }
 
 static void
-mem_copy(void *src, void *dest, size n)
+mem_copy(void *restrict src, void *restrict dest, size n)
 {
 	ASSERT(n >= 0);
 	u8 *s = src, *d = dest;
-#if defined(__AVX512BW__)
-	/* TODO: aligned load/store and comparison */
-	for (; n >= 64; n -= 64, s += 64, d += 64)
-		_mm512_storeu_epi8(d, _mm512_loadu_epi8(s));
-#endif
-	for (; n >= 16; n -= 16, s += 16, d += 16)
-		_mm_storeu_si128((__m128i *)d, _mm_loadu_si128((__m128i*)s));
 	for (; n; n--) *d++ = *s++;
 }
 
