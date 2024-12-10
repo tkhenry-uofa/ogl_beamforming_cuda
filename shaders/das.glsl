@@ -54,7 +54,7 @@ vec3 calc_image_point(vec3 voxel)
 {
 	ivec3 out_data_dim = imageSize(u_out_data_tex);
 	vec4 output_size   = abs(output_max_coord - output_min_coord);
-	vec4 image_point   = vec4(output_min_coord.xyz + voxel * output_size.xyz / out_data_dim, 1);
+	vec3 image_point   = output_min_coord.xyz + voxel * output_size.xyz / out_data_dim;
 
 	switch (das_shader_id) {
 	case DAS_ID_UFORCES:
@@ -67,10 +67,7 @@ vec3 calc_image_point(vec3 voxel)
 		break;
 	}
 
-
-	/* NOTE: move the image point into xdc space */
-	image_point = u_xdc_transform * image_point;
-	return image_point.xyz;
+	return image_point;
 }
 
 vec2 apodize(vec2 value, float apodization_arg, float distance)
@@ -78,6 +75,11 @@ vec2 apodize(vec2 value, float apodization_arg, float distance)
 	/* NOTE: apodization value for this transducer element */
 	float a  = cos(clamp(abs(apodization_arg * distance), 0, 0.25 * radians(360)));
 	return value * a * a;
+}
+
+vec3 row_column_point_scale(bool tx_rows)
+{
+	return vec3(float(!tx_rows), float(tx_rows), 1);
 }
 
 float sample_index(float distance)
@@ -92,6 +94,9 @@ vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodizat
 	 * of the array relative to the target/subject). */
 	int   transmit_orientation = TX_ROWS;
 	float transmit_dist;
+	vec3  transmit_point = image_point * row_column_point_scale(transmit_orientation == TX_ROWS);
+	vec3  recieve_point  = (u_xdc_transform * vec4(image_point, 1)).xyz;
+
 	if (isinf(focal_depth)) {
 		/* NOTE: plane wave */
 		transmit_dist = image_point.z;
@@ -104,7 +109,7 @@ vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodizat
 	}
 
 	uint ridx      = starting_offset;
-	vec3 rdist     = image_point;
+	vec3 rdist     = recieve_point;
 	int  direction = beamform_plane * (u_volume_export_pass ^ 1);
 
 	vec2 sum = vec2(0);
@@ -123,7 +128,7 @@ vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodizat
 			ridx             += dec_data_dim.x;
 		}
 
-		rdist[direction]      = image_point[direction];
+		rdist[direction]      = recieve_point[direction];
 		rdist[direction ^ 1] -= delta[direction ^ 1];
 	}
 	return sum;
@@ -134,6 +139,8 @@ vec2 uFORCES(vec3 image_point, vec3 delta, uint starting_offset, float apodizati
 	/* NOTE: skip first acquisition in uforces since its garbage */
 	uint uforces = uint(dec_data_dim.y != dec_data_dim.z);
 	uint ridx    = starting_offset + dec_data_dim.y * dec_data_dim.x * uforces;
+
+	image_point  = (u_xdc_transform * vec4(image_point, 1)).xyz;
 
 	vec2 sum = vec2(0);
 	for (uint i = uforces; i < dec_data_dim.z; i++) {
