@@ -250,6 +250,7 @@ typedef struct {
 	BeamformWork *first;
 	BeamformWork *last;
 	BeamformWork *next_free;
+	i32 compute_in_flight;
 	b32 did_compute_this_frame;
 } BeamformWorkQueue;
 

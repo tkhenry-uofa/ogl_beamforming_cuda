@@ -158,10 +158,13 @@ beamform_work_queue_pop(BeamformWorkQueue *q)
 		case BW_RECOMPUTE:
 		case BW_PARTIAL_COMPUTE:
 			/* NOTE: only one compute is allowed per frame */
-			if (q->did_compute_this_frame)
+			if (q->did_compute_this_frame) {
 				result = 0;
-			else
+			} else {
+				q->compute_in_flight--;
 				q->did_compute_this_frame = 1;
+				ASSERT(q->compute_in_flight >= 0);
+			}
 			break;
 		}
 	}
@@ -173,6 +176,7 @@ beamform_work_queue_pop(BeamformWorkQueue *q)
 			q->last = 0;
 		}
 	}
+
 	return result;
 }
 
@@ -194,7 +198,12 @@ beamform_work_queue_push(BeamformerCtx *ctx, Arena *a, enum beamform_work work_t
 
 		switch (work_type) {
 		case BW_FULL_COMPUTE:
-			/* TODO: limiting to make sure we don't have too many of these in the queue */
+			if (q->compute_in_flight >= ARRAY_COUNT(cs->raw_data_fences)) {
+				result->next = q->next_free;
+				q->next_free = result;
+				result       = 0;
+				break;
+			}
 			cs->raw_data_index++;
 			if (cs->raw_data_index >= ARRAY_COUNT(cs->raw_data_fences))
 				cs->raw_data_index = 0;
@@ -233,16 +242,19 @@ beamform_work_queue_push(BeamformerCtx *ctx, Arena *a, enum beamform_work work_t
 					                     s8("Beamformed_Data"));
 				}
 			}
-		} break;
+		} /* FALLTHROUGH */
 		case BW_PARTIAL_COMPUTE:
+			q->compute_in_flight++;
 		case BW_SAVE_FRAME:
 		case BW_SEND_FRAME:
 		case BW_SSBO_COPY:
 			break;
 		}
 
-		if (q->last) q->last = q->last->next = result;
-		else         q->last = q->first      = result;
+		if (result) {
+			if (q->last) q->last = q->last->next = result;
+			else         q->last = q->first      = result;
+		}
 	}
 
 	return result;
