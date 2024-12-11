@@ -617,8 +617,7 @@ ui_can_start_compute(BeamformerCtx *ctx)
 {
 	BeamformFrame *displayed = ctx->beamform_frames + ctx->displayed_frame_index;
 	b32 result  = ctx->beamform_work_queue.compute_in_flight == 0;
-	result     &= displayed->dim.x != 0;
-	result     &= displayed->dim.y != 0;
+	result     &= (displayed->dim.x != 0 || displayed->dim.y != 0);
 	result     &= displayed->dim.z != 0;
 	return result;
 }
