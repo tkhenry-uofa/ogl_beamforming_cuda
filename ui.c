@@ -612,12 +612,23 @@ update_text_input(InputState *is)
 	}
 }
 
+static b32
+ui_can_start_compute(BeamformerCtx *ctx)
+{
+	BeamformFrame *displayed = ctx->beamform_frames + ctx->displayed_frame_index;
+	b32 result  = ctx->beamform_work_queue.compute_in_flight == 0;
+	result     &= displayed->dim.x != 0;
+	result     &= displayed->dim.y != 0;
+	result     &= displayed->dim.z != 0;
+	return result;
+}
+
 static void
 ui_start_compute(BeamformerCtx *ctx)
 {
 	/* NOTE: we do not allow ui to start a work if no work was previously completed */
 	Arena a = {0};
-	if (ctx->beamform_work_queue.compute_in_flight == 0) {
+	if (ui_can_start_compute(ctx)) {
 		beamform_work_queue_push(ctx, &a, BW_RECOMPUTE);
 		BeamformFrameIterator bfi = beamform_frame_iterator(ctx);
 		for (BeamformFrame *frame = frame_next(&bfi); frame; frame = frame_next(&bfi)) {

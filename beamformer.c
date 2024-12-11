@@ -759,7 +759,8 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 
 	if (IsKeyPressed(KEY_R)) {
 		ctx->flags |= RELOAD_SHADERS;
-		ui_start_compute(ctx);
+		if (ui_can_start_compute(ctx))
+			ui_start_compute(ctx);
 	}
 	if (WindowShouldClose())
 		ctx->flags |= SHOULD_EXIT;
