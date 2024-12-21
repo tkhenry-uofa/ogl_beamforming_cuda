@@ -59,7 +59,7 @@ alloc_beamform_frame(GLParams *gp, BeamformFrame *out, uv4 out_dim, u32 frame_in
 	/* NOTE: allocate storage for beamformed output data;
 	 * this is shared between compute and fragment shaders */
 	u32 max_dim = MAX(out->dim.x, MAX(out->dim.y, out->dim.z));
-	out->mips   = _tzcnt_u32(max_dim) + 1;
+	out->mips   = ctz_u32(max_dim) + 1;
 
 	u8 buf[256];
 	Stream label = {.data = buf, .cap = ARRAY_COUNT(buf)};
@@ -117,8 +117,9 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 
 	i32 storage_flags = GL_DYNAMIC_STORAGE_BIT;
 	switch (ctx->gl.vendor_id) {
-	case GL_VENDOR_INTEL:
 	case GL_VENDOR_AMD:
+	case GL_VENDOR_ARM:
+	case GL_VENDOR_INTEL:
 		if (cs->raw_data_ssbo)
 			glUnmapNamedBuffer(cs->raw_data_ssbo);
 		storage_flags |= GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT;
@@ -146,8 +147,9 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 
 	i32 map_flags = GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT|GL_MAP_UNSYNCHRONIZED_BIT;
 	switch (ctx->gl.vendor_id) {
-	case GL_VENDOR_INTEL:
 	case GL_VENDOR_AMD:
+	case GL_VENDOR_ARM:
+	case GL_VENDOR_INTEL:
 		cs->raw_data_arena.beg = glMapNamedBufferRange(cs->raw_data_ssbo, 0,
 		                                               full_rf_buf_size, map_flags);
 		break;
@@ -309,7 +311,7 @@ static v4
 f32_4_to_v4(f32 *in)
 {
 	v4 result;
-	_mm_storeu_ps(result.E, _mm_loadu_ps(in));
+	store_f32x4(load_f32x4(in), result.E);
 	return result;
 }
 
@@ -711,8 +713,9 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 				ctx->error_stream.widx = 0;
 			} else {
 				switch (ctx->gl.vendor_id) {
-				case GL_VENDOR_INTEL:
 				case GL_VENDOR_AMD:
+				case GL_VENDOR_ARM:
+				case GL_VENDOR_INTEL:
 					break;
 				case GL_VENDOR_NVIDIA:
 					glNamedBufferSubData(cs->raw_data_ssbo, raw_index * rlen,

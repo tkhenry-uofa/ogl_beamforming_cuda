@@ -35,6 +35,7 @@ enum program_flags {
 
 enum gl_vendor_ids {
 	GL_VENDOR_AMD,
+	GL_VENDOR_ARM,
 	GL_VENDOR_INTEL,
 	GL_VENDOR_NVIDIA,
 };

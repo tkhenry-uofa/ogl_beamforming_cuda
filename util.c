@@ -277,7 +277,7 @@ uv4_equal(uv4 a, uv4 b)
 static u32
 round_down_power_of_2(u32 a)
 {
-	u32 result = 0x80000000UL >> _lzcnt_u32(a);
+	u32 result = 0x80000000UL >> clz_u32(a);
 	return result;
 }
 
@@ -342,11 +342,8 @@ mul_v2(v2 a, v2 b)
 static f32
 magnitude_v2(v2 a)
 {
-	v4 result;
-	__m128 av = _mm_set_ps(0, 0, a.x, a.y);
-	av = _mm_mul_ps(av, av);
-	_mm_store_ps(result.E, _mm_sqrt_ps(_mm_hadd_ps(av, av)));
-	return result.x;
+	f32 result = sqrt_f32(a.x * a.x + a.y * a.y);
+	return result;
 }
 
 static f64
@@ -379,13 +376,13 @@ parse_f64(s8 s)
 }
 
 static void
-fill_kronecker_sub_matrix(__m128i *out, i32 out_stride, i32 scale, __m128i *b, uv2 b_dim)
+fill_kronecker_sub_matrix(i32 *out, i32 out_stride, i32 scale, i32 *b, uv2 b_dim)
 {
-	__m128 vscale = _mm_set1_ps(scale);
+	f32x4 vscale = dup_f32x4(scale);
 	for (u32 i = 0; i < b_dim.y; i++) {
-		for (u32 j = 0; j < b_dim.x / 4; j++) {
-			__m128 vb = _mm_cvtepi32_ps(_mm_loadu_si128(b++));
-			_mm_storeu_si128(out + j, _mm_cvtps_epi32(_mm_mul_ps(vscale, vb)));
+		for (u32 j = 0; j < b_dim.x; j += 4, b += 4) {
+			f32x4 vb = cvt_i32x4_f32x4(load_i32x4(b));
+			store_i32x4(cvt_f32x4_i32x4(mul_f32x4(vscale, vb)), out + j);
 		}
 		out += out_stride;
 	}
@@ -398,10 +395,10 @@ kronecker_product(i32 *out, i32 *a, uv2 a_dim, i32 *b, uv2 b_dim)
 	uv2 out_dim = {.x = a_dim.x * b_dim.x, .y = a_dim.y * b_dim.y};
 	ASSERT(out_dim.y % 4 == 0);
 	for (u32 i = 0; i < a_dim.y; i++) {
-		__m128i *vout = (__m128i *)out;
+		i32 *vout = out;
 		for (u32 j = 0; j < a_dim.x; j++, a++) {
-			fill_kronecker_sub_matrix(vout, out_dim.y / 4, *a, (__m128i *)b, b_dim);
-			vout += b_dim.y / 4;
+			fill_kronecker_sub_matrix(vout, out_dim.y, *a, b, b_dim);
+			vout += b_dim.y;
 		}
 		out += out_dim.y * b_dim.x;
 	}

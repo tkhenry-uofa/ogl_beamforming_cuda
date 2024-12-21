@@ -63,9 +63,11 @@ get_gl_params(GLParams *gl, Stream *err)
 		os_fatal(stream_to_s8(err));
 	}
 	switch (vendor[0]) {
-	case 'A': gl->vendor_id = GL_VENDOR_AMD;                      break;
-	case 'I': gl->vendor_id = GL_VENDOR_INTEL;                    break;
-	case 'N': gl->vendor_id = GL_VENDOR_NVIDIA;                   break;
+	case 'A': gl->vendor_id = GL_VENDOR_AMD;    break;
+	case 'I': gl->vendor_id = GL_VENDOR_INTEL;  break;
+	case 'N': gl->vendor_id = GL_VENDOR_NVIDIA; break;
+	/* NOTE(rnp): freedreno - might need different handling on win32 but this is fine for now */
+	case 'f': gl->vendor_id = GL_VENDOR_ARM;    break;
 	default:
 		stream_append_s8(err, s8("Unknown GL Vendor: "));
 		stream_append_s8(err, cstr_to_s8(vendor));
@@ -93,6 +95,7 @@ validate_gl_requirements(GLParams *gl)
 
 	switch (gl->vendor_id) {
 	case GL_VENDOR_AMD:
+	case GL_VENDOR_ARM:
 	case GL_VENDOR_INTEL:
 		if (gl->version_major == 4 && gl->version_minor < 5)
 			invalid = 1;
@@ -116,6 +119,7 @@ dump_gl_params(GLParams *gl, Arena a)
 	stream_append_s8(&s, s8("---- GL Parameters ----\n"));
 	switch (gl->vendor_id) {
 	case GL_VENDOR_AMD:    stream_append_s8(&s, s8("Vendor: AMD\n"));    break;
+	case GL_VENDOR_ARM:    stream_append_s8(&s, s8("Vendor: ARM\n"));    break;
 	case GL_VENDOR_INTEL:  stream_append_s8(&s, s8("Vendor: Intel\n"));  break;
 	case GL_VENDOR_NVIDIA: stream_append_s8(&s, s8("Vendor: nVidia\n")); break;
 	}

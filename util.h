@@ -5,8 +5,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <immintrin.h>
-
 #ifndef asm
 #define asm __asm__
 #endif
@@ -23,13 +21,15 @@
 #endif
 #endif
 
+#include "intrinsics.c"
+
 #ifdef _DEBUG
 	#ifdef _WIN32
 		#define DEBUG_EXPORT __declspec(dllexport)
 	#else
 		#define DEBUG_EXPORT
 	#endif
-	#define ASSERT(c) do { if (!(c)) asm("int3; nop"); } while (0);
+	#define ASSERT(c) do { if (!(c)) debugbreak(); } while (0);
 #else
 	#define DEBUG_EXPORT static
 	#define ASSERT(c)
