@@ -318,7 +318,7 @@ os_poll_pipe(Pipe* p)
 	// and needs to be recreated.
 	if (error != WIN_ERROR_NO_DATA && error != WIN_ERROR_PIPE_LISTENING && error != WIN_ERROR_PIPE_NOT_CONNECTED)
 	{
-		error_msg("os_poll_pipe: Data pipe poll failed, Windows error '%i'.\n", error);
+		warning_msg("os_poll_pipe: Data pipe poll failed, Windows error '%i'.\n", error);
 		result = DisconnectNamedPipe(p->file);
 		result = CloseHandle(p->file);
 		*p = os_open_named_pipe(p->name);
