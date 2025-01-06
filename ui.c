@@ -769,11 +769,23 @@ ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
 static void
 ui_init(BeamformerCtx *ctx, Arena store)
 {
-	/* NOTE: store the ui at the base of the passed in arena and use the rest for
-	 * temporary allocations within the ui. If needed we can recall this function
-	 * to completely clear the ui state */
+	/* NOTE(rnp): store the ui at the base of the passed in arena and use the rest for
+	 * temporary allocations within the ui. If needed we can recall this function to
+	 * completely clear the ui state. The is that if we store pointers to static data
+	 * such as embedded font data we will need to reset them when the executable reloads.
+	 * We could also build some sort of ui structure here and store it then iterate over
+	 * it to actually draw the ui. If we reload we may have changed it so we should
+	 * rebuild it */
+
+	/* NOTE: unload old fonts from the GPU */
+	if (ctx->ui) {
+		UnloadFont(ctx->ui->font);
+		UnloadFont(ctx->ui->small_font);
+	}
+
 	BeamformerUI *ui = ctx->ui = alloc(&store, typeof(*ctx->ui), 1);
 	ui->arena_for_frame = store;
+	ui->frame_temporary_arena = begin_temp_arena(&ui->arena_for_frame);
 
 	/* TODO: build these into the binary */
 	ui->font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);

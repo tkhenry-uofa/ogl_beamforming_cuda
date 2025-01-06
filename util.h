@@ -155,7 +155,7 @@ typedef struct {
 
 typedef struct {
 	size filesize;
-	u64  timestamp;
+	f64  timestamp;
 } FileStats;
 #define ERROR_FILE_STATS (FileStats){.filesize = -1}
 

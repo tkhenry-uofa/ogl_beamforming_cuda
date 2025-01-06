@@ -53,7 +53,7 @@ main(void)
 	setup_beamformer(&ctx, temp_memory);
 
 	while(!(ctx.flags & SHOULD_EXIT)) {
-		do_debug(&ctx.error_stream);
+		do_debug(&input, &ctx.error_stream);
 		if (ctx.gl.vendor_id == GL_VENDOR_NVIDIA)
 			check_and_load_cuda_lib(&ctx.cuda_lib, &ctx.error_stream);
 

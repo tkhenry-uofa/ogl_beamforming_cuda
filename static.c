@@ -20,15 +20,18 @@ static void *debug_lib;
 static beamformer_frame_step_fn *beamformer_frame_step;
 
 static void
-do_debug(Stream *error_stream)
+do_debug(BeamformerInput *input, Stream *error_stream)
 {
-	static f32 updated_time;
+	static f64 updated_time;
 	FileStats test_stats = os_get_file_stats(OS_DEBUG_LIB_NAME);
 	if (test_stats.filesize > 32 && test_stats.timestamp > updated_time) {
 		os_unload_library(debug_lib);
 		debug_lib = os_load_library(OS_DEBUG_LIB_NAME, OS_DEBUG_LIB_TEMP_NAME, error_stream);
 		beamformer_frame_step = os_lookup_dynamic_symbol(debug_lib, "beamformer_frame_step", error_stream);
-		updated_time  = test_stats.timestamp;
+		updated_time = test_stats.timestamp;
+
+		input->executable_reloaded = 1;
+		os_write_err_msg(s8("Reloaded Main Executable\n"));
 	}
 }
 

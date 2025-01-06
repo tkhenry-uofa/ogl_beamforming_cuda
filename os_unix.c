@@ -107,7 +107,7 @@ os_get_file_stats(char *fname)
 
 	return (FileStats){
 		.filesize  = st.st_size,
-		.timestamp = st.st_mtim.tv_sec + st.st_mtim.tv_nsec * 1e9,
+		.timestamp = (f64)st.st_mtim.tv_sec + (f64)st.st_mtim.tv_nsec * 1e-9,
 	};
 }
 
