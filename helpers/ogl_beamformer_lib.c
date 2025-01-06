@@ -43,17 +43,20 @@ static Pipe g_pipe = {.file = INVALID_FILE};
 #define GENERIC_WRITE        0x40000000
 #define FILE_MAP_ALL_ACCESS  0x000F001F
 
-#define PIPE_TYPE_BYTE      0x00
-#define PIPE_ACCESS_INBOUND 0x01
+#define WIN_PIPE_TYPE_BYTE				0x00
+#define WIN_PIPE_ACCESS_INBOUND			0x01
 
-#define WIN_ERROR_NO_DATA			232L
-#define WIN_ERROR_PIPE_NOT_CONNECTED 233L
-#define WIN_ERROR_PIPE_LISTENING	536L
+#define WIN_PIPE_WAIT					0x00
+#define WIN_PIPE_NOWAIT					0x01
+
+#define WIN_ERROR_NO_DATA				232L
+#define WIN_ERROR_PIPE_NOT_CONNECTED	233L
+#define WIN_ERROR_PIPE_LISTENING		536L
 
 #define W32(r) __declspec(dllimport) r __stdcall
 W32(b32)  CloseHandle(iptr);
 W32(iptr) CreateFileA(c8 *, u32, u32, void *, u32, u32, void *);
-W32(iptr) CreateNamedPipeA(c8 *, u32, u32, u32, u32, u32, u32, void *);
+W32(iptr) CreateNamedPipeA(const c8 *, u32, u32, u32, u32, u32, u32, void *);
 W32(iptr) MapViewOfFile(iptr, u32, u32, u32, u64);
 W32(iptr) OpenFileMappingA(u32, b32, c8 *);
 W32(b32)  ReadFile(iptr, u8 *, i32, i32 *, void *);
@@ -65,6 +68,19 @@ W32(b32)  DisconnectNamedPipe(iptr);
 
 #else
 #error Unsupported Platform
+#endif
+
+#if defined(MATLAB_CONSOLE)
+#define mexErrMsgIdAndTxt  mexErrMsgIdAndTxt_800
+#define mexWarnMsgIdAndTxt mexWarnMsgIdAndTxt_800
+void mexErrMsgIdAndTxt(const c8*, c8*, ...);
+void mexWarnMsgIdAndTxt(const c8*, c8*, ...);
+#define error_tag "ogl_beamformer_lib:error"
+#define error_msg(...)   mexErrMsgIdAndTxt(error_tag, __VA_ARGS__)
+#define warning_msg(...) mexWarnMsgIdAndTxt(error_tag, __VA_ARGS__)
+#else
+#define error_msg(...)
+#define warning_msg(...)
 #endif
 
 #if defined(__unix__)
@@ -167,12 +183,14 @@ os_poll_pipe(Pipe* p)
 #elif defined(_WIN32)
 
 static Pipe
-os_open_read_pipe(char *name)
+os_open_read_pipe(const char* name)
 {
-	iptr file = CreateNamedPipeA(name, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE, 1,
-	                             0, 1024UL * 1024UL, 0, 0);
-	return (Pipe){.file = file, .name = name};
+	iptr file = CreateNamedPipeA(name, WIN_PIPE_ACCESS_INBOUND, WIN_PIPE_TYPE_BYTE | WIN_PIPE_NOWAIT, 1,
+		0, 1024UL * 1024UL, 0, 0);
+
+	return (Pipe) { .file = file, .name = name };
 }
+
 
 static void
 os_close_read_pipe(Pipe p)
@@ -181,11 +199,19 @@ os_close_read_pipe(Pipe p)
 }
 
 static b32
-os_read_pipe(Pipe p, void *buf, size read_size)
+os_read_pipe(Pipe p, void* buf, size read_size)
 {
 	i32 total_read = 0;
-	ReadFile(p.file, buf, read_size, &total_read, 0);
-	return total_read == read_size;
+	b32 result = ReadFile(p.file, buf, read_size, &total_read, 0);
+
+	if (!result)
+	{
+		i32 error_code = GetLastError();
+		// Use warning_msg, error_msg exits MEX early preventing cleanup
+		warning_msg("Read pipe error, Data size: %i, Total read: %i, Error code: %i\n", read_size, total_read, error_code);
+	}
+
+	return result;
 }
 
 static Pipe
@@ -245,30 +271,8 @@ os_close_pipe(Pipe* p)
 	}
 }
 
-static Pipe
-os_open_read_pipe(char *name)
-{
-	iptr file = CreateNamedPipeA(name, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE | PIPE_NOWAIT, 1,
-				0, 1024UL * 1024UL, 0, 0);
 
-	return (Pipe){.file = file, .name = name};
-}
 
-static b32
-os_read_pipe(Pipe p, void* buf, size read_size)
-{
-	i32 total_read = 0;
-	b32 result = ReadFile(p.file, buf, read_size, &total_read, 0);
-
-	if (!result)
-	{
-		i32 error_code = GetLastError();
-		// Use warning_msg, error_msg exits MEX early preventing cleanup
-		warning_msg("Read pipe error, Data size: %i, Total read: %i, Error code: %i\n", read_size, total_read, error_code);
-	}
-
-	return result;
-}
 
 // Return true if the pipe state requires restart
 static b32
@@ -303,6 +307,8 @@ os_poll_pipe(Pipe* p)
 
 	if (result)
 	{
+		i32 error = GetLastError();
+		warning_msg("Poll success, Error: %i", error);
 		return 1;
 	}
 
@@ -327,7 +333,6 @@ os_poll_pipe(Pipe* p)
 	return 0;
 }
 
-#endif
 
 static b32
 check_shared_memory(char *name)
@@ -439,6 +444,148 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_
 		error_msg("failed to open volume pipe with error %i", error);
 		return;
 	}
+	else
+	{
+		warning_msg("Opened export pipe '%s', file '%p'", volume_pipe.name, volume_pipe.file);
+	}
+
+	g_bp->raw.rf_raw_dim = data_dim;
+	g_bp->raw.output_points.x = output_points.x;
+	g_bp->raw.output_points.y = output_points.y;
+	g_bp->raw.output_points.z = output_points.z;
+	g_bp->export_next_frame = 1;
+
+	for (u32 i = 0; i < export_name.len; i++)
+		g_bp->export_pipe_name[i] = export_name.data[i];
+
+	g_bp->upload = 1;
+
+	if (g_pipe.file == INVALID_FILE || g_pipe.file == NULL) {
+		g_pipe = os_open_named_pipe(pipe_name);
+		if (g_pipe.file == INVALID_FILE) {
+			error_msg("failed to open data pipe");
+			os_disconnect_pipe_server(volume_pipe);
+			os_close_pipe(&volume_pipe);
+			return;
+		}
+		warning_msg("Opened pipe '%s', file '%p'", g_pipe.name, g_pipe.file);
+	}
+	else
+	{
+		warning_msg("Data pipe healthy, handle: %p", g_pipe.file);
+	}
+
+	size data_size = data_dim.x * data_dim.y * sizeof(i16);
+
+	u32 poll_period = 100; // ms
+	u32 timeout = 1000 * 3600; // 1 hour
+	size bytes_written = 0;
+	u32 elapsed = 0;
+
+	while (elapsed <= timeout)
+	{
+		bytes_written = os_write_to_pipe(g_pipe, data, data_size);
+		if (bytes_written != data_size)
+		{
+			if (os_write_pipe_failed(g_pipe))
+			{
+				os_disconnect_pipe_server(volume_pipe);
+				os_close_pipe(&volume_pipe);
+				error_msg("Failed to write full data to pipe: Total: %ld, Wrote: %i",
+					data_size, bytes_written);
+				return;
+			}
+			else
+			{
+
+		/*		i32 error = GetLastError();
+				warning_msg("Client supposedly not connected, Error: %i", error);*/
+
+				// Client just not connected
+			}
+		}
+		else
+		{
+			i32 error = GetLastError();
+			warning_msg("Data supposedly written, Error: %i", error);
+			break;
+		}
+
+		warning_msg("Waiting\n");
+		os_sleep_ms(poll_period);
+		elapsed += poll_period;
+	}
+
+	os_close_pipe(&g_pipe);
+
+	//warning_msg("Pausing for 10 seconds.\n");
+
+	//Sleep(10000);
+
+	b32 pipe_ready = 0;
+	b32 success = 0;
+
+	size output_size = output_points.x * output_points.y * output_points.z * sizeof(f32) *2; // Complex
+	while (elapsed <= timeout)
+	{
+
+		if (os_poll_pipe(&volume_pipe))
+		{
+			i32 error = GetLastError();
+			warning_msg("Read poll passed, Error: %i\n", error);
+			warning_msg("Output size: %i\n", output_size);
+			success = os_read_pipe(volume_pipe, out_data, output_size);
+			break;
+		}
+		else
+		{
+			i32 error = GetLastError();
+			//warning_msg("Read poll failed, Error: %i", error);
+			Sleep(poll_period);
+			elapsed += poll_period;
+		}
+	}
+
+	warning_msg("Closing pipe");
+	os_disconnect_pipe_server(volume_pipe);
+	os_close_pipe(&volume_pipe);
+
+	if (!success)
+	{
+		error_msg("failed to read full export data from pipe\n");
+	}
+	else
+	{
+
+	}
+		
+}
+
+void
+beamform_data_f32(char *pipe_name, char *shm_name, f32 *data, uv2 data_dim,
+                           uv3 output_points, f32 *out_data)
+{
+	if (!check_shared_memory(shm_name))
+		return;
+
+	if (output_points.x == 0) output_points.x = 1;
+	if (output_points.y == 0) output_points.y = 1;
+	if (output_points.z == 0) output_points.z = 1;
+
+	s8 export_name = s8(OS_EXPORT_PIPE_NAME);
+	if (export_name.len > ARRAY_COUNT(g_bp->export_pipe_name)) {
+		error_msg("export pipe name too long");
+
+		return;
+	}
+
+	Pipe volume_pipe = os_open_read_pipe(OS_EXPORT_PIPE_NAME);
+	if (volume_pipe.file == INVALID_FILE) {
+
+		i32 error = GetLastError();
+		error_msg("failed to open volume pipe with error %i", error);
+		return;
+	}
 	g_bp->raw.rf_raw_dim = data_dim;
 	g_bp->raw.output_points.x = output_points.x;
 	g_bp->raw.output_points.y = output_points.y;
@@ -464,7 +611,7 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_
 		warning_msg("Data pipe healthy, handle: %p", g_pipe.file);
 	}
 
-	size data_size = data_dim.x * data_dim.y * sizeof(i16);
+	size data_size = data_dim.x * data_dim.y * sizeof(f32);
 
 	u32 poll_period = 100; // ms
 	u32 timeout = 20000; // 20 s
@@ -529,99 +676,4 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_
 
 	if (!success)
 		error_msg("failed to read full export data from pipe\n");
-}
-
-void
-beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim,
-                           uv3 output_points, f32 *out_data)
-{
-	if (!check_shared_memory(shm_name))
-		return;
-
-	if (output_points.x == 0) output_points.x = 1;
-	if (output_points.y == 0) output_points.y = 1;
-	if (output_points.z == 0) output_points.z = 1;
-
-	Pipe pipe = os_open_read_pipe(OS_EXPORT_PIPE_NAME);
-	if (pipe.file == INVALID_FILE) {
-		error_msg("failed to open export pipe");
-		return;
-	}
-
-	if (g_pipe.file == INVALID_FILE) {
-		g_pipe = os_open_named_pipe(pipe_name);
-		if (g_pipe.file == INVALID_FILE) {
-			error_msg("failed to open data pipe");
-			os_disconnect_pipe_server(volume_pipe);
-			os_close_pipe(&volume_pipe);
-			return;
-		}
-	}
-
-	g_bp->raw.rf_raw_dim      = data_dim;
-	g_bp->raw.output_points.x = output_points.x;
-	g_bp->raw.output_points.y = output_points.y;
-	g_bp->raw.output_points.z = output_points.z;
-	g_bp->export_next_frame   = 1;
-
-	u32 poll_period = 100; // ms
-	u32 timeout = 20000; // 20 s
-	size bytes_written = 0;
-	u32 elapsed = 0;
-
-	while (elapsed <= timeout)
-	{
-		bytes_written = os_write_to_pipe(g_pipe, data, data_size);
-		if (bytes_written != data_size)
-		{
-			if (os_write_pipe_failed(g_pipe))
-			{
-				error_msg("Failed to write full data to pipe: Total: %ld, Wrote: %i",
-					data_size, bytes_written);
-				os_disconnect_pipe_server(volume_pipe);
-				os_close_pipe(&volume_pipe);
-				return;
-			}
-			else
-			{
-				// Client just not connected
-			}
-		}
-		else
-		{
-			break;
-		}
-
-		os_sleep_ms(poll_period);
-		elapsed += poll_period;
-	}
-
-	os_close_pipe(&g_pipe);
-
-	b32 pipe_ready = 0;
-	b32 success = 0;
-
-	size output_size = output_points.x * output_points.y * output_points.z * sizeof(f32) * 2; // Complex
-	while (elapsed <= timeout)
-	{
-
-		if (os_poll_pipe(&volume_pipe))
-		{
-			success = os_read_pipe(volume_pipe, out_data, output_size);
-			break;
-		}
-		else
-		{
-			Sleep(poll_period);
-			elapsed += poll_period;
-		}
-	}
-
-	os_disconnect_pipe_server(volume_pipe);
-	os_close_pipe(&volume_pipe);
-	os_close_read_pipe(&volume_pipe);
-	os_close_read_pipe(&volume_pipe);
-
-	if (!success)
-		warning_msg("failed to read full export data from pipe\n");
 }
