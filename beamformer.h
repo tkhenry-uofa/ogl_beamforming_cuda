@@ -22,6 +22,9 @@
 
 #define TEXT_HOVER_SPEED       5.0f
 
+#define RULER_TEXT_PAD         10.0f
+#define RULER_TICK_LENGTH      20.0f
+
 #define RECT_BTN_COLOUR        (Color){.r = 0x43, .g = 0x36, .b = 0x3a, .a = 0xff}
 #define RECT_BTN_BORDER_COLOUR (Color){.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xCC}
 #define RECT_BTN_ROUNDNESS     0.3f
@@ -80,6 +83,8 @@ typedef struct {
 
 	Font font;
 	Font small_font;
+	f32  font_height;
+	f32  small_font_height;
 
 	InteractionState interaction;
 	InputState       text_input_state;

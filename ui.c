@@ -111,6 +111,48 @@ hover_text(v2 mouse, Rect text_rect, f32 *hover_t, b32 can_advance)
 	return hovering;
 }
 
+/* TODO(rnp): once this has more callers decide if it would be better for this to take
+ * an orientation rather than force CCW/right-handed */
+static void
+draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
+           f32 start_coord, f32 end_coord, u32 segments, s8 suffix,
+           Color ruler_colour, Color txt_colour)
+{
+	b32 draw_plus = SIGN(start_coord) != SIGN(end_coord);
+
+	end_point    = sub_v2(end_point, start_point);
+	f32 rotation = atan2_f32(end_point.y, end_point.x) * 180 / PI;
+
+	rlPushMatrix();
+	rlTranslatef(start_point.x, start_point.y, 0);
+	rlRotatef(rotation, 0, 0, 1);
+
+	f32 inc       = magnitude_v2(end_point) / segments;
+	f32 coord_inc = (end_coord - start_coord) / segments;
+	f32 coord     = start_coord;
+
+	v2 sp = {0}, ep = {.y = RULER_TICK_LENGTH};
+	v2 tp = {.x = ui->small_font_height / 2, .y = ep.y + RULER_TEXT_PAD};
+	for (u32 j = 0; j <= segments; j++) {
+		DrawLineEx(sp.rl, ep.rl, 3, ruler_colour);
+
+		buf->widx = 0;
+		if (draw_plus && coord > 0) stream_append_byte(buf, '+');
+		stream_append_f64(buf, coord, 10);
+		stream_append_s8(buf, suffix);
+		draw_text(ui->small_font, stream_to_s8(buf), tp, 90, txt_colour);
+
+		coord += coord_inc;
+		sp.x  += inc;
+		ep.x  += inc;
+		tp.x  += inc;
+	}
+	rlPopMatrix();
+}
+
+/* TODO(rnp): this is known after the first frame, we could unbind
+ * the texture for the first draw pass or just accept a slight glitch
+ * at start up (make a good default guess) */
 /* NOTE: This is kinda sucks no matter how you spin it. If we want the values to be
  * left aligned in the center column we need to know the longest prefix length but
  * without either hardcoding one of the prefixes as the longest one or measuring all
@@ -790,6 +832,9 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	/* TODO: build these into the binary */
 	ui->font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
 	ui->small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 22, 0, 0);
+
+	ui->font_height       = measure_text(ui->font, s8("8\\W")).h;
+	ui->small_font_height = measure_text(ui->small_font, s8("8\\W")).h;
 }
 
 static void
@@ -825,23 +870,17 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input)
 
 		Rect vr = INVERTED_INFINITY_RECT;
 		if (output_dim.x > 1e-6 && output_dim.y > 1e-6) {
-			Stream buf = stream_alloc(&ui->arena_for_frame, 64);
-			stream_append_f64(&buf, -188.8f, 10);
-			stream_append_s8(&buf, s8(" mm"));
-			v2 txt_s = measure_text(ui->small_font, stream_to_s8(&buf));
-			buf.widx = 0;
+			v2 txt_s = measure_text(ui->small_font, s8("-288.8 mm"));
 
 			rr.pos.x  += 0.02 * rr.size.w;
 			rr.pos.y  += 0.02 * rr.size.h;
 			rr.size.w *= 0.96;
 			rr.size.h *= 0.96;
 
-			f32 tick_len = 20;
-			f32 pad      = 1.2 * txt_s.x + tick_len;
-
+			f32 pad    = 1.2 * txt_s.x + RULER_TICK_LENGTH;
 			vr         = rr;
-			vr.pos.x  += 0.5 * txt_s.y;
-			vr.pos.y  += 0.5 * txt_s.y;
+			vr.pos.x  += 0.5 * ui->small_font_height;
+			vr.pos.y  += 0.5 * ui->small_font_height;
 			vr.size.h  = rr.size.h - pad;
 			vr.size.w  = rr.size.w - pad;
 
@@ -859,59 +898,59 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input)
 			DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
 
 			static f32 txt_colour_t[2];
-			for (u32 i = 0; i < 2; i++) {
-				u32 line_count   = vr.size.E[i] / (1.5 * txt_s.h);
-				f32 inc          = vr.size.E[i] / line_count;
-				v2 start_pos     = vr.pos;
-				start_pos.E[!i] += vr.size.E[!i];
 
-				v2 end_pos       = start_pos;
-				end_pos.E[!i]   += tick_len;
+			u32 line_count  = vr.size.x / (1.5 * ui->small_font_height);
+			v2 start_pos    = vr.pos;
+			start_pos.y    += vr.size.y;
 
-				/* NOTE: Center the Text with the Tick center */
-				f32 txt_pos_scale[2] = {1, -1};
-				v2 txt_pos  = end_pos;
-				txt_pos.E[i]  += txt_pos_scale[i] * txt_s.y/2;
-				txt_pos.E[!i] += 10;
+			v2 end_pos  = start_pos;
+			end_pos.x  += vr.size.x;
 
-				Rect tick_rect       = {.pos = start_pos, .size = vr.size};
-				tick_rect.size.E[!i] = 10 + tick_len + txt_s.x;
+			Rect tick_rect   = {.pos = start_pos, .size = vr.size};
+			tick_rect.size.y = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
 
-				/* TODO: don't do this nonsense; this code will need to get
-				 * split into a seperate function */
-				/* TODO: pass this through the interaction system */
-				u32 coord_idx = i == 0? 0 : 2;
-				if (hover_text(mouse, tick_rect, txt_colour_t + i, 1)) {
-					f32 scale[2]   = {0.5e-3, 1e-3};
-					f32 size_delta = GetMouseWheelMove() * scale[i];
-					if (coord_idx == 0)
-						bp->output_min_coordinate.E[coord_idx] -= size_delta;
-					bp->output_max_coordinate.E[coord_idx] += size_delta;
-					if (size_delta)
-						ui_start_compute(ctx);
-				}
-
-				f32 mm     = bp->output_min_coordinate.E[coord_idx] * 1e3;
-				f32 mm_inc = inc * output_dim.E[i] * 1e3 / vr.size.E[i];
-
-				Color txt_colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR,
-				                                                  txt_colour_t[i]));
-
-				f32 rot[2] = {90, 0};
-				for (u32 j = 0; j <= line_count; j++) {
-					DrawLineEx(start_pos.rl, end_pos.rl, 3, colour_from_normalized(FG_COLOUR));
-					buf.widx = 0;
-					if (i == 0 && mm > 0) stream_append_byte(&buf, '+');
-					stream_append_f64(&buf, mm, 10);
-					stream_append_s8(&buf, s8(" mm"));
-					draw_text(ui->small_font, stream_to_s8(&buf), txt_pos,
-					          rot[i], txt_colour);
-					start_pos.E[i] += inc;
-					end_pos.E[i]   += inc;
-					txt_pos.E[i]   += inc;
-					mm             += mm_inc;
-				}
+			/* TODO: pass this through the interaction system */
+			if (hover_text(mouse, tick_rect, txt_colour_t + 0, 1)) {
+				f32 size_delta = GetMouseWheelMove() * 0.5e-3;
+				bp->output_min_coordinate.x -= size_delta;
+				bp->output_max_coordinate.x += size_delta;
+				if (size_delta)
+					ui_start_compute(ctx);
 			}
+
+			Stream buf = stream_alloc(&ui->arena_for_frame, 64);
+
+			f32 mm     = bp->output_min_coordinate.x * 1e3;
+			f32 mm_end = bp->output_max_coordinate.x * 1e3;
+
+			draw_ruler(ui, &buf, start_pos, end_pos, mm, mm_end, line_count, s8(" mm"),
+			           colour_from_normalized(FG_COLOUR),
+			           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, txt_colour_t[0])));
+
+			line_count   = vr.size.y / (1.5 * ui->small_font_height);
+			start_pos    = vr.pos;
+			start_pos.x += vr.size.x;
+
+			end_pos    = start_pos;
+			end_pos.y += vr.size.y;
+
+			tick_rect        = (Rect){.pos = start_pos, .size = vr.size};
+			tick_rect.size.x = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
+
+			/* TODO: pass this through the interaction system */
+			if (hover_text(mouse, tick_rect, txt_colour_t + 1, 1)) {
+				f32 size_delta = GetMouseWheelMove() * 1e-3;
+				bp->output_max_coordinate.z += size_delta;
+				if (size_delta)
+					ui_start_compute(ctx);
+			}
+
+			mm     = bp->output_min_coordinate.z * 1e3;
+			mm_end = bp->output_max_coordinate.z * 1e3;
+
+			draw_ruler(ui, &buf, end_pos, start_pos, mm_end, mm, line_count, s8(" mm"),
+			           colour_from_normalized(FG_COLOUR),
+			           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, txt_colour_t[1])));
 		}
 
 		draw_settings_ui(ctx, lr, mouse);
