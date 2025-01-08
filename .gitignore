@@ -1,8 +1,9 @@
-ogl
-ogl.exe
 *.dll
-*.so
+*.exe
 *.mexa64
-external/lib
+*.so
 external/include/r*.h
+external/lib
+helpers/helper
+ogl
 x64
