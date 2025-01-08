@@ -150,12 +150,105 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 	rlPopMatrix();
 }
 
-static void
-do_display_overlay(BeamformerCtx *ctx, Stream *buf, v2 mouse, v2 output_dim, Rect display_rect)
-{
-	BeamformerUI *ui = ctx->ui;
+/* TODO: drop these when the below is fully making use of the interaction code */
+static void ui_start_compute(BeamformerCtx *);
 
-	if (CheckCollisionPointRec(mouse.rl, display_rect.rl)) {
+static void
+draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
+{
+	BeamformerUI *ui         = ctx->ui;
+	BeamformerParameters *bp = &ctx->params->raw;
+
+	Stream buf      = arena_stream(&a);
+	Texture *output = &ctx->fsctx.output.texture;
+
+	/* TODO: this depends on the direction being rendered (x vs y) */
+	v2 output_dim = {
+		.x = bp->output_max_coordinate.x - bp->output_min_coordinate.x,
+		.y = bp->output_max_coordinate.z - bp->output_min_coordinate.z,
+	};
+
+	v2 txt_s = measure_text(ui->small_font, s8("-288.8 mm"));
+
+	display_rect.pos.x  += 0.02 * display_rect.size.w;
+	display_rect.pos.y  += 0.02 * display_rect.size.h;
+	display_rect.size.w *= 0.96;
+	display_rect.size.h *= 0.96;
+
+	f32 pad    = 1.2 * txt_s.x + RULER_TICK_LENGTH;
+	Rect vr    = display_rect;
+	vr.pos.x  += 0.5 * ui->small_font_height;
+	vr.pos.y  += 0.5 * ui->small_font_height;
+	vr.size.h  = display_rect.size.h - pad;
+	vr.size.w  = display_rect.size.w - pad;
+
+	f32 aspect = output_dim.h / output_dim.w;
+	if (display_rect.size.h < (vr.size.w * aspect) + pad) {
+		vr.size.w = vr.size.h / aspect;
+	} else {
+		vr.size.h = vr.size.w * aspect;
+	}
+	vr.pos.x += (display_rect.size.w - (vr.size.w + pad)) / 2;
+	vr.pos.y += (display_rect.size.h - (vr.size.h + pad)) / 2;
+
+	Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
+	NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
+	DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
+
+	static f32 txt_colour_t[2];
+
+	u32 line_count  = vr.size.x / (1.5 * ui->small_font_height);
+	v2 start_pos    = vr.pos;
+	start_pos.y    += vr.size.y;
+
+	v2 end_pos  = start_pos;
+	end_pos.x  += vr.size.x;
+
+	Rect tick_rect   = {.pos = start_pos, .size = vr.size};
+	tick_rect.size.y = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
+
+	/* TODO: pass this through the interaction system */
+	if (hover_text(mouse, tick_rect, txt_colour_t + 0, 1)) {
+		f32 size_delta = GetMouseWheelMoveV().y * 0.5e-3;
+		bp->output_min_coordinate.x -= size_delta;
+		bp->output_max_coordinate.x += size_delta;
+		if (size_delta)
+			ui_start_compute(ctx);
+	}
+
+	f32 mm     = bp->output_min_coordinate.x * 1e3;
+	f32 mm_end = bp->output_max_coordinate.x * 1e3;
+
+	draw_ruler(ui, &buf, start_pos, end_pos, mm, mm_end, line_count, s8(" mm"),
+	           colour_from_normalized(FG_COLOUR),
+	           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, txt_colour_t[0])));
+
+	line_count   = vr.size.y / (1.5 * ui->small_font_height);
+	start_pos    = vr.pos;
+	start_pos.x += vr.size.x;
+
+	end_pos    = start_pos;
+	end_pos.y += vr.size.y;
+
+	tick_rect        = (Rect){.pos = start_pos, .size = vr.size};
+	tick_rect.size.x = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
+
+	/* TODO: pass this through the interaction system */
+	if (hover_text(mouse, tick_rect, txt_colour_t + 1, 1)) {
+		f32 size_delta = GetMouseWheelMoveV().y * 1e-3;
+		bp->output_max_coordinate.z += size_delta;
+		if (size_delta)
+			ui_start_compute(ctx);
+	}
+
+	mm     = bp->output_min_coordinate.z * 1e3;
+	mm_end = bp->output_max_coordinate.z * 1e3;
+
+	draw_ruler(ui, &buf, end_pos, start_pos, mm_end, mm, line_count, s8(" mm"),
+	           colour_from_normalized(FG_COLOUR),
+	           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, txt_colour_t[1])));
+
+	if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
 		InteractionState *is  = &ui->interaction;
 		is->hot_state         = IS_DISPLAY;
 		is->hot.store         = &ctx->fsctx.threshold;
@@ -174,10 +267,10 @@ do_display_overlay(BeamformerCtx *ctx, Stream *buf, v2 mouse, v2 output_dim, Rec
 		Color colour = colour_from_normalized(RULER_COLOUR);
 
 		v2 pixels_to_mm = output_dim;
-		pixels_to_mm.x /= display_rect.size.x * 1e-3;
-		pixels_to_mm.y /= display_rect.size.y * 1e-3;
+		pixels_to_mm.x /= vr.size.x * 1e-3;
+		pixels_to_mm.y /= vr.size.y * 1e-3;
 
-		end_p          = clamp_v2_rect(end_p, display_rect);
+		end_p          = clamp_v2_rect(end_p, vr);
 		v2 pixel_delta = sub_v2(ui->ruler_start_p, end_p);
 		v2 mm_delta    = mul_v2(pixels_to_mm, pixel_delta);
 
@@ -185,15 +278,15 @@ do_display_overlay(BeamformerCtx *ctx, Stream *buf, v2 mouse, v2 output_dim, Rec
 		DrawLineEx(end_p.rl, ui->ruler_start_p.rl, 2, colour);
 		DrawCircleV(end_p.rl, 3, colour);
 
-		buf->widx = 0;
-		stream_append_f64(buf, magnitude_v2(mm_delta), 100);
-		stream_append_s8(buf, s8(" mm"));
+		buf.widx = 0;
+		stream_append_f64(&buf, magnitude_v2(mm_delta), 100);
+		stream_append_s8(&buf, s8(" mm"));
 
 		v2 txt_p = ui->ruler_start_p;
-		v2 txt_s = measure_text(ui->small_font, stream_to_s8(buf));
+		v2 txt_s = measure_text(ui->small_font, stream_to_s8(&buf));
 		if (pixel_delta.y < 0) txt_p.y -= txt_s.y;
 		if (pixel_delta.x < 0) txt_p.x -= txt_s.x;
-		draw_text(ui->small_font, stream_to_s8(buf), txt_p, 0, colour);
+		draw_text(ui->small_font, stream_to_s8(&buf), txt_p, 0, colour);
 	}
 }
 
@@ -909,9 +1002,8 @@ ui_init(BeamformerCtx *ctx, Arena store)
 }
 
 static void
-draw_ui(BeamformerCtx *ctx, BeamformerInput *input, b32 draw_scale_bars)
+draw_ui(BeamformerCtx *ctx, BeamformerInput *input, b32 draw_display)
 {
-	BeamformerParameters *bp = &ctx->params->raw;
 	BeamformerUI *ui = ctx->ui;
 
 	end_temp_arena(ui->frame_temporary_arena);
@@ -924,14 +1016,6 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, b32 draw_scale_bars)
 	BeginDrawing();
 		ClearBackground(colour_from_normalized(BG_COLOUR));
 
-		Texture *output   = &ctx->fsctx.output.texture;
-
-		/* TODO: this depends on the direction being rendered (x vs y) */
-		v2 output_dim = {
-			.x = bp->output_max_coordinate.x - bp->output_min_coordinate.x,
-			.y = bp->output_max_coordinate.z - bp->output_min_coordinate.z,
-		};
-
 		v2 mouse = input->mouse;
 		Rect wr = {.size = {.w = (f32)ctx->window_size.w, .h = (f32)ctx->window_size.h}};
 		Rect lr = wr, rr = wr;
@@ -939,93 +1023,9 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, b32 draw_scale_bars)
 		rr.size.w = wr.size.w - lr.size.w;
 		rr.pos.x  = lr.pos.x  + lr.size.w;
 
-		Stream buf = stream_alloc(&ui->arena_for_frame, 64);
-		Rect vr = INVERTED_INFINITY_RECT;
-		/* TODO(rnp): move this into the display overlay function */
-		if (draw_scale_bars) {
-			v2 txt_s = measure_text(ui->small_font, s8("-288.8 mm"));
-
-			rr.pos.x  += 0.02 * rr.size.w;
-			rr.pos.y  += 0.02 * rr.size.h;
-			rr.size.w *= 0.96;
-			rr.size.h *= 0.96;
-
-			f32 pad    = 1.2 * txt_s.x + RULER_TICK_LENGTH;
-			vr         = rr;
-			vr.pos.x  += 0.5 * ui->small_font_height;
-			vr.pos.y  += 0.5 * ui->small_font_height;
-			vr.size.h  = rr.size.h - pad;
-			vr.size.w  = rr.size.w - pad;
-
-			f32 aspect = output_dim.h / output_dim.w;
-			if (rr.size.h < (vr.size.w * aspect) + pad) {
-				vr.size.w = vr.size.h / aspect;
-			} else {
-				vr.size.h = vr.size.w * aspect;
-			}
-			vr.pos.x += (rr.size.w - (vr.size.w + pad)) / 2;
-			vr.pos.y += (rr.size.h - (vr.size.h + pad)) / 2;
-
-			Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
-			NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
-			DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
-
-			static f32 txt_colour_t[2];
-
-			u32 line_count  = vr.size.x / (1.5 * ui->small_font_height);
-			v2 start_pos    = vr.pos;
-			start_pos.y    += vr.size.y;
-
-			v2 end_pos  = start_pos;
-			end_pos.x  += vr.size.x;
-
-			Rect tick_rect   = {.pos = start_pos, .size = vr.size};
-			tick_rect.size.y = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
-
-			/* TODO: pass this through the interaction system */
-			if (hover_text(mouse, tick_rect, txt_colour_t + 0, 1)) {
-				f32 size_delta = GetMouseWheelMoveV().y * 0.5e-3;
-				bp->output_min_coordinate.x -= size_delta;
-				bp->output_max_coordinate.x += size_delta;
-				if (size_delta)
-					ui_start_compute(ctx);
-			}
-
-			f32 mm     = bp->output_min_coordinate.x * 1e3;
-			f32 mm_end = bp->output_max_coordinate.x * 1e3;
-
-			draw_ruler(ui, &buf, start_pos, end_pos, mm, mm_end, line_count, s8(" mm"),
-			           colour_from_normalized(FG_COLOUR),
-			           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, txt_colour_t[0])));
-
-			line_count   = vr.size.y / (1.5 * ui->small_font_height);
-			start_pos    = vr.pos;
-			start_pos.x += vr.size.x;
-
-			end_pos    = start_pos;
-			end_pos.y += vr.size.y;
-
-			tick_rect        = (Rect){.pos = start_pos, .size = vr.size};
-			tick_rect.size.x = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
-
-			/* TODO: pass this through the interaction system */
-			if (hover_text(mouse, tick_rect, txt_colour_t + 1, 1)) {
-				f32 size_delta = GetMouseWheelMoveV().y * 1e-3;
-				bp->output_max_coordinate.z += size_delta;
-				if (size_delta)
-					ui_start_compute(ctx);
-			}
-
-			mm     = bp->output_min_coordinate.z * 1e3;
-			mm_end = bp->output_max_coordinate.z * 1e3;
-
-			draw_ruler(ui, &buf, end_pos, start_pos, mm_end, mm, line_count, s8(" mm"),
-			           colour_from_normalized(FG_COLOUR),
-			           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, txt_colour_t[1])));
-		}
-
 		draw_settings_ui(ctx, lr, mouse);
 		draw_debug_overlay(ctx, ui->arena_for_frame, lr);
-		do_display_overlay(ctx, &buf, mouse, output_dim, vr);
+		if (draw_display)
+			draw_display_overlay(ctx, ui->arena_for_frame, mouse, rr);
 	EndDrawing();
 }
