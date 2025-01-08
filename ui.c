@@ -1024,8 +1024,8 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, b32 draw_display)
 		rr.pos.x  = lr.pos.x  + lr.size.w;
 
 		draw_settings_ui(ctx, lr, mouse);
-		draw_debug_overlay(ctx, ui->arena_for_frame, lr);
 		if (draw_display)
 			draw_display_overlay(ctx, ui->arena_for_frame, mouse, rr);
+		draw_debug_overlay(ctx, ui->arena_for_frame, lr);
 	EndDrawing();
 }
