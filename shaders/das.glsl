@@ -204,7 +204,7 @@ vec2 uFORCES(vec3 image_point, vec3 delta, float y_off, uint starting_offset, fl
 		uint base_idx = (i - uforces) / 4;
 		uint sub_idx  = (i - uforces) % 4;
 
-		vec3  rdist         = image_point;
+		vec2  rdist         = vec2(image_point.x, image_point.z);
 		vec3  focal_point   = uforces_channels[base_idx][sub_idx] * delta + vec3(0, y_off, 0);
 		float transmit_dist = distance(image_point, focal_point);
 
@@ -212,7 +212,7 @@ vec2 uFORCES(vec3 image_point, vec3 delta, float y_off, uint starting_offset, fl
 			float sidx  = sample_index(transmit_dist + length(rdist));
 			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
 			sum        += apodize(cubic(ridx, sidx), apodization_arg, rdist.x) * valid;
-			rdist      -= delta;
+			rdist.x    -= delta.x;
 			ridx       += dec_data_dim.x;
 		}
 	}
