@@ -263,14 +263,14 @@ void main()
 		break;
 	case DAS_ID_HERCULES:
 		/* TODO: there should be a smarter way of detecting this */
-		if (edge2.x != 0) delta = vec3(edge2.x, edge1.y, 0) / float(dec_data_dim.y);
-		else              delta = vec3(edge1.x, edge2.y, 0) / float(dec_data_dim.y);
+		if (edge2.x != 0) delta = vec3(edge2.x, edge1.y, 0) / float(dec_data_dim.y - 1);
+		else              delta = vec3(edge1.x, edge2.y, 0) / float(dec_data_dim.y - 1);
 		sum = HERCULES(image_point, delta, starting_offset, apod_arg);
 		break;
 	case DAS_ID_RCA:
 		/* TODO: there should be a smarter way of detecting this */
-		if (edge2.x != 0) delta = vec3(edge2.x, edge1.y, 0) / float(dec_data_dim.y);
-		else              delta = vec3(edge1.x, edge2.y, 0) / float(dec_data_dim.y);
+		if (edge2.x != 0) delta = vec3(edge2.x, edge1.y, 0) / float(dec_data_dim.y - 1);
+		else              delta = vec3(edge1.x, edge2.y, 0) / float(dec_data_dim.y - 1);
 		sum = RCA(image_point, delta, starting_offset, apod_arg);
 		break;
 	}
