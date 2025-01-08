@@ -319,6 +319,15 @@ normalize_v3(v3 a)
 }
 
 static v2
+clamp_v2_rect(v2 v, Rect r)
+{
+	v2 result = v;
+	result.x = CLAMP(v.x, r.pos.x, r.pos.x + r.size.x);
+	result.y = CLAMP(v.y, r.pos.y, r.pos.y + r.size.y);
+	return result;
+}
+
+static v2
 sub_v2(v2 a, v2 b)
 {
 	v2 result = {

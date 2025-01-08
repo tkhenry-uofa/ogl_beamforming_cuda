@@ -68,13 +68,18 @@ enum interaction_states {
 	IS_SCALE_BAR,
 };
 
+enum ruler_state {
+	RS_NONE,
+	RS_START,
+	RS_HOLD,
+};
+
 typedef struct {
 	Variable hot;
 	Variable next_hot;
 	Variable active;
 	u32      hot_state;
 	u32      state;
-	v2       last_mouse_click_p;
 } InteractionState;
 
 typedef struct {
@@ -88,6 +93,10 @@ typedef struct {
 
 	InteractionState interaction;
 	InputState       text_input_state;
+
+	v2  ruler_start_p;
+	v2  ruler_stop_p;
+	u32 ruler_state;
 } BeamformerUI;
 
 #define MAX_FRAMES_IN_FLIGHT 3

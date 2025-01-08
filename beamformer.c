@@ -729,6 +729,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 	do_beamform_work(ctx, arena);
 
 	/* NOTE: draw output image texture using render fragment shader */
+	b32 output_image_drawn;
 	BeginTextureMode(ctx->fsctx.output);
 		ClearBackground(PINK);
 		BeginShaderMode(ctx->fsctx.shader);
@@ -742,6 +743,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 				/* NOTE: verify we have actually beamformed something yet */
 				if (f->dim.w) out_texture = f->textures[f->dim.w - 1];
 			}
+			output_image_drawn = out_texture != 0;
 			glBindTextureUnit(0, out_texture);
 			glUniform1f(fs->db_cutoff_id, fs->db);
 			glUniform1f(fs->threshold_id, fs->threshold);
@@ -758,7 +760,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		ctx->flags &= ~GEN_MIPMAPS;
 	}
 
-	draw_ui(ctx, input);
+	draw_ui(ctx, input, output_image_drawn);
 
 	if (IsKeyPressed(KEY_R)) {
 		ctx->flags |= RELOAD_SHADERS;
