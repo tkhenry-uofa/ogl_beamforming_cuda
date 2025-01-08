@@ -811,7 +811,7 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 	} break;
 	case IS_DISPLAY: display_interaction_end(ui); /* FALLTHROUGH */
 	case IS_SCROLL: {
-		f32 delta = GetMouseWheelMove() * is->active.scroll_scale;
+		f32 delta = GetMouseWheelMoveV().y * is->active.scroll_scale;
 		switch (is->active.type) {
 		case VT_B32: {
 			b32 *old_val = is->active.store;
@@ -850,7 +850,7 @@ ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
 	InteractionState *is    = &ui->interaction;
 	b32 mouse_left_pressed  = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
 	b32 mouse_right_pressed = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
-	b32 wheel_moved         = GetMouseWheelMove();
+	b32 wheel_moved         = GetMouseWheelMoveV().y != 0;
 	if (mouse_right_pressed || mouse_left_pressed || wheel_moved) {
 		if (is->state != IS_NONE)
 			ui_end_interact(ctx, input->mouse);
@@ -984,7 +984,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, b32 draw_scale_bars)
 
 			/* TODO: pass this through the interaction system */
 			if (hover_text(mouse, tick_rect, txt_colour_t + 0, 1)) {
-				f32 size_delta = GetMouseWheelMove() * 0.5e-3;
+				f32 size_delta = GetMouseWheelMoveV().y * 0.5e-3;
 				bp->output_min_coordinate.x -= size_delta;
 				bp->output_max_coordinate.x += size_delta;
 				if (size_delta)
@@ -1010,7 +1010,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, b32 draw_scale_bars)
 
 			/* TODO: pass this through the interaction system */
 			if (hover_text(mouse, tick_rect, txt_colour_t + 1, 1)) {
-				f32 size_delta = GetMouseWheelMove() * 1e-3;
+				f32 size_delta = GetMouseWheelMoveV().y * 1e-3;
 				bp->output_max_coordinate.z += size_delta;
 				if (size_delta)
 					ui_start_compute(ctx);
