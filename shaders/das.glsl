@@ -176,6 +176,9 @@ vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodizat
 			float sidx = sample_index(tdist + length(rdist));
 			vec2 valid = vec2(sidx < dec_data_dim.x);
 
+			/* NOTE: tribal knowledge */
+			if (i == 0) valid *= inversesqrt(128);
+
 			sum += apodize(cubic(ridx, sidx), apodization_arg, rdist.x) * valid;
 
 			rdist[direction] -= delta[direction];
