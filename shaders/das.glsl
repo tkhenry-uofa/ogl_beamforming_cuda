@@ -174,7 +174,7 @@ vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodizat
 		/* NOTE: For Each Virtual Source */
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float sidx = sample_index(tdist + length(rdist));
-			vec2 valid = vec2(sidx < dec_data_dim.x);
+			vec2 valid = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
 
 			/* NOTE: tribal knowledge */
 			if (i == 0) valid *= inversesqrt(128);
@@ -191,7 +191,7 @@ vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodizat
 	return sum;
 }
 
-vec2 uFORCES(vec3 image_point, vec3 delta, uint starting_offset, float apodization_arg)
+vec2 uFORCES(vec3 image_point, vec3 delta, float y_off, uint starting_offset, float apodization_arg)
 {
 	/* NOTE: skip first acquisition in uforces since its garbage */
 	uint uforces = uint(dec_data_dim.y != dec_data_dim.z);
@@ -205,12 +205,12 @@ vec2 uFORCES(vec3 image_point, vec3 delta, uint starting_offset, float apodizati
 		uint sub_idx  = (i - uforces) % 4;
 
 		vec3  rdist         = image_point;
-		vec3  focal_point   = uforces_channels[base_idx][sub_idx] * delta;
+		vec3  focal_point   = uforces_channels[base_idx][sub_idx] * delta + vec3(0, y_off, 0);
 		float transmit_dist = distance(image_point, focal_point);
 
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float sidx  = sample_index(transmit_dist + length(rdist));
-			vec2 valid  = vec2(sidx < dec_data_dim.x);
+			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
 			sum        += apodize(cubic(ridx, sidx), apodization_arg, rdist.x) * valid;
 			rdist      -= delta;
 			ridx       += dec_data_dim.x;
@@ -226,10 +226,6 @@ void main()
 	ivec3 out_coord    = ivec3(gl_GlobalInvocationID);
 	vec3  image_point  = calc_image_point(vec3(gl_GlobalInvocationID));
 
-	/* NOTE: array edge vectors for calculating element step delta */
-	vec3 edge1 = xdc_corner1[u_xdc_index].xyz - xdc_origin[u_xdc_index].xyz;
-	vec3 edge2 = xdc_corner2[u_xdc_index].xyz - xdc_origin[u_xdc_index].xyz;
-
 	/* NOTE: used for constant F# dynamic receive apodization. This is implemented as:
 	 *
 	 *                  /        |x_e - x_i|\
@@ -237,21 +233,33 @@ void main()
 	 *                  \        |z_e - z_i|/
 	 *
 	 * where x,z_e are transducer element positions and x,z_i are image positions. */
-	float apod_arg = f_number * 0.5 * radians(360) / abs(image_point.z);
+	float apod_arg = f_number * radians(180) / abs(image_point.z);
 
 	/* NOTE: skip over channels corresponding to other arrays */
 	uint starting_offset = u_xdc_index * (dec_data_dim.y / xdc_count) * dec_data_dim.x * dec_data_dim.z;
 
-	/* NOTE: in (u)FORCES we step along line elements */
+	/* NOTE: array edge vectors for calculating element step delta */
+	vec3 edge1 = xdc_corner1[u_xdc_index].xyz - xdc_origin[u_xdc_index].xyz;
+	vec3 edge2 = xdc_corner2[u_xdc_index].xyz - xdc_origin[u_xdc_index].xyz;
 	vec3 delta;
 
 	vec2 sum;
 	switch (das_shader_id) {
 	case DAS_ID_UFORCES:
-		/* TODO: there should be a smarter way of detecting this */
-		if (edge2.x != 0) delta = vec3(edge2.x, 0, 0) / float(dec_data_dim.y);
-		else              delta = vec3(edge1.x, 0, 0) / float(dec_data_dim.y);
-		sum = uFORCES(image_point, delta, starting_offset, apod_arg);
+		/* TODO: there should be a smarter way of detecting this.
+		 * (hack since we assume we beamform in x-z even when we are actually doing
+		 *  y-z. this will be cleaned up by using an initial transform to shift the
+		 *  voxel into the correct space) */
+		float y_off;
+		if (edge2.x != 0) {
+			delta = vec3(edge2.x, 0, 0) / float(dec_data_dim.y - 1);
+			y_off = edge1.y / 2;
+		} else {
+			delta = vec3(edge1.x, 0, 0) / float(dec_data_dim.y - 1);
+			y_off = edge2.y / 2;
+		}
+
+		sum = uFORCES(image_point, delta, y_off, starting_offset, apod_arg);
 		break;
 	case DAS_ID_HERCULES:
 		/* TODO: there should be a smarter way of detecting this */
@@ -267,5 +275,5 @@ void main()
 		break;
 	}
 
-	imageStore(u_out_data_tex, out_coord, vec4(sum.x, sum.y, 0, 0));
+	imageStore(u_out_data_tex, out_coord, vec4(sum, 0, 0));
 }
