@@ -586,6 +586,11 @@ beamform_data_f32(char *pipe_name, char *shm_name, f32 *data, uv2 data_dim,
 		error_msg("failed to open volume pipe with error %i", error);
 		return;
 	}
+	else
+	{
+		warning_msg("Opened export pipe '%s', file '%p'", volume_pipe.name, volume_pipe.file);
+	}
+
 	g_bp->raw.rf_raw_dim = data_dim;
 	g_bp->raw.output_points.x = output_points.x;
 	g_bp->raw.output_points.y = output_points.y;
@@ -605,6 +610,7 @@ beamform_data_f32(char *pipe_name, char *shm_name, f32 *data, uv2 data_dim,
 			os_close_pipe(&volume_pipe);
 			return;
 		}
+		warning_msg("Opened pipe '%s', file '%p'", g_pipe.name, g_pipe.file);
 	}
 	else
 	{
@@ -614,7 +620,7 @@ beamform_data_f32(char *pipe_name, char *shm_name, f32 *data, uv2 data_dim,
 	size data_size = data_dim.x * data_dim.y * sizeof(f32);
 
 	u32 poll_period = 100; // ms
-	u32 timeout = 20000; // 20 s
+	u32 timeout = 1000 * 3600; // 1 hour
 	size bytes_written = 0;
 	u32 elapsed = 0;
 
@@ -633,38 +639,50 @@ beamform_data_f32(char *pipe_name, char *shm_name, f32 *data, uv2 data_dim,
 			}
 			else
 			{
-				// Client just not connected
+
+				/*		i32 error = GetLastError();
+						warning_msg("Client supposedly not connected, Error: %i", error);*/
+
+						// Client just not connected
 			}
 		}
 		else
 		{
+			i32 error = GetLastError();
+			warning_msg("Data supposedly written, Error: %i", error);
 			break;
 		}
 
+		warning_msg("Waiting\n");
 		os_sleep_ms(poll_period);
 		elapsed += poll_period;
 	}
 
 	os_close_pipe(&g_pipe);
 
-	warning_msg("Pausing for 10 seconds.\n");
+	//warning_msg("Pausing for 10 seconds.\n");
 
-	Sleep(10000);
+	//Sleep(10000);
 
 	b32 pipe_ready = 0;
 	b32 success = 0;
 
-	size output_size = output_points.x * output_points.y * output_points.z * sizeof(f32); // Complex
+	size output_size = output_points.x * output_points.y * output_points.z * sizeof(f32) * 2; // Complex
 	while (elapsed <= timeout)
 	{
 
 		if (os_poll_pipe(&volume_pipe))
 		{
+			i32 error = GetLastError();
+			warning_msg("Read poll passed, Error: %i\n", error);
+			warning_msg("Output size: %i\n", output_size);
 			success = os_read_pipe(volume_pipe, out_data, output_size);
 			break;
 		}
 		else
 		{
+			i32 error = GetLastError();
+			//warning_msg("Read poll failed, Error: %i", error);
 			Sleep(poll_period);
 			elapsed += poll_period;
 		}
@@ -675,5 +693,11 @@ beamform_data_f32(char *pipe_name, char *shm_name, f32 *data, uv2 data_dim,
 	os_close_pipe(&volume_pipe);
 
 	if (!success)
+	{
 		error_msg("failed to read full export data from pipe\n");
+	}
+	else
+	{
+
+	}
 }
