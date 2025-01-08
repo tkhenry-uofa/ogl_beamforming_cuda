@@ -270,7 +270,7 @@ set_beamformer_parameters(char *shm_name, BeamformerParameters *new_bp)
 
 void
 beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim,
-                           uv3 output_points, f32 *out_data)
+                           uv4 output_points, f32 *out_data)
 {
 	if (!check_shared_memory(shm_name))
 		return;
@@ -278,6 +278,7 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_
 	if (output_points.x == 0) output_points.x = 1;
 	if (output_points.y == 0) output_points.y = 1;
 	if (output_points.z == 0) output_points.z = 1;
+	output_points.w = 1;
 
 	Pipe pipe = os_open_read_pipe(OS_EXPORT_PIPE_NAME);
 	if (pipe.file == INVALID_FILE) {
