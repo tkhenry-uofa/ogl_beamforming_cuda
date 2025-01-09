@@ -151,6 +151,39 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 }
 
 static void
+do_scale_bar(BeamformerUI *ui, Stream *buf, Variable var, v2 mouse, i32 direction, Rect draw_rect,
+             f32 start_value, f32 end_value, s8 suffix)
+{
+	InteractionState *is = &ui->interaction;
+	ScaleBar *sb         = var.store;
+
+	v2 txt_s = measure_text(ui->small_font, s8("-288.8 mm"));
+
+	Rect tick_rect = draw_rect;
+	v2   start_pos = tick_rect.pos;
+	v2   end_pos   = tick_rect.pos;
+	u32  tick_count;
+	if (direction == SB_AXIAL) {
+		tick_rect.size.x  = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
+		tick_count        = tick_rect.size.y / (1.5 * ui->small_font_height);
+		start_pos.y      += tick_rect.size.y;
+	} else {
+		tick_rect.size.y  = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
+		tick_count        = tick_rect.size.x / (1.5 * ui->small_font_height);
+		end_pos.x        += tick_rect.size.x;
+	}
+
+	if (hover_text(mouse, tick_rect, &sb->hover_t, 1)) {
+		is->hot_state = IS_SCALE_BAR;
+		is->hot       = var;
+	}
+
+	draw_ruler(ui, buf, start_pos, end_pos, start_value, end_value, tick_count, suffix,
+	           colour_from_normalized(FG_COLOUR),
+	           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, sb->hover_t)));
+}
+
+static void
 draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 {
 	BeamformerUI *ui         = ctx->ui;
@@ -193,59 +226,26 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 	NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
 	DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
 
-	u32 line_count  = vr.size.x / (1.5 * ui->small_font_height);
-	v2 start_pos    = vr.pos;
-	start_pos.y    += vr.size.y;
+	Variable var     = {.flags = V_CAUSES_COMPUTE};
+	var.store        = ui->scale_bars[0] + SB_LATERAL;
+	var.f32_limits   = (v2){.x = -1, .y = 1};
+	var.scroll_scale = 0.5e-3;
 
-	v2 end_pos  = start_pos;
-	end_pos.x  += vr.size.x;
+	v2 start_pos  = vr.pos;
+	start_pos.y  += vr.size.y;
 
-	Rect tick_rect   = {.pos = start_pos, .size = vr.size};
-	tick_rect.size.y = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
+	do_scale_bar(ui, &buf, var, mouse, SB_LATERAL, (Rect){.pos = start_pos, .size = vr.size},
+	             bp->output_min_coordinate.x * 1e3, bp->output_max_coordinate.x * 1e3, s8(" mm"));
 
-	ScaleBar *sb    = ui->scale_bars[0] + SB_LATERAL;
-	sb->scroll_both = 1;
-	if (hover_text(mouse, tick_rect, &sb->hover_t, 1)) {
-		is->hot_state        = IS_SCALE_BAR;
-		is->hot.store        = sb;
-		is->hot.f32_limits   = (v2){.x = -1, .y = 1};
-		is->hot.flags        = V_CAUSES_COMPUTE;
-		is->hot.scroll_scale = 0.5e-3;
-	}
+	var.store        = ui->scale_bars[0] + SB_AXIAL;
+	var.f32_limits   = (v2){.x = 0, .y = 1};
+	var.scroll_scale = 1e-3;
 
-	f32 mm     = bp->output_min_coordinate.x * 1e3;
-	f32 mm_end = bp->output_max_coordinate.x * 1e3;
-
-	draw_ruler(ui, &buf, start_pos, end_pos, mm, mm_end, line_count, s8(" mm"),
-	           colour_from_normalized(FG_COLOUR),
-	           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, sb->hover_t)));
-
-	line_count   = vr.size.y / (1.5 * ui->small_font_height);
 	start_pos    = vr.pos;
 	start_pos.x += vr.size.x;
 
-	end_pos    = start_pos;
-	end_pos.y += vr.size.y;
-
-	tick_rect        = (Rect){.pos = start_pos, .size = vr.size};
-	tick_rect.size.x = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
-
-	sb              = ui->scale_bars[0] + SB_AXIAL;
-	sb->scroll_both = 0;
-	if (hover_text(mouse, tick_rect, &sb->hover_t, 1)) {
-		is->hot_state        = IS_SCALE_BAR;
-		is->hot.store        = sb;
-		is->hot.f32_limits   = (v2){.x = 0, .y = 1};
-		is->hot.flags        = V_CAUSES_COMPUTE;
-		is->hot.scroll_scale = 1e-3;
-	}
-
-	mm     = bp->output_min_coordinate.z * 1e3;
-	mm_end = bp->output_max_coordinate.z * 1e3;
-
-	draw_ruler(ui, &buf, end_pos, start_pos, mm_end, mm, line_count, s8(" mm"),
-	           colour_from_normalized(FG_COLOUR),
-	           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, sb->hover_t)));
+	do_scale_bar(ui, &buf, var, mouse, SB_AXIAL, (Rect){.pos = start_pos, .size = vr.size},
+	             bp->output_max_coordinate.z * 1e3, bp->output_min_coordinate.z * 1e3, s8(" mm"));
 
 	if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
 		is->hot_state         = IS_DISPLAY;
@@ -1047,6 +1047,9 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	ui->scale_bars[0][SB_LATERAL].max_value = &ctx->params->raw.output_max_coordinate.x;
 	ui->scale_bars[0][SB_AXIAL].min_value   = &ctx->params->raw.output_min_coordinate.z;
 	ui->scale_bars[0][SB_AXIAL].max_value   = &ctx->params->raw.output_max_coordinate.z;
+
+	ui->scale_bars[0][SB_LATERAL].scroll_both = 1;
+	ui->scale_bars[0][SB_AXIAL].scroll_both   = 0;
 
 	ui->scale_bars[0][SB_LATERAL].zoom_starting_point = F32_INFINITY;
 	ui->scale_bars[0][SB_AXIAL].zoom_starting_point   = F32_INFINITY;
