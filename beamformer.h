@@ -30,6 +30,9 @@
 #define RECT_BTN_ROUNDNESS     0.3f
 #define RECT_BTN_BORDER_WIDTH  6.0f
 
+/* TODO: multiple views */
+#define MAX_DISPLAYS 1
+
 enum program_flags {
 	SHOULD_EXIT    = 1 << 0,
 	RELOAD_SHADERS = 1 << 1,
@@ -74,6 +77,11 @@ enum ruler_state {
 	RS_HOLD,
 };
 
+enum scale_bar_directions {
+	SB_LATERAL,
+	SB_AXIAL,
+};
+
 typedef struct {
 	Variable hot;
 	Variable next_hot;
@@ -81,6 +89,20 @@ typedef struct {
 	u32      hot_state;
 	u32      state;
 } InteractionState;
+
+typedef struct v2_SLL {
+	struct v2_SLL *next;
+	v2             v;
+} v2_SLL;
+
+typedef struct {
+	f32    *min_value, *max_value;
+	v2_SLL *save_point_stack;
+	f32     zoom_starting_point;
+	f32     hover_t;
+	f32     pixels_to_value;
+	b32     scroll_both;
+} ScaleBar;
 
 typedef struct {
 	TempArena frame_temporary_arena;
@@ -93,6 +115,9 @@ typedef struct {
 
 	InteractionState interaction;
 	InputState       text_input_state;
+
+	ScaleBar scale_bars[MAX_DISPLAYS][2];
+	v2_SLL   *scale_bar_savepoint_freelist;
 
 	v2  ruler_start_p;
 	v2  ruler_stop_p;

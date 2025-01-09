@@ -150,14 +150,12 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 	rlPopMatrix();
 }
 
-/* TODO: drop these when the below is fully making use of the interaction code */
-static void ui_start_compute(BeamformerCtx *);
-
 static void
 draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 {
 	BeamformerUI *ui         = ctx->ui;
 	BeamformerParameters *bp = &ctx->params->raw;
+	InteractionState *is     = &ui->interaction;
 
 	Stream buf      = arena_stream(&a);
 	Texture *output = &ctx->fsctx.output.texture;
@@ -195,8 +193,6 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 	NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
 	DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
 
-	static f32 txt_colour_t[2];
-
 	u32 line_count  = vr.size.x / (1.5 * ui->small_font_height);
 	v2 start_pos    = vr.pos;
 	start_pos.y    += vr.size.y;
@@ -207,13 +203,14 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 	Rect tick_rect   = {.pos = start_pos, .size = vr.size};
 	tick_rect.size.y = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
 
-	/* TODO: pass this through the interaction system */
-	if (hover_text(mouse, tick_rect, txt_colour_t + 0, 1)) {
-		f32 size_delta = GetMouseWheelMoveV().y * 0.5e-3;
-		bp->output_min_coordinate.x -= size_delta;
-		bp->output_max_coordinate.x += size_delta;
-		if (size_delta)
-			ui_start_compute(ctx);
+	ScaleBar *sb    = ui->scale_bars[0] + SB_LATERAL;
+	sb->scroll_both = 1;
+	if (hover_text(mouse, tick_rect, &sb->hover_t, 1)) {
+		is->hot_state        = IS_SCALE_BAR;
+		is->hot.store        = sb;
+		is->hot.f32_limits   = (v2){.x = -1, .y = 1};
+		is->hot.flags        = V_CAUSES_COMPUTE;
+		is->hot.scroll_scale = 0.5e-3;
 	}
 
 	f32 mm     = bp->output_min_coordinate.x * 1e3;
@@ -221,7 +218,7 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 
 	draw_ruler(ui, &buf, start_pos, end_pos, mm, mm_end, line_count, s8(" mm"),
 	           colour_from_normalized(FG_COLOUR),
-	           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, txt_colour_t[0])));
+	           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, sb->hover_t)));
 
 	line_count   = vr.size.y / (1.5 * ui->small_font_height);
 	start_pos    = vr.pos;
@@ -233,12 +230,14 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 	tick_rect        = (Rect){.pos = start_pos, .size = vr.size};
 	tick_rect.size.x = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
 
-	/* TODO: pass this through the interaction system */
-	if (hover_text(mouse, tick_rect, txt_colour_t + 1, 1)) {
-		f32 size_delta = GetMouseWheelMoveV().y * 1e-3;
-		bp->output_max_coordinate.z += size_delta;
-		if (size_delta)
-			ui_start_compute(ctx);
+	sb              = ui->scale_bars[0] + SB_AXIAL;
+	sb->scroll_both = 0;
+	if (hover_text(mouse, tick_rect, &sb->hover_t, 1)) {
+		is->hot_state        = IS_SCALE_BAR;
+		is->hot.store        = sb;
+		is->hot.f32_limits   = (v2){.x = 0, .y = 1};
+		is->hot.flags        = V_CAUSES_COMPUTE;
+		is->hot.scroll_scale = 1e-3;
 	}
 
 	mm     = bp->output_min_coordinate.z * 1e3;
@@ -246,10 +245,9 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 
 	draw_ruler(ui, &buf, end_pos, start_pos, mm_end, mm, line_count, s8(" mm"),
 	           colour_from_normalized(FG_COLOUR),
-	           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, txt_colour_t[1])));
+	           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, sb->hover_t)));
 
 	if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
-		InteractionState *is  = &ui->interaction;
 		is->hot_state         = IS_DISPLAY;
 		is->hot.store         = &ctx->fsctx.threshold;
 		is->hot.type          = VT_F32;
@@ -861,6 +859,48 @@ display_interaction(BeamformerUI *ui, v2 mouse)
 }
 
 static void
+scale_bar_interaction_end(BeamformerUI *ui)
+{
+	InteractionState *is    = &ui->interaction;
+	ScaleBar *sb            = is->active.store;
+	b32 is_hot              = is->hot_state == IS_SCALE_BAR;
+	f32 mouse_wheel         = GetMouseWheelMoveV().y * is->active.scroll_scale;
+
+	/* TODO: this should only happen on right click */
+	sb->zoom_starting_point = F32_INFINITY;
+
+	/* TODO: if right click load saved state */
+	/* TODO: if left click do nothing */
+
+	if (is_hot && mouse_wheel) {
+		v2 limits = is->active.f32_limits;
+		*sb->min_value -= mouse_wheel * sb->scroll_both;
+		*sb->max_value += mouse_wheel;
+		*sb->min_value  = MAX(limits.x, *sb->min_value);
+		*sb->max_value  = MIN(limits.y, *sb->max_value);
+	}
+}
+
+static void
+scale_bar_interaction(BeamformerCtx *ctx, v2 mouse)
+{
+	BeamformerUI *ui        = ctx->ui;
+	InteractionState *is    = &ui->interaction;
+	ScaleBar *sb            = is->active.store;
+	b32 is_hot              = is->hot_state == IS_SCALE_BAR;
+	b32 mouse_left_pressed  = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+
+	/* TODO: convert mouse to coord_space */
+	if (is_hot && mouse_left_pressed) {
+		if (sb->zoom_starting_point == F32_INFINITY) {
+			/* TODO: push new starting point */
+		} else {
+			/* TODO: push new savepoint and set values */
+		}
+	}
+}
+
+static void
 ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mouse_left_pressed)
 {
 	InteractionState *is = &ui->interaction;
@@ -923,7 +963,8 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 		} break;
 		}
 	} break;
-	case IS_TEXT: end_text_input(&ui->text_input_state, &is->active); break;
+	case IS_SCALE_BAR: scale_bar_interaction_end(ui); break;
+	case IS_TEXT:      end_text_input(&ui->text_input_state, &is->active); break;
 	}
 
 	if (is->active.flags & V_CAUSES_COMPUTE)
@@ -966,6 +1007,7 @@ ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
 			}
 		}
 	} break;
+	case IS_SCALE_BAR: scale_bar_interaction(ctx, input->mouse); break;
 	}
 
 	is->hot_state = IS_NONE;
@@ -999,6 +1041,15 @@ ui_init(BeamformerCtx *ctx, Arena store)
 
 	ui->font_height       = measure_text(ui->font, s8("8\\W")).h;
 	ui->small_font_height = measure_text(ui->small_font, s8("8\\W")).h;
+
+	/* TODO: multiple views */
+	ui->scale_bars[0][SB_LATERAL].min_value = &ctx->params->raw.output_min_coordinate.x;
+	ui->scale_bars[0][SB_LATERAL].max_value = &ctx->params->raw.output_max_coordinate.x;
+	ui->scale_bars[0][SB_AXIAL].min_value   = &ctx->params->raw.output_min_coordinate.z;
+	ui->scale_bars[0][SB_AXIAL].max_value   = &ctx->params->raw.output_max_coordinate.z;
+
+	ui->scale_bars[0][SB_LATERAL].zoom_starting_point = F32_INFINITY;
+	ui->scale_bars[0][SB_AXIAL].zoom_starting_point   = F32_INFINITY;
 }
 
 static void
