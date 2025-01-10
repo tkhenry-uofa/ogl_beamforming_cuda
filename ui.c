@@ -282,7 +282,8 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 		is->hot.scroll_scale  = 1;
 	}
 
-	if (ui->ruler_state != RS_NONE) {
+	/* TODO(rnp): store converted ruler points instead of screen points */
+	if (ui->ruler_state != RS_NONE && CheckCollisionPointRec(ui->ruler_start_p.rl, vr.rl)) {
 		v2 end_p;
 		if (ui->ruler_state == RS_START) end_p = mouse;
 		else                             end_p = ui->ruler_stop_p;
