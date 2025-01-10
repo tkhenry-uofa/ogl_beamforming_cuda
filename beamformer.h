@@ -90,17 +90,18 @@ typedef struct {
 	u32      state;
 } InteractionState;
 
-typedef struct v2_SLL {
-	struct v2_SLL *next;
+typedef struct v2_sll {
+	struct v2_sll *next;
 	v2             v;
-} v2_SLL;
+} v2_sll;
 
 typedef struct {
 	f32    *min_value, *max_value;
-	v2_SLL *save_point_stack;
-	f32     zoom_starting_point;
+	v2_sll *savepoint_stack;
+	v2      zoom_starting_point;
+	v2      screen_offset;
+	v2      screen_space_to_value;
 	f32     hover_t;
-	f32     pixels_to_value;
 	b32     scroll_both;
 } ScaleBar;
 
@@ -117,7 +118,7 @@ typedef struct {
 	InputState       text_input_state;
 
 	ScaleBar scale_bars[MAX_DISPLAYS][2];
-	v2_SLL   *scale_bar_savepoint_freelist;
+	v2_sll   *scale_bar_savepoint_freelist;
 
 	v2  ruler_start_p;
 	v2  ruler_stop_p;

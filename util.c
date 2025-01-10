@@ -37,7 +37,8 @@ mem_move(u8 *src, u8 *dest, size n)
 	else            while (n) { n--; dest[n] = src[n]; }
 }
 
-#define alloc(a, t, n)  (t *)alloc_(a, sizeof(t), _Alignof(t), n)
+#define alloc(a, t, n)    (t *)alloc_(a, sizeof(t), _Alignof(t), n)
+#define push_struct(a, t) (t *)alloc_(a, sizeof(t), _Alignof(t), 1)
 static void *
 alloc_(Arena *a, size len, size align, size count)
 {
