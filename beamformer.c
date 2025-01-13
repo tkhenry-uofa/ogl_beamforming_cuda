@@ -97,6 +97,10 @@ alloc_output_image(BeamformerCtx *ctx, uv4 output_dim)
 		//SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_ANISOTROPIC_8X);
 		//SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_TRILINEAR);
 		SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_BILINEAR);
+
+		/* NOTE(rnp): work around raylib's janky texture sampling */
+		glTextureParameteri(ctx->fsctx.output.texture.id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTextureParameteri(ctx->fsctx.output.texture.id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	}
 }
 
