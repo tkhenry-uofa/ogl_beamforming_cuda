@@ -385,7 +385,7 @@ send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim)
 	if (g_pipe.file == INVALID_FILE) {
 		g_pipe = os_open_named_pipe(pipe_name);
 		if (g_pipe.file == INVALID_FILE) {
-			error_msg("failed to open pipe");
+			error_msg("failed to open pipe with error: '%i'", GetLastError());
 			return 0;
 		}
 	}
@@ -400,6 +400,8 @@ send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim)
 	if (written != data_size)
 		warning_msg("failed to write full data to pipe: wrote: %ld", written);
 	g_bp->upload = 1;
+
+	os_close_pipe(&g_pipe);
 
 	return 1;
 }
