@@ -99,8 +99,12 @@ alloc_output_image(BeamformerCtx *ctx, uv4 output_dim)
 		SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_BILINEAR);
 
 		/* NOTE(rnp): work around raylib's janky texture sampling */
-		glTextureParameteri(ctx->fsctx.output.texture.id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTextureParameteri(ctx->fsctx.output.texture.id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		i32 id = ctx->fsctx.output.texture.id;
+		glTextureParameteri(id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTextureParameteri(id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+		f32 border_color[] = {0, 0, 0, 1};
+		glTextureParameterfv(id, GL_TEXTURE_BORDER_COLOR, border_color);
 	}
 }
 
