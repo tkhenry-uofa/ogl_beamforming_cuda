@@ -209,7 +209,7 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, Variable var, v2 mouse, i32 directio
 }
 
 static void
-draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
+draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect, BeamformFrame *frame)
 {
 	BeamformerUI *ui         = ctx->ui;
 	BeamformerParameters *bp = &ctx->params->raw;
@@ -217,12 +217,6 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 
 	Stream buf      = arena_stream(&a);
 	Texture *output = &ctx->fsctx.output.texture;
-
-	/* TODO: this depends on the direction being rendered (x vs y) */
-	v2 output_dim = {
-		.x = bp->output_max_coordinate.x - bp->output_min_coordinate.x,
-		.y = bp->output_max_coordinate.z - bp->output_min_coordinate.z,
-	};
 
 	v2 txt_s = measure_text(ui->small_font, s8("-288.8 mm"));
 
@@ -238,7 +232,17 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 	vr.size.h  = display_rect.size.h - pad;
 	vr.size.w  = display_rect.size.w - pad;
 
-	f32 aspect = output_dim.h / output_dim.w;
+	/* TODO(rnp): make this depend on the requested draw orientation (x-z or y-z or x-y) */
+	v2 output_dim = {
+		.x = frame->max_coordinate.x - frame->min_coordinate.x,
+		.y = frame->max_coordinate.z - frame->min_coordinate.z,
+	};
+	v2 requested_dim = {
+		.x = bp->output_max_coordinate.x - bp->output_min_coordinate.x,
+		.y = bp->output_max_coordinate.z - bp->output_min_coordinate.z,
+	};
+
+	f32 aspect = requested_dim.h / requested_dim.w;
 	if (display_rect.size.h < (vr.size.w * aspect) + pad) {
 		vr.size.w = vr.size.h / aspect;
 	} else {
@@ -247,7 +251,19 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 	vr.pos.x += (display_rect.size.w - (vr.size.w + pad)) / 2;
 	vr.pos.y += (display_rect.size.h - (vr.size.h + pad)) / 2;
 
-	Rectangle tex_r   = { 0.0f, 0.0f, (f32)output->width, -(f32)output->height };
+	v2 pixels_per_meter = {
+		.w = (f32)output->width  / output_dim.w,
+		.h = (f32)output->height / output_dim.h,
+	};
+
+	v2 texture_points  = mul_v2(pixels_per_meter, requested_dim);
+	/* TODO(rnp): this also depends on x-y, y-z, x-z */
+	v2 texture_start   = {
+		.x = pixels_per_meter.x * 0.5 * (output_dim.x - requested_dim.x),
+		.y = pixels_per_meter.y * (frame->max_coordinate.z - bp->output_max_coordinate.z),
+	};
+
+	Rectangle  tex_r  = {texture_start.x, texture_start.y, texture_points.x, -texture_points.y};
 	NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
 	DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
 
@@ -1120,7 +1136,7 @@ ui_init(BeamformerCtx *ctx, Arena store)
 }
 
 static void
-draw_ui(BeamformerCtx *ctx, BeamformerInput *input, b32 draw_display)
+draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw)
 {
 	BeamformerUI *ui = ctx->ui;
 
@@ -1144,8 +1160,8 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, b32 draw_display)
 		rr.pos.x  = lr.pos.x  + lr.size.w;
 
 		draw_settings_ui(ctx, lr, mouse);
-		if (draw_display)
-			draw_display_overlay(ctx, ui->arena_for_frame, mouse, rr);
+		if (frame_to_draw->dim.w)
+			draw_display_overlay(ctx, ui->arena_for_frame, mouse, rr, frame_to_draw);
 		draw_debug_overlay(ctx, ui->arena_for_frame, lr);
 	EndDrawing();
 }

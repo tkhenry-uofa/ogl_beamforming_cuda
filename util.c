@@ -366,6 +366,17 @@ magnitude_v2(v2 a)
 	return result;
 }
 
+static v4
+sub_v4(v4 a, v4 b)
+{
+	v4 result;
+	result.x = a.x - b.x;
+	result.y = a.y - b.y;
+	result.z = a.z - b.z;
+	result.w = a.w - b.w;
+	return result;
+}
+
 static f64
 parse_f64(s8 s)
 {

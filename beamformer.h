@@ -228,6 +228,12 @@ typedef struct {
 	 * is always found in textures[dim.w - 1] */
 	u32 textures[MAX_MULTI_XDC_COUNT + 1];
 	uv4 dim;
+
+	/* NOTE: for use when displaying either prebeamformed frames or on the current frame
+	 * when we intend to recompute on the next frame */
+	v4  min_coordinate;
+	v4  max_coordinate;
+
 	u32 mips;
 } BeamformFrame;
 

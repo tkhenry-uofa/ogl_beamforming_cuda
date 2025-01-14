@@ -507,13 +507,27 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, u32 raw
 	glEndQuery(GL_TIME_ELAPSED);
 }
 
+static BeamformFrame *
+start_beamform_compute_work(BeamformWork *work, ComputeShaderCtx *cs, BeamformerParametersFull *bpf)
+{
+	BeamformFrame *result = work->compute_ctx.frame;
+	if (bpf->upload) {
+		glNamedBufferSubData(cs->shared_ubo, 0, sizeof(bpf->raw), &bpf->raw);
+		bpf->upload = 0;
+	}
+
+	result->min_coordinate = bpf->raw.output_min_coordinate;
+	result->max_coordinate = bpf->raw.output_max_coordinate;
+
+	return result;
+}
+
 static void
 do_beamform_work(BeamformerCtx *ctx, Arena *a)
 {
-	BeamformerParameters *bp = &ctx->params->raw;
-	BeamformWorkQueue *q     = &ctx->beamform_work_queue;
-	BeamformWork *work       = beamform_work_queue_pop(q);
-	ComputeShaderCtx *cs     = &ctx->csctx;
+	BeamformWorkQueue *q = &ctx->beamform_work_queue;
+	BeamformWork *work   = beamform_work_queue_pop(q);
+	ComputeShaderCtx *cs = &ctx->csctx;
 
 	while (work) {
 		switch (work->type) {
@@ -521,10 +535,7 @@ do_beamform_work(BeamformerCtx *ctx, Arena *a)
 			BeamformFrame *frame = work->compute_ctx.frame;
 
 			if (work->compute_ctx.first_pass) {
-				if (ctx->params->upload) {
-					glNamedBufferSubData(cs->shared_ubo, 0, sizeof(*bp), bp);
-					ctx->params->upload = 0;
-				}
+				start_beamform_compute_work(work, cs, ctx->params);
 
 				PartialComputeCtx *pc = &ctx->partial_compute_ctx;
 				pc->runtime      = 0;
@@ -575,12 +586,7 @@ do_beamform_work(BeamformerCtx *ctx, Arena *a)
 		} break;
 		case BW_FULL_COMPUTE:
 		case BW_RECOMPUTE: {
-			BeamformFrame *frame = work->compute_ctx.frame;
-
-			if (ctx->params->upload) {
-				glNamedBufferSubData(cs->shared_ubo, 0, sizeof(*bp), bp);
-				ctx->params->upload = 0;
-			}
+			BeamformFrame *frame = start_beamform_compute_work(work, cs, ctx->params);
 
 			u32 stage_count = ctx->params->compute_stages_count;
 			enum compute_shaders *stages = ctx->params->compute_stages;
@@ -737,7 +743,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 	do_beamform_work(ctx, arena);
 
 	/* NOTE: draw output image texture using render fragment shader */
-	b32 output_image_drawn;
+	BeamformFrame *frame_to_draw = 0;
 	BeginTextureMode(ctx->fsctx.output);
 		ClearBackground(PINK);
 		BeginShaderMode(ctx->fsctx.shader);
@@ -745,13 +751,14 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 			glUseProgram(fs->shader.id);
 			u32 out_texture = 0;
 			if (bp->output_points.w > 1) {
-				out_texture = ctx->averaged_frame.textures[0];
+				frame_to_draw = &ctx->averaged_frame;
+				out_texture   = ctx->averaged_frame.textures[0];
 			} else {
-				BeamformFrame *f = ctx->beamform_frames + ctx->displayed_frame_index;
+				frame_to_draw = ctx->beamform_frames + ctx->displayed_frame_index;
 				/* NOTE: verify we have actually beamformed something yet */
-				if (f->dim.w) out_texture = f->textures[f->dim.w - 1];
+				if (frame_to_draw->dim.w)
+					out_texture = frame_to_draw->textures[frame_to_draw->dim.w - 1];
 			}
-			output_image_drawn = out_texture != 0;
 			glBindTextureUnit(0, out_texture);
 			glUniform1f(fs->db_cutoff_id, fs->db);
 			glUniform1f(fs->threshold_id, fs->threshold);
@@ -768,7 +775,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		ctx->flags &= ~GEN_MIPMAPS;
 	}
 
-	draw_ui(ctx, input, output_image_drawn);
+	draw_ui(ctx, input, frame_to_draw);
 
 	if (IsKeyPressed(KEY_R)) {
 		ctx->flags |= RELOAD_SHADERS;
