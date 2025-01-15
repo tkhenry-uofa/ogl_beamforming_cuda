@@ -221,6 +221,16 @@ stream_append_f64_e(Stream *s, f64 f)
 }
 
 static void
+stream_append_v2(Stream *s, v2 v)
+{
+	stream_append_byte(s, '{');
+	stream_append_f64(s, v.x, 100);
+	stream_append_s8(s, s8(", "));
+	stream_append_f64(s, v.y, 100);
+	stream_append_byte(s, '}');
+}
+
+static void
 stream_append_variable(Stream *s, Variable *var)
 {
 	switch (var->type) {

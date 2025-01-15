@@ -272,6 +272,10 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 	do_scale_bar(ui, &buf, var, mouse, SB_AXIAL, (Rect){.pos = start_pos, .size = vr.size},
 	             bp->output_max_coordinate.z * 1e3, bp->output_min_coordinate.z * 1e3, s8(" mm"));
 
+	v2 pixels_to_mm = output_dim;
+	pixels_to_mm.x /= vr.size.x * 1e-3;
+	pixels_to_mm.y /= vr.size.y * 1e-3;
+
 	if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
 		is->hot_state         = IS_DISPLAY;
 		is->hot.store         = &ctx->fsctx.threshold;
@@ -280,6 +284,21 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 		is->hot.flags         = V_GEN_MIPMAPS;
 		is->hot.display_scale = 1;
 		is->hot.scroll_scale  = 1;
+
+		v2 relative_mouse = sub_v2(mouse, vr.pos);
+		v2 mm = mul_v2(relative_mouse, pixels_to_mm);
+		mm.x += 1e3 * bp->output_min_coordinate.x;
+		mm.y += 1e3 * bp->output_min_coordinate.z;
+
+		buf.widx = 0;
+		stream_append_v2(&buf, mm);
+		v2 txt_s = measure_text(ui->small_font, stream_to_s8(&buf));
+		v2 txt_p = {
+			.x = vr.pos.x + vr.size.w - txt_s.w - 4,
+			.y = vr.pos.y + vr.size.h - txt_s.h - 4,
+		};
+		draw_text(ui->small_font, stream_to_s8(&buf), txt_p, 0,
+		          colour_from_normalized(RULER_COLOUR));
 	}
 
 	/* TODO(rnp): store converted ruler points instead of screen points */
@@ -289,10 +308,6 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect)
 		else                             end_p = ui->ruler_stop_p;
 
 		Color colour = colour_from_normalized(RULER_COLOUR);
-
-		v2 pixels_to_mm = output_dim;
-		pixels_to_mm.x /= vr.size.x * 1e-3;
-		pixels_to_mm.y /= vr.size.y * 1e-3;
 
 		end_p          = clamp_v2_rect(end_p, vr);
 		v2 pixel_delta = sub_v2(ui->ruler_start_p, end_p);
