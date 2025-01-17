@@ -246,7 +246,6 @@ os_open_shared_memory_area(char *name)
 
 	return new;
 }
-#endif
 
 static void
 os_disconnect_pipe_server(Pipe p)
@@ -331,6 +330,8 @@ os_poll_pipe(Pipe* p)
 	}
 	return 0;
 }
+
+#endif
 
 
 static b32
