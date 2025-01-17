@@ -518,7 +518,7 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_
 		}
 		else
 		{
-			Sleep(POLL_PERIOD);
+			os_sleep_ms(POLL_PERIOD);
 			elapsed += POLL_PERIOD;
 		}
 	}
