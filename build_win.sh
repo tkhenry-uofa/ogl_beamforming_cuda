@@ -7,11 +7,15 @@ app_name="ogl_beamforming_cuda"
 
 # Check for -d flag (debug mode)
 if [ "$1" = "-d" ]; then
+    cp ../x64/Debug/cuda_toolkit.dll ./external/
+
     cflags="$cflags -g -O0"
     ldflags="$ldflags -L ../x64/Debug"
     output_path="${output_path}/Debug/"
     echo "Building debug OGL"
 else
+    cp ../x64/Release/cuda_toolkit.dll ./external/
+
     cflags="$cflags -O3"
     ldflags="$ldflags -L ../x64/Release"
     output_path="${output_path}/Release/"
