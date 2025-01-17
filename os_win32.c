@@ -22,9 +22,9 @@
 #define CREATE_ALWAYS  2
 #define OPEN_EXISTING  3
 
-#define ERROR_NO_DATA			232L
-#define ERROR_PIPE_NOT_CONNECTED 233L
-#define ERROR_PIPE_LISTENING	536L
+#define ERROR_NO_DATA				232L
+#define ERROR_PIPE_NOT_CONNECTED	233L
+#define ERROR_PIPE_LISTENING		536L
 
 typedef struct {
 	u16  wProcessorArchitecture;
@@ -236,10 +236,9 @@ static PLATFORM_POLL_PIPE_FN(os_poll_pipe)
 	// and needs to be recreated.
 	if (error != ERROR_NO_DATA && error != ERROR_PIPE_LISTENING && error != ERROR_PIPE_NOT_CONNECTED)
 	{
-		char msg[1024];
+		/*char msg[1024];
 		snprintf(msg, 1024, "os_poll_pipe: Data pipe poll failed, Windows error '%i'.\n", error);
-		
-		os_write_err_msg(cstr_to_s8(msg));
+		os_write_err_msg(cstr_to_s8(msg));*/
 
 		result = DisconnectNamedPipe(p->file);
 		result = CloseHandle(p->file);
@@ -248,8 +247,8 @@ static PLATFORM_POLL_PIPE_FN(os_poll_pipe)
 		if (p->file == INVALID_FILE)
 		{
 			error = GetLastError();
-
-			snprintf(msg, 1024, "os_poll_pipe: Failed to reopen data pipe after error, "
+			char msg[1024];
+			snprintf(msg, 1024, "os_poll_pipe: Failed to reopen data pipe after error: "
 				"Windows error '%i'.\n", error);
 
 			os_write_err_msg(cstr_to_s8(msg));

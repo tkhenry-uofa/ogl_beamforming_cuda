@@ -275,8 +275,6 @@ os_close_pipe(Pipe* p)
 }
 
 
-
-
 // Return true if the pipe state requires restart
 static b32
 os_write_pipe_failed(Pipe p)
@@ -514,14 +512,10 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_
 
 	os_close_pipe(&g_pipe);
 
-	//warning_msg("Pausing for 10 seconds.\n");
-
-	//Sleep(10000);
-
 	b32 pipe_ready = 0;
 	b32 success = 0;
 
-	size output_size = output_points.x * output_points.y * output_points.z * sizeof(f32) *2; // Complex
+	size output_size = output_points.x * output_points.y * output_points.z * sizeof(f32);
 	while (elapsed <= POLL_TIMEOUT)
 	{
 
