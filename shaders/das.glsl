@@ -228,8 +228,9 @@ void main()
 {
 
 	/* NOTE: Convert voxel to physical coordinates */
-	ivec3 out_coord    = ivec3(gl_GlobalInvocationID);
-	vec3  image_point  = calc_image_point(vec3(gl_GlobalInvocationID));
+	ivec3 out_coord   = ivec3(gl_GlobalInvocationID) + u_volume_export_dim_offset;
+	vec3  image_point = calc_image_point(vec3(gl_GlobalInvocationID)
+	                                     + vec3(u_volume_export_dim_offset));
 
 	/* NOTE: used for constant F# dynamic receive apodization. This is implemented as:
 	 *
