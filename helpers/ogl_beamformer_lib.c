@@ -35,7 +35,6 @@ static Pipe g_pipe = {.file = INVALID_FILE};
 #include <unistd.h>
 
 #include <poll.h>
-#include <time.h>
 
 #define OS_EXPORT_PIPE_NAME "/tmp/beamformer_output_pipe"
 
@@ -168,13 +167,7 @@ os_write_pipe_failed()
 static void
 os_sleep_ms(u32 duration)
 {
-	struct timespec ts =
-	{ 
-		.tv_sec = duration / MS_TO_S,
-		.tv_nsec = (duration % MS_TO_S) * NS_TO_S
-	};
-
-	nanosleep(&ts, NULL);
+	usleep(duration);
 }
 
 static b32
