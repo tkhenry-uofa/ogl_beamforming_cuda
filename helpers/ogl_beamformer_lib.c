@@ -34,6 +34,7 @@ static Pipe g_pipe = {.file = INVALID_FILE};
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <poll.h>
 #include <time.h>
 
 #define OS_EXPORT_PIPE_NAME "/tmp/beamformer_output_pipe"
@@ -95,10 +96,11 @@ os_open_read_pipe(char *name)
 }
 
 static void
-os_close_pipe(Pipe p)
+os_close_pipe(Pipe* p)
 {
-	close(p.file);
-	unlink(p.name);
+	close(p->file);
+	unlink(p->name);
+	p->file = INVALID_FILE;
 }
 
 static void
@@ -155,9 +157,9 @@ os_open_shared_memory_area(char *name)
 }
 
 // Return true if the pipe has an unrecoverable error,
-// false if we just need to wait for 
+// false if we just need to wait for a client to connect
 static b32 
-os_write_pipe_failed(i32 error)
+os_write_pipe_failed()
 {
 	// STUB
 	return 1;
@@ -276,19 +278,9 @@ os_close_pipe(Pipe* p)
 
 // Return true if the pipe state requires restart
 static b32
-os_write_pipe_failed(Pipe p)
+os_write_pipe_failed()
 {
-	i32 error = GetLastError();
-
-	if (error != WIN_ERROR_PIPE_NOT_CONNECTED)
-	{
-		error_msg("Write pipe error %i.\n", error);
-		return 1;
-	}
-	else
-	{
-		return 0;
-	}
+	return GetLastError() != WIN_ERROR_PIPE_NOT_CONNECTED;
 }
 
 static void
@@ -442,8 +434,7 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_
 	Pipe volume_pipe = os_open_read_pipe(OS_EXPORT_PIPE_NAME);
 	if (volume_pipe.file == INVALID_FILE) {
 
-		i32 error = GetLastError();
-		error_msg("failed to open volume pipe with error %i", error);
+		error_msg("failed to open volume pipe");
 		return;
 	}
 	else
@@ -487,7 +478,7 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_
 		bytes_written = os_write_to_pipe(g_pipe, data, data_size);
 		if (bytes_written != data_size)
 		{
-			if (os_write_pipe_failed(g_pipe))
+			if (os_write_pipe_failed())
 			{
 				os_disconnect_pipe_server(volume_pipe);
 				os_close_pipe(&volume_pipe);
