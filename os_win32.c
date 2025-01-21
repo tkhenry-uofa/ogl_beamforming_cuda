@@ -8,13 +8,21 @@
 #define MEM_COMMIT     0x1000
 #define MEM_RESERVE    0x2000
 #define MEM_RELEASE    0x8000
+
 #define GENERIC_WRITE  0x40000000
 #define GENERIC_READ   0x80000000
 
 #define PIPE_TYPE_BYTE      0x00
 #define PIPE_ACCESS_INBOUND 0x01
 
-#define FILE_MAP_ALL_ACCESS 0x000F001F
+#define FILE_SHARE_READ            0x00000001
+#define FILE_MAP_ALL_ACCESS        0x000F001F
+#define FILE_FLAG_BACKUP_SEMANTICS 0x02000000
+#define FILE_FLAG_OVERLAPPED       0x40000000
+
+#define FILE_NOTIFY_CHANGE_LAST_WRITE 0x00000010
+
+#define FILE_ACTION_MODIFIED 0x00000003
 
 #define CREATE_ALWAYS  2
 #define OPEN_EXISTING  3
@@ -50,11 +58,28 @@ typedef struct __attribute__((packed)) {
 	u32 nFileIndexLow;
 } w32_file_info;
 
+typedef struct {
+	u32 next_entry_offset;
+	u32 action;
+	u32 filename_size;
+	u16 filename[];
+} w32_file_notify_info;
+
+typedef struct {
+	uptr internal, internal_high;
+	union {
+		struct {u32 off, off_high;};
+		iptr pointer;
+	};
+	iptr event_handle;
+} w32_overlapped;
+
 #define W32(r) __declspec(dllimport) r __stdcall
 W32(b32)    CloseHandle(iptr);
 W32(b32)    CopyFileA(c8 *, c8 *, b32);
 W32(iptr)   CreateFileA(c8 *, u32, u32, void *, u32, u32, void *);
 W32(iptr)   CreateFileMappingA(iptr, void *, u32, u32, u32, c8 *);
+W32(iptr)   CreateIoCompletionPort(iptr, iptr, uptr, u32);
 W32(iptr)   CreateNamedPipeA(c8 *, u32, u32, u32, u32, u32, u32, void *);
 W32(b32)    DeleteFileA(c8 *);
 W32(void)   ExitProcess(i32);
@@ -62,11 +87,13 @@ W32(b32)    FreeLibrary(void *);
 W32(b32)    GetFileInformationByHandle(iptr, w32_file_info *);
 W32(i32)    GetLastError(void);
 W32(void *) GetProcAddress(void *, c8 *);
+W32(b32)    GetQueuedCompletionStatus(iptr, u32 *, uptr *, w32_overlapped **, u32);
 W32(iptr)   GetStdHandle(i32);
 W32(void)   GetSystemInfo(void *);
 W32(void *) LoadLibraryA(c8 *);
 W32(void *) MapViewOfFile(iptr, u32, u32, u32, u64);
 W32(b32)    PeekNamedPipe(iptr, u8 *, i32, i32 *, i32 *, i32 *);
+W32(b32)    ReadDirectoryChangesW(iptr, u8 *, u32, b32, u32, u32 *, void *, void *);
 W32(b32)    ReadFile(iptr, u8 *, i32, i32 *, void *);
 W32(b32)    WriteFile(iptr, u8 *, i32, i32 *, void *);
 W32(void *) VirtualAlloc(u8 *, size, u32, u32);
@@ -203,18 +230,6 @@ os_open_named_pipe(char *name)
 	return (Pipe){.file = h, .name = name};
 }
 
-/* NOTE: win32 doesn't pollute the filesystem so no need to waste the user's time */
-static void
-os_close_named_pipe(Pipe p)
-{
-}
-
-static PLATFORM_POLL_PIPE_FN(os_poll_pipe)
-{
-	i32 bytes_available = 0;
-	return PeekNamedPipe(p.file, 0, 1 * MEGABYTE, 0, &bytes_available, 0) && bytes_available;
-}
-
 static PLATFORM_READ_PIPE_FN(os_read_pipe)
 {
 	i32 total_read = 0;
@@ -230,12 +245,6 @@ os_open_shared_memory_area(char *name, size cap)
 		return NULL;
 
 	return MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, cap);
-}
-
-/* NOTE: closing the handle releases the memory and this happens when program terminates */
-static void
-os_remove_shared_memory(char *name)
-{
 }
 
 static void *
@@ -283,4 +292,44 @@ static void
 os_unload_library(void *h)
 {
 	FreeLibrary(h);
+}
+
+static PLATFORM_ADD_FILE_WATCH_FN(os_add_file_watch)
+{
+	s8 directory  = path;
+	directory.len = s8_scan_backwards(path, '\\');
+	ASSERT(directory.len > 0);
+
+	u64 hash = s8_hash(directory);
+	FileWatchContext *fwctx = &platform->file_watch_context;
+	FileWatchDirectory *dir = lookup_file_watch_directory(fwctx, hash);
+	if (!dir) {
+		ASSERT(path.data[directory.len] == '\\');
+
+		dir         = fwctx->directory_watches + fwctx->directory_watch_count++;
+		dir->hash   = hash;
+
+		dir->name   = push_s8(a, directory);
+		arena_commit(a, 1);
+		dir->name.data[dir->name.len] = 0;
+
+		dir->handle = CreateFileA((c8 *)dir->name.data, GENERIC_READ, FILE_SHARE_READ, 0,
+		                          OPEN_EXISTING,
+		                          FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OVERLAPPED, 0);
+
+		w32_context *ctx = (w32_context *)platform->os_context;
+		w32_io_completion_event *event = push_struct(a, typeof(*event));
+		event->tag     = W32_IO_FILE_WATCH;
+		event->context = (iptr)dir;
+		CreateIoCompletionPort(dir->handle, ctx->io_completion_handle, (uptr)event, 0);
+
+		dir->buffer = sub_arena(a, 4096 + sizeof(w32_overlapped), 64);
+		w32_overlapped *overlapped = (w32_overlapped *)(dir->buffer.beg + 4096);
+		zero_struct(overlapped);
+
+		ReadDirectoryChangesW(dir->handle, dir->buffer.beg, 4096, 0,
+		                      FILE_NOTIFY_CHANGE_LAST_WRITE, 0, overlapped, 0);
+	}
+
+	insert_file_watch(dir, s8_cut_head(path, dir->name.len + 1), user_data, callback);
 }

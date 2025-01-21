@@ -1,9 +1,14 @@
 /* See LICENSE for license details. */
+
+/* NOTE(rnp): provides the platform layer for the beamformer. This code must
+ * be provided by any platform the beamformer is ported to. */
+
 #include "util.h"
 
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/inotify.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -118,20 +123,6 @@ os_open_named_pipe(char *name)
 	return (Pipe){.file = open(name, O_RDONLY|O_NONBLOCK), .name = name};
 }
 
-static void
-os_close_named_pipe(Pipe p)
-{
-	close(p.file);
-	unlink(p.name);
-}
-
-static PLATFORM_POLL_PIPE_FN(os_poll_pipe)
-{
-	struct pollfd pfd = {.fd = p.file, .events = POLLIN};
-	poll(&pfd, 1, 0);
-	return !!(pfd.revents & POLLIN);
-}
-
 static PLATFORM_READ_PIPE_FN(os_read_pipe)
 {
 	size r = 0, total_read = 0;
@@ -162,12 +153,6 @@ os_open_shared_memory_area(char *name, size cap)
 		return NULL;
 
 	return new;
-}
-
-static void
-os_remove_shared_memory(char *name)
-{
-	shm_unlink(name);
 }
 
 /* NOTE: complete garbage because there is no standarized copyfile() in POSix */
@@ -245,4 +230,30 @@ os_unload_library(void *h)
 	/* NOTE: glibc is buggy gnuware so we need to check this */
 	if (h)
 		dlclose(h);
+}
+
+static PLATFORM_ADD_FILE_WATCH_FN(os_add_file_watch)
+{
+	s8 directory  = path;
+	directory.len = s8_scan_backwards(path, '/');
+	ASSERT(directory.len > 0);
+
+	u64 hash = s8_hash(directory);
+	FileWatchContext *fwctx = &platform->file_watch_context;
+	FileWatchDirectory *dir = lookup_file_watch_directory(fwctx, hash);
+	if (!dir) {
+		ASSERT(path.data[directory.len] == '/');
+
+		dir         = fwctx->directory_watches + fwctx->directory_watch_count++;
+		dir->hash   = hash;
+
+		dir->name   = push_s8(a, directory);
+		arena_commit(a, 1);
+		dir->name.data[dir->name.len] = 0;
+
+		i32 mask    = IN_MOVED_TO|IN_CLOSE_WRITE;
+		dir->handle = inotify_add_watch(fwctx->handle, (c8 *)dir->name.data, mask);
+	}
+
+	insert_file_watch(dir, s8_cut_head(path, dir->name.len + 1), user_data, callback);
 }
