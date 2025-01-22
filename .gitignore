@@ -1,7 +1,9 @@
 *.dll
 *.exe
 *.mexa64
-*.so
+*.pdb
+*.rdi
+*.so*
 external/include/r*.h
 external/lib
 helpers/helper
