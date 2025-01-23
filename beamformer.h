@@ -170,7 +170,6 @@ typedef struct {
 	X(CS_DAS,     volume_export_dim_offset) \
 	X(CS_DAS,     volume_export_pass)       \
 	X(CS_DAS,     xdc_index)                \
-	X(CS_DAS,     xdc_transform)            \
 	X(CS_DAS,     cycle_t)                  \
 	X(CS_MIN_MAX, mips_level)               \
 	X(CS_SUM,     sum_prescale)

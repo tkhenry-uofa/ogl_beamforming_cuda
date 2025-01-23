@@ -30,13 +30,12 @@ typedef struct {
 	u32 uforces_channels[128];  /* Channels used for virtual UFORCES elements */
 	f32 focal_depths[128];      /* [m] Focal Depths for each transmit of a RCA imaging scheme*/
 	f32 transmit_angles[128];   /* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/
-	f32 xdc_origin[4 * MAX_MULTI_XDC_COUNT];  /* [m] Corner of transducer being treated as origin */
-	f32 xdc_corner1[4 * MAX_MULTI_XDC_COUNT]; /* [m] Corner of transducer along first axis */
-	f32 xdc_corner2[4 * MAX_MULTI_XDC_COUNT]; /* [m] Corner of transducer along second axis */
+	f32 xdc_transforms[16 * MAX_MULTI_XDC_COUNT]; /* IMPORTANT: column major order */
 	uv4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
 	uv4 output_points;          /* Width * Height * Depth * (Frame Average Count) */
 	v4  output_min_coordinate;  /* [m] Back-Top-Left corner of output region (w ignored) */
 	v4  output_max_coordinate;  /* [m] Front-Bottom-Right corner of output region (w ignored)*/
+	v2  xdc_element_pitch;      /* [m] Transducer Element Pitch */
 	uv2 rf_raw_dim;             /* Raw Data Dimensions */
 	u32 decode;                 /* Decode or just reshape data */
 	u32 xdc_count;              /* Number of Transducer Arrays (4 max) */
@@ -49,7 +48,7 @@ typedef struct {
 	i32 beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 	f32 f_number;               /* F# (set to 0 to disable) */
 	u32 das_shader_id;
-	f32 _pad[3];
+	f32 _pad[1];
 } BeamformerParameters;
 
 /* NOTE: garbage to get the prepocessor to properly stringize the value of a macro */
@@ -64,13 +63,12 @@ layout(std140, binding = 0) uniform parameters {\n\
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */\n\
 	vec4  focal_depths[32];       /* [m] Focal Depths for each transmit of a RCA imaging scheme*/\n\
 	vec4  transmit_angles[32];    /* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/\n\
-	vec4  xdc_origin[" str(MAX_MULTI_XDC_COUNT) "];          /* [m] Corner of transducer being treated as origin */\n\
-	vec4  xdc_corner1[" str(MAX_MULTI_XDC_COUNT) "];         /* [m] Corner of transducer along first axis (arbitrary) */\n\
-	vec4  xdc_corner2[" str(MAX_MULTI_XDC_COUNT) "];         /* [m] Corner of transducer along second axis (arbitrary) */\n\
+	mat4  xdc_transforms[" str(MAX_MULTI_XDC_COUNT) "]; /* IMPORTANT: column major order */\n\
 	uvec4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */\n\
 	uvec4 output_points;          /* Width * Height * Depth * (Frame Average Count) */\n\
 	vec4  output_min_coord;       /* [m] Top left corner of output region */\n\
 	vec4  output_max_coord;       /* [m] Bottom right corner of output region */\n\
+	vec2  xdc_element_pitch;      /* [m] Transducer Element Pitch */\n\
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */\n\
 	uint  decode;                 /* Decode or just reshape data */\n\
 	uint  xdc_count;              /* Number of Transducer Arrays (4 max) */\n\

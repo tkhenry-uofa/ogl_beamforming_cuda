@@ -290,39 +290,6 @@ beamform_work_queue_push(BeamformerCtx *ctx, Arena *a, enum beamform_work work_t
 	return result;
 }
 
-static m4
-v3_to_xdc_space(v3 direction, v3 origin, v3 corner1, v3 corner2)
-{
-	v3 edge1      = sub_v3(corner1, origin);
-	v3 edge2      = sub_v3(corner2, origin);
-	v3 xdc_normal = cross(edge1, edge2);
-	if (xdc_normal.z < 0)
-		xdc_normal = cross(edge2, edge1);
-	ASSERT(xdc_normal.z >= 0);
-
-	v3 e1 = normalize_v3(sub_v3(direction, xdc_normal));
-	v3 e2 = {.y = 1};
-	v3 e3 = normalize_v3(cross(e2, e1));
-	v4 e4 = {.x = -origin.x, .y = -origin.y, .z = -origin.z, .w = 1};
-
-	m4 result = {
-		.c[0] = (v4){.x = e3.x, .y = e2.x, .z = e1.x, .w = 0},
-		.c[1] = (v4){.x = e3.y, .y = e2.y, .z = e1.y, .w = 0},
-		.c[2] = (v4){.x = e3.z, .y = e2.z, .z = e1.z, .w = 0},
-		.c[3] = e4,
-	};
-
-	return result;
-}
-
-static v4
-f32_4_to_v4(f32 *in)
-{
-	v4 result;
-	store_f32x4(load_f32x4(in), result.E);
-	return result;
-}
-
 static void
 export_frame(BeamformerCtx *ctx, iptr handle, BeamformFrame *frame)
 {
@@ -365,13 +332,8 @@ do_beamform_shader(ComputeShaderCtx *cs, BeamformerParameters *bp, BeamformFrame
 
 	for (u32 i = 0; i < frame->dim.w; i++) {
 		u32 texture = frame->textures[i];
-		m4 xdc_transform = v3_to_xdc_space((v3){.z = 1},
-		                                   f32_4_to_v4(bp->xdc_origin  + (4 * i)).xyz,
-		                                   f32_4_to_v4(bp->xdc_corner1 + (4 * i)).xyz,
-		                                   f32_4_to_v4(bp->xdc_corner2 + (4 * i)).xyz);
 		glBindImageTexture(0, texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
 		glUniform1i(cs->xdc_index_id, i);
-		glUniformMatrix4fv(cs->xdc_transform_id, 1, GL_FALSE, xdc_transform.E);
 		glDispatchCompute(ORONE(dispatch_dim.x / 32),
 		                  ORONE(dispatch_dim.y),
 		                  ORONE(dispatch_dim.z / 32));
