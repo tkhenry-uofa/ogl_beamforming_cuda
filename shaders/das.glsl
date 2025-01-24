@@ -219,7 +219,7 @@ vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 	for (uint i = uforces; i < dec_data_dim.z; i++) {
 		uint base_idx = ((i - uforces) / 8);
 		uint sub_idx  = ((i - uforces) % 8) / 2;
-		uint shift    = (~(i - uforces) * 1u) * 16u;
+		uint shift    = (~(i - uforces) & 1u) * 16u;
 		uint channel  = (uforces_channels[base_idx][sub_idx] << shift) >> 16u;
 
 		vec2  rdist         = vec2(image_point.x, image_point.z);
