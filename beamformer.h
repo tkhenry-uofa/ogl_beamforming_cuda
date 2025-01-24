@@ -197,8 +197,7 @@ typedef struct {
 	 * buffers so that they can be swapped when chaining multiple compute stages */
 	u32 rf_data_ssbos[2];
 	u32 last_output_ssbo_index;
-	u32 hadamard_ssbo;
-	uv2 hadamard_dim;
+	u32 hadamard_texture;
 
 	u32 shared_ubo;
 

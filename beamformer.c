@@ -163,15 +163,16 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	}
 
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
-	cs->hadamard_dim       = (uv2){.x = dec_data_dim.z, .y = dec_data_dim.z};
 	size hadamard_elements = dec_data_dim.z * dec_data_dim.z;
 	i32  *hadamard         = alloc(&a, i32, hadamard_elements);
 	i32  *tmp              = alloc(&a, i32, hadamard_elements);
 	fill_hadamard_transpose(hadamard, tmp, dec_data_dim.z);
-	glDeleteBuffers(1, &cs->hadamard_ssbo);
-	glCreateBuffers(1, &cs->hadamard_ssbo);
-	glNamedBufferStorage(cs->hadamard_ssbo, hadamard_elements * sizeof(i32), hadamard, 0);
-	LABEL_GL_OBJECT(GL_BUFFER, cs->hadamard_ssbo, s8("Hadamard_SSBO"));
+	glDeleteTextures(1, &cs->hadamard_texture);
+	glCreateTextures(GL_TEXTURE_2D, 1, &cs->hadamard_texture);
+	glTextureStorage2D(cs->hadamard_texture, 1, GL_R8I, dec_data_dim.z, dec_data_dim.z);
+	glTextureSubImage2D(cs->hadamard_texture, 0, 0, 0, dec_data_dim.z, dec_data_dim.z,
+	                    GL_RED_INTEGER, GL_INT, hadamard);
+	LABEL_GL_OBJECT(GL_TEXTURE, cs->hadamard_texture, s8("Hadamard_Matrix"));
 }
 
 static BeamformWork *
@@ -387,7 +388,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, u32 raw
 		                  raw_data_index * rf_raw_size, rf_raw_size);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, csctx->hadamard_ssbo);
+		glBindImageTexture(0, csctx->hadamard_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8I);
 		glDispatchCompute(ORONE(csctx->dec_data_dim.x / 32),
 		                  ORONE(csctx->dec_data_dim.y / 32),
 		                  ORONE(csctx->dec_data_dim.z));

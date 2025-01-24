@@ -9,9 +9,7 @@ layout(std430, binding = 2) writeonly restrict buffer buffer_2 {
 	vec2 out_data[];
 };
 
-layout(std430, binding = 3) readonly restrict buffer buffer_3 {
-	int hadamard[];
-};
+layout(r8i, binding = 0) readonly restrict uniform iimage2D hadamard;
 
 void main()
 {
@@ -57,7 +55,7 @@ void main()
 
 		for (int i = 0; i < dec_data_dim.z; i++) {
 			int data = (rf_data[ridx] << lfs) >> 16;
-			sum  += hadamard[hoff + i] * data;
+			sum  += imageLoad(hadamard, ivec2(acq, i)).x * data;
 			ridx += ridx_delta;
 		}
 	} else {
