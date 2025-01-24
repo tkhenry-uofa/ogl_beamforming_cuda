@@ -26,7 +26,7 @@ enum compute_shaders {
  * read and understood the rules, particulary with regards to _member alignment_ */
 typedef struct {
 	u16 channel_mapping[256];   /* Transducer Channel to Verasonics Channel */
-	u32 uforces_channels[128];  /* Channels used for virtual UFORCES elements */
+	u16 uforces_channels[256];  /* Channels used for virtual UFORCES elements */
 	f32 focal_depths[256];      /* [m] Focal Depths for each transmit of a RCA imaging scheme*/
 	f32 transmit_angles[256];   /* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/
 	f32 xdc_transform[16];      /* IMPORTANT: column major order */

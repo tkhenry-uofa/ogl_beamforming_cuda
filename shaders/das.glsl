@@ -102,8 +102,8 @@ float planewave_transmit_distance(vec3 point, float transmit_angle, int transmit
 
 float cylindricalwave_transmit_distance(vec3 point, float focal_depth, float transmit_angle, int transmit_orientation)
 {
-		vec3 f = focal_depth * vec3(sin(transmit_angle), sin(transmit_angle), cos(transmit_angle));
-		return length((point - f) * orientation_projection(transmit_orientation == TX_ROWS));
+	vec3 f = focal_depth * vec3(sin(transmit_angle), sin(transmit_angle), cos(transmit_angle));
+	return length((point - f) * orientation_projection(transmit_orientation == TX_ROWS));
 }
 
 vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
@@ -217,11 +217,13 @@ vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 
 	vec2 sum = vec2(0);
 	for (uint i = uforces; i < dec_data_dim.z; i++) {
-		uint base_idx = (i - uforces) / 4;
-		uint sub_idx  = (i - uforces) % 4;
+		uint base_idx = ((i - uforces) / 8);
+		uint sub_idx  = ((i - uforces) % 8) / 2;
+		uint shift    = (~(i - uforces) * 1u) * 16u;
+		uint channel  = (uforces_channels[base_idx][sub_idx] << shift) >> 16u;
 
 		vec2  rdist         = vec2(image_point.x, image_point.z);
-		vec3  focal_point   = uforces_channels[base_idx][sub_idx] * delta + focal_point_offset;
+		vec3  focal_point   = channel * delta + focal_point_offset;
 		float transmit_dist = distance(image_point, focal_point);
 
 		for (uint j = 0; j < dec_data_dim.y; j++) {
