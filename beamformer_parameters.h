@@ -22,23 +22,22 @@ enum compute_shaders {
 #define DAS_ID_RCA      2
 
 #define MAX_BEAMFORMED_SAVED_FRAMES 16
-#define MAX_MULTI_XDC_COUNT         4
 /* NOTE: This struct follows the OpenGL std140 layout. DO NOT modify unless you have
  * read and understood the rules, particulary with regards to _member alignment_ */
 typedef struct {
-	u16 channel_mapping[512];   /* Transducer Channel to Verasonics Channel */
+	u16 channel_mapping[256];   /* Transducer Channel to Verasonics Channel */
 	u32 uforces_channels[128];  /* Channels used for virtual UFORCES elements */
-	f32 focal_depths[128];      /* [m] Focal Depths for each transmit of a RCA imaging scheme*/
-	f32 transmit_angles[128];   /* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/
-	f32 xdc_transforms[16 * MAX_MULTI_XDC_COUNT]; /* IMPORTANT: column major order */
+	f32 focal_depths[256];      /* [m] Focal Depths for each transmit of a RCA imaging scheme*/
+	f32 transmit_angles[256];   /* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/
+	f32 xdc_transform[16];      /* IMPORTANT: column major order */
 	uv4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
 	uv4 output_points;          /* Width * Height * Depth * (Frame Average Count) */
 	v4  output_min_coordinate;  /* [m] Back-Top-Left corner of output region (w ignored) */
 	v4  output_max_coordinate;  /* [m] Front-Bottom-Right corner of output region (w ignored)*/
-	v2  xdc_element_pitch;      /* [m] Transducer Element Pitch */
+	f32 xdc_element_pitch[2];   /* [m] Transducer Element Pitch {row, col} */
 	uv2 rf_raw_dim;             /* Raw Data Dimensions */
+	u32 transmit_mode;          /* Method/Orientation of Transmit */
 	u32 decode;                 /* Decode or just reshape data */
-	u32 xdc_count;              /* Number of Transducer Arrays (4 max) */
 	u32 channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	f32 speed_of_sound;         /* [m/s] */
 	f32 sampling_frequency;     /* [Hz]  */
@@ -59,19 +58,19 @@ typedef struct {
 #version 460 core\n\
 \n\
 layout(std140, binding = 0) uniform parameters {\n\
-	uvec4 channel_mapping[64];    /* Transducer Channel to Verasonics Channel */\n\
+	uvec4 channel_mapping[32];    /* Transducer Channel to Verasonics Channel */\n\
 	uvec4 uforces_channels[32];   /* Channels used for virtual UFORCES elements */\n\
-	vec4  focal_depths[32];       /* [m] Focal Depths for each transmit of a RCA imaging scheme*/\n\
-	vec4  transmit_angles[32];    /* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/\n\
-	mat4  xdc_transforms[" str(MAX_MULTI_XDC_COUNT) "]; /* IMPORTANT: column major order */\n\
+	vec4  focal_depths[64];       /* [m] Focal Depths for each transmit of a RCA imaging scheme*/\n\
+	vec4  transmit_angles[64];    /* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/\n\
+	mat4  xdc_transform;          /* IMPORTANT: column major order */\n\
 	uvec4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */\n\
 	uvec4 output_points;          /* Width * Height * Depth * (Frame Average Count) */\n\
 	vec4  output_min_coord;       /* [m] Top left corner of output region */\n\
 	vec4  output_max_coord;       /* [m] Bottom right corner of output region */\n\
-	vec2  xdc_element_pitch;      /* [m] Transducer Element Pitch */\n\
+	vec2  xdc_element_pitch;      /* [m] Transducer Element Pitch {row, col} */\n\
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */\n\
+	uint  transmit_mode;          /* Method/Orientation of Transmit */\n\
 	uint  decode;                 /* Decode or just reshape data */\n\
-	uint  xdc_count;              /* Number of Transducer Arrays (4 max) */\n\
 	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */\n\
 	float speed_of_sound;         /* [m/s] */\n\
 	float sampling_frequency;     /* [Hz]  */\n\

@@ -169,7 +169,6 @@ typedef struct {
 #define CS_UNIFORMS                             \
 	X(CS_DAS,     volume_export_dim_offset) \
 	X(CS_DAS,     volume_export_pass)       \
-	X(CS_DAS,     xdc_index)                \
 	X(CS_DAS,     cycle_t)                  \
 	X(CS_MIN_MAX, mips_level)               \
 	X(CS_SUM,     sum_prescale)
@@ -223,10 +222,8 @@ typedef struct {
 } FragmentShaderCtx;
 
 typedef struct {
-	/* NOTE: we always have one extra texture to sum into; thus the final output data
-	 * is always found in textures[dim.w - 1] */
-	u32 textures[MAX_MULTI_XDC_COUNT + 1];
-	uv4 dim;
+	uv3 dim;
+	u32 texture;
 
 	/* NOTE: for use when displaying either prebeamformed frames or on the current frame
 	 * when we intend to recompute on the next frame */

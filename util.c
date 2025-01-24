@@ -311,17 +311,17 @@ push_s8(Arena *a, s8 str)
 	return result;
 }
 
-static b32
-uv4_equal(uv4 a, uv4 b)
-{
-	return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
-}
-
 static u32
 round_down_power_of_2(u32 a)
 {
 	u32 result = 0x80000000UL >> clz_u32(a);
 	return result;
+}
+
+static b32
+uv3_equal(uv3 a, uv3 b)
+{
+	return a.x == b.x && a.y == b.y && a.z == b.z;
 }
 
 static v3
@@ -396,6 +396,12 @@ magnitude_v2(v2 a)
 {
 	f32 result = sqrt_f32(a.x * a.x + a.y * a.y);
 	return result;
+}
+
+static b32
+uv4_equal(uv4 a, uv4 b)
+{
+	return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
 }
 
 static v4

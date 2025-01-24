@@ -9,8 +9,7 @@ layout(rg32f, binding = 0) writeonly uniform image3D u_out_data_tex;
 
 layout(location = 2) uniform int   u_volume_export_pass;
 layout(location = 3) uniform ivec3 u_volume_export_dim_offset;
-layout(location = 4) uniform int   u_xdc_index;
-layout(location = 5) uniform float u_cycle_t;
+layout(location = 4) uniform float u_cycle_t;
 
 #define C_SPLINE 0.5
 
@@ -84,7 +83,7 @@ vec3 orientation_projection(bool tx_rows)
 
 vec3 world_space_to_rca_space(vec3 image_point, int transmit_orientation)
 {
-	vec3 result  = (xdc_transforms[u_xdc_index] * vec4(image_point, 1)).xyz;
+	vec3 result  = (xdc_transform * vec4(image_point, 1)).xyz;
 	result      *= orientation_projection(transmit_orientation != TX_ROWS);
 	return result;
 }
@@ -107,11 +106,11 @@ float cylindricalwave_transmit_distance(vec3 point, float focal_depth, float tra
 		return length((point - f) * orientation_projection(transmit_orientation == TX_ROWS));
 }
 
-vec2 RCA(vec3 image_point, vec3 delta, uint starting_offset, float apodization_arg)
+vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 {
 	/* TODO: pass this in (there is a problem in that it depends on the orientation
 	 * of the array relative to the target/subject). */
-	uint ridx      = starting_offset;
+	uint ridx      = 0;
 	int  direction = beamform_plane * (u_volume_export_pass ^ 1);
 	if (direction == TX_ROWS) image_point = image_point.yxz;
 
@@ -152,9 +151,9 @@ vec2 RCA(vec3 image_point, vec3 delta, uint starting_offset, float apodization_a
 	return sum;
 }
 
-vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodization_arg)
+vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 {
-	uint ridx      = starting_offset;
+	uint ridx      = 0;
 	int  direction = beamform_plane * (u_volume_export_pass ^ 1);
 	if (direction != TX_ROWS) image_point = image_point.yxz;
 
@@ -163,7 +162,7 @@ vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodizat
 	float focal_depth        = focal_depths[0][0];
 	float transmit_angle     = transmit_angles[0][0];
 
-	vec3 recieve_point = (xdc_transforms[u_xdc_index] * vec4(image_point, 1)).xyz;
+	vec3 recieve_point = (xdc_transform * vec4(image_point, 1)).xyz;
 
 	if (transmit_orientation == TX_ROWS)
 		delta = delta.yxz;
@@ -200,13 +199,13 @@ vec2 HERCULES(vec3 image_point, vec3 delta, uint starting_offset, float apodizat
 	return sum;
 }
 
-vec2 uFORCES(vec3 image_point, vec3 delta, uint starting_offset, float apodization_arg)
+vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 {
 	/* NOTE: skip first acquisition in uforces since its garbage */
 	uint uforces = uint(dec_data_dim.y != dec_data_dim.z);
-	uint ridx    = starting_offset + dec_data_dim.y * dec_data_dim.x * uforces;
+	uint ridx    = dec_data_dim.y * dec_data_dim.x * uforces;
 
-	image_point  = (xdc_transforms[u_xdc_index] * vec4(image_point, 1)).xyz;
+	image_point  = (xdc_transform * vec4(image_point, 1)).xyz;
 
 	int transmit_orientation = TX_ROWS;
 	//int transmit_orientation = int(transmit_orientations[0][0]);
@@ -254,18 +253,16 @@ void main()
 	float apod_arg = f_number * radians(180) / abs(image_point.z);
 
 	/* NOTE: skip over channels corresponding to other arrays */
-	uint starting_offset = u_xdc_index * (dec_data_dim.y / xdc_count) * dec_data_dim.x * dec_data_dim.z;
-
 	vec2 sum;
 	switch (das_shader_id) {
 	case DAS_ID_UFORCES:
-		sum = uFORCES(image_point, vec3(xdc_element_pitch, 0), starting_offset, apod_arg);
+		sum = uFORCES(image_point, vec3(xdc_element_pitch, 0), apod_arg);
 		break;
 	case DAS_ID_HERCULES:
-		sum = HERCULES(image_point, vec3(xdc_element_pitch, 0), starting_offset, apod_arg);
+		sum = HERCULES(image_point, vec3(xdc_element_pitch, 0), apod_arg);
 		break;
 	case DAS_ID_RCA:
-		sum = RCA(image_point, vec3(xdc_element_pitch, 0), starting_offset, apod_arg);
+		sum = RCA(image_point, vec3(xdc_element_pitch, 0), apod_arg);
 		break;
 	}
 

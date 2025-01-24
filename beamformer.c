@@ -12,14 +12,13 @@ decoded_data_size(ComputeShaderCtx *cs)
 	return result;
 }
 
-static uv4
-make_valid_test_dim(uv4 in)
+static uv3
+make_valid_test_dim(uv3 in)
 {
-	uv4 result;
+	uv3 result;
 	result.x = MAX(in.x, 1);
 	result.y = MAX(in.y, 1);
 	result.z = MAX(in.z, 1);
-	result.w = 1;
 	return result;
 }
 
@@ -47,47 +46,40 @@ frame_next(BeamformFrameIterator *bfi)
 }
 
 static void
-alloc_beamform_frame(GLParams *gp, BeamformFrame *out, uv4 out_dim, u32 frame_index, s8 name)
+alloc_beamform_frame(GLParams *gp, BeamformFrame *out, uv3 out_dim, u32 frame_index, s8 name)
 {
-	glDeleteTextures(out->dim.w, out->textures);
+	glDeleteTextures(1, &out->texture);
 
 	out->dim.x = CLAMP(round_down_power_of_2(ORONE(out_dim.x)), 1, gp->max_3d_texture_dim);
 	out->dim.y = CLAMP(round_down_power_of_2(ORONE(out_dim.y)), 1, gp->max_3d_texture_dim);
 	out->dim.z = CLAMP(round_down_power_of_2(ORONE(out_dim.z)), 1, gp->max_3d_texture_dim);
-	out->dim.w = CLAMP(out_dim.w, 0, MAX_MULTI_XDC_COUNT);
 
 	/* NOTE: allocate storage for beamformed output data;
 	 * this is shared between compute and fragment shaders */
 	u32 max_dim = MAX(out->dim.x, MAX(out->dim.y, out->dim.z));
 	out->mips   = ctz_u32(max_dim) + 1;
 
+	/* TODO(rnp): arena?? */
 	u8 buf[256];
 	Stream label = {.data = buf, .cap = ARRAY_COUNT(buf)};
 	stream_append_s8(&label, name);
 	stream_append_byte(&label, '[');
 	stream_append_u64(&label, frame_index);
-	stream_append_s8(&label, s8("]["));
-	u32 sidx = label.widx;
+	stream_append_s8(&label, s8("]"));
 
-	glCreateTextures(GL_TEXTURE_3D, out->dim.w, out->textures);
-	for (u32 i = 0; i < out->dim.w; i++) {
-		glTextureStorage3D(out->textures[i], out->mips, GL_RG32F,
-		                   out->dim.x, out->dim.y, out->dim.z);
-		stream_append_u64(&label, i);
-		stream_append_byte(&label, ']');
-		LABEL_GL_OBJECT(GL_TEXTURE, out->textures[i], stream_to_s8(&label));
-		label.widx = sidx;
-	}
+	glCreateTextures(GL_TEXTURE_3D, 1, &out->texture);
+	glTextureStorage3D(out->texture, out->mips, GL_RG32F, out->dim.x, out->dim.y, out->dim.z);
+	LABEL_GL_OBJECT(GL_TEXTURE, out->texture, stream_to_s8(&label));
 }
 
 static void
-alloc_output_image(BeamformerCtx *ctx, uv4 output_dim)
+alloc_output_image(BeamformerCtx *ctx, uv3 output_dim)
 {
-	uv4 try_dim = make_valid_test_dim(output_dim);
-	if (!uv4_equal(try_dim, ctx->averaged_frame.dim)) {
+	uv3 try_dim = make_valid_test_dim(output_dim);
+	if (!uv3_equal(try_dim, ctx->averaged_frame.dim)) {
 		alloc_beamform_frame(&ctx->gl, &ctx->averaged_frame, try_dim, 0,
 		                     s8("Beamformed_Averaged_Data"));
-		uv4 odim = ctx->averaged_frame.dim;
+		uv3 odim = ctx->averaged_frame.dim;
 
 		UnloadRenderTexture(ctx->fsctx.output);
 		/* TODO: select odim.x vs odim.y */
@@ -264,9 +256,8 @@ beamform_work_queue_push(BeamformerCtx *ctx, Arena *a, enum beamform_work work_t
 
 			BeamformFrameIterator bfi = beamform_frame_iterator(ctx);
 			for (BeamformFrame *frame = frame_next(&bfi); frame; frame = frame_next(&bfi)) {
-				uv4 try_dim = ctx->params->raw.output_points;
-				try_dim.w   = ctx->params->raw.xdc_count;
-				if (!uv4_equal(frame->dim, try_dim)) {
+				uv3 try_dim = ctx->params->raw.output_points.xyz;
+				if (!uv3_equal(frame->dim, try_dim)) {
 					u32 index = (bfi.offset - bfi.cursor) % bfi.capacity;
 					alloc_beamform_frame(&ctx->gl, frame, try_dim, index,
 					                     s8("Beamformed_Data"));
@@ -293,11 +284,10 @@ beamform_work_queue_push(BeamformerCtx *ctx, Arena *a, enum beamform_work work_t
 static void
 export_frame(BeamformerCtx *ctx, iptr handle, BeamformFrame *frame)
 {
-	uv3 dim            = frame->dim.xyz;
+	uv3 dim            = frame->dim;
 	size out_size      = dim.x * dim.y * dim.z * 2 * sizeof(f32);
 	ctx->export_buffer = ctx->platform.alloc_arena(ctx->export_buffer, out_size);
-	u32 texture        = frame->textures[frame->dim.w - 1];
-	glGetTextureImage(texture, 0, GL_RG, GL_FLOAT, out_size, ctx->export_buffer.beg);
+	glGetTextureImage(frame->texture, 0, GL_RG, GL_FLOAT, out_size, ctx->export_buffer.beg);
 	s8 raw = {.len = out_size, .data = ctx->export_buffer.beg};
 	if (!ctx->platform.write_file(handle, raw))
 		TraceLog(LOG_WARNING, "failed to export frame\n");
@@ -306,7 +296,7 @@ export_frame(BeamformerCtx *ctx, iptr handle, BeamformFrame *frame)
 
 static void
 do_sum_shader(ComputeShaderCtx *cs, u32 *in_textures, u32 in_texture_count, f32 in_scale,
-              u32 out_texture, uv4 out_data_dim)
+              u32 out_texture, uv3 out_data_dim)
 {
 	/* NOTE: zero output before summing */
 	glClearTexImage(out_texture, 0, GL_RED, GL_FLOAT, 0);
@@ -330,14 +320,10 @@ do_beamform_shader(ComputeShaderCtx *cs, BeamformerParameters *bp, BeamformFrame
 	glUniform3iv(cs->volume_export_dim_offset_id, 1, compute_dim_offset.E);
 	glUniform1i(cs->volume_export_pass_id, compute_pass);
 
-	for (u32 i = 0; i < frame->dim.w; i++) {
-		u32 texture = frame->textures[i];
-		glBindImageTexture(0, texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
-		glUniform1i(cs->xdc_index_id, i);
-		glDispatchCompute(ORONE(dispatch_dim.x / 32),
-		                  ORONE(dispatch_dim.y),
-		                  ORONE(dispatch_dim.z / 32));
-	}
+	glBindImageTexture(0, frame->texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
+	glDispatchCompute(ORONE(dispatch_dim.x / 32),
+	                  ORONE(dispatch_dim.y),
+	                  ORONE(dispatch_dim.z / 32));
 }
 
 static b32
@@ -427,7 +413,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, u32 raw
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_MIN_MAX: {
-		u32 texture = frame->textures[frame->dim.w - 1];
+		u32 texture = frame->texture;
 		for (u32 i = 1; i < frame->mips; i++) {
 			glBindImageTexture(0, texture, i - 1, GL_TRUE, 0, GL_READ_ONLY,  GL_RG32F);
 			glBindImageTexture(1, texture, i - 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
@@ -444,24 +430,15 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, u32 raw
 		u32 rf_ssbo      = csctx->rf_data_ssbos[input_ssbo_idx];
 		iv3 dispatch_dim = {.x = frame->dim.x, .y = frame->dim.y, .z = frame->dim.z};
 		do_beamform_shader(csctx, &ctx->params->raw, frame, rf_ssbo, dispatch_dim, (iv3){0}, 0);
-		if (frame->dim.w > 1) {
-			glUseProgram(csctx->programs[CS_SUM]);
-			u32 input_texture_count = frame->dim.w - 1;
-			do_sum_shader(csctx, frame->textures, input_texture_count,
-			              1 / (f32)input_texture_count, frame->textures[frame->dim.w - 1],
-			              frame->dim);
-		}
 	} break;
 	case CS_SUM: {
 		u32 frame_count  = 0;
 		u32 *in_textures = alloc(&arena, u32, MAX_BEAMFORMED_SAVED_FRAMES);
 		BeamformFrameIterator bfi = beamform_frame_iterator(ctx);
-		for (BeamformFrame *frame = frame_next(&bfi); frame; frame = frame_next(&bfi)) {
-			ASSERT(frame->dim.w);
-			in_textures[frame_count++] = frame->textures[frame->dim.w - 1];
-		}
+		for (BeamformFrame *frame = frame_next(&bfi); frame; frame = frame_next(&bfi))
+			in_textures[frame_count++] = frame->texture;
 		do_sum_shader(csctx, in_textures, frame_count, 1 / (f32)frame_count,
-		              ctx->averaged_frame.textures[0], ctx->averaged_frame.dim);
+		              ctx->averaged_frame.texture, ctx->averaged_frame.dim);
 	} break;
 	default: ASSERT(0);
 	}
@@ -542,7 +519,7 @@ do_beamform_work(BeamformerCtx *ctx, Arena *a)
 				work->compute_ctx.export_handle = INVALID_FILE;
 				/* NOTE: do not waste a bunch of GPU space holding onto the volume
 				 * texture if it was just for export */
-				glDeleteTextures(frame->dim.w, frame->textures);
+				glDeleteTextures(1, &frame->texture);
 				mem_clear(frame, 0, sizeof(*frame));
 			}
 		} break;
@@ -671,8 +648,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 			if (output_3d) {
 				work->type = BW_PARTIAL_COMPUTE;
 				BeamformFrame *frame = &ctx->partial_compute_ctx.frame;
-				uv4 out_dim = ctx->params->raw.output_points;
-				out_dim.w   = ctx->params->raw.xdc_count;
+				uv3 out_dim = ctx->params->raw.output_points.xyz;
 				alloc_beamform_frame(&ctx->gl, frame, out_dim, 0, s8("Beamformed_Volume"));
 				work->compute_ctx.frame = frame;
 			}
@@ -682,7 +658,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 			size rf_raw_size  = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
 			void *rf_data_buf = cs->raw_data_arena.beg + raw_index * rf_raw_size;
 
-			alloc_output_image(ctx, bp->output_points);
+			alloc_output_image(ctx, bp->output_points.xyz);
 
 			size rlen = ctx->platform.read_pipe(input->pipe_handle, rf_data_buf, rf_raw_size);
 			if (rlen != rf_raw_size) {
@@ -720,12 +696,10 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 			u32 out_texture = 0;
 			if (bp->output_points.w > 1) {
 				frame_to_draw = &ctx->averaged_frame;
-				out_texture   = ctx->averaged_frame.textures[0];
+				out_texture   = ctx->averaged_frame.texture;
 			} else {
 				frame_to_draw = ctx->beamform_frames + ctx->displayed_frame_index;
-				/* NOTE: verify we have actually beamformed something yet */
-				if (frame_to_draw->dim.w)
-					out_texture = frame_to_draw->textures[frame_to_draw->dim.w - 1];
+				out_texture   = frame_to_draw->texture;
 			}
 			glBindTextureUnit(0, out_texture);
 			glUniform1f(fs->db_cutoff_id, fs->db);

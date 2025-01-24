@@ -867,11 +867,8 @@ ui_start_compute(BeamformerCtx *ctx)
 	if (ui_can_start_compute(ctx)) {
 		beamform_work_queue_push(ctx, &a, BW_RECOMPUTE);
 		BeamformFrameIterator bfi = beamform_frame_iterator(ctx);
-		for (BeamformFrame *frame = frame_next(&bfi); frame; frame = frame_next(&bfi)) {
-			if (frame->dim.w && frame->textures[frame->dim.w - 1])
-				glClearTexImage(frame->textures[frame->dim.w - 1], 0,
-				                GL_RED, GL_FLOAT, 0);
-		}
+		for (BeamformFrame *frame = frame_next(&bfi); frame; frame = frame_next(&bfi))
+			glClearTexImage(frame->texture, 0, GL_RED, GL_FLOAT, 0);
 	}
 	ctx->params->upload = 1;
 }
