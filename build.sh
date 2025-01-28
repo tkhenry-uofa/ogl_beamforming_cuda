@@ -25,7 +25,6 @@ MINGW64*)
 	win32=1
 	glfw="libglfw.dll"
 	raylib="libraylib.dll"
-	raylib_out_lib="external/bin/libraylib.dll"
 	main="main_w32.c"
 	libname="beamformer.dll"
 	ldflags="${ldflags} -lgdi32 -lwinmm"
@@ -39,8 +38,7 @@ MINGW64*)
 	;;
 Linux*)
 	glfw="libglfw.so.3"
-	raylib="libraylib.so.550"
-	raylib_out_lib="external/lib/libraylib.so.5.5.0"
+	raylib="libraylib.so"
 	main="main_linux.c"
 	libname="beamformer.so"
 	cflags="${cflags} -D_DEFAULT_SOURCE"
@@ -53,30 +51,41 @@ if [ ! -f external/raylib/README.md ] || [ "$(git status --short external/raylib
 	git submodule update --init --depth=1 external/raylib
 fi
 
+mkdir -p external/lib
+
 build_raylib()
 {
-	rm -r ${2} 2>/dev/null
-	cmake --install-prefix="${PWD}/external" \
-		-G "Ninja" -B ${2} -S external/raylib \
-		${1} \
-		-D CMAKE_INSTALL_LIBDIR=lib -D CMAKE_BUILD_TYPE="Release" \
-		-DCUSTOMIZE_BUILD=ON -DBUILD_EXAMPLES=OFF -DWITH_PIC=ON \
-		-DUSE_EXTERNAL_GLFW=ON \
-		-DOPENGL_VERSION=4.3 -DUSE_AUDIO=OFF -DSUPPORT_MODULE_RAUDIO=OFF
-	cmake --build   ${2}
-	cmake --install ${2}
+	cppflags="${2} -DPLATFORM_DESKTOP_GLFW -DGRAPHICS_API_OPENGL_43"
+	[ ${1} = "shared" ] && cppflags="${cppflags} -fvisibility=hidden -DBUILD_LIBTYPE_SHARED"
+
+	if [ ${1} = "shared" ]; then
+		${cc} ${cflags} ${cppflags} external/raylib/src/raudio.c \
+			external/raylib/src/rcore.c external/raylib/src/rmodels.c \
+			external/raylib/src/rshapes.c external/raylib/src/rtext.c \
+			external/raylib/src/rtextures.c external/raylib/src/utils.c \
+			-o ${raylib}
+	fi
+	if [ ${1} = "static" ]; then
+		${cc} ${cflags} ${cppflags} -c external/raylib/src/raudio.c    -o external/lib/raudio.c.o
+		${cc} ${cflags} ${cppflags} -c external/raylib/src/rcore.c     -o external/lib/rcore.c.o
+		${cc} ${cflags} ${cppflags} -c external/raylib/src/rmodels.c   -o external/lib/rmodels.c.o
+		${cc} ${cflags} ${cppflags} -c external/raylib/src/rshapes.c   -o external/lib/rshapes.c.o
+		${cc} ${cflags} ${cppflags} -c external/raylib/src/rtext.c     -o external/lib/rtext.c.o
+		${cc} ${cflags} ${cppflags} -c external/raylib/src/rtextures.c -o external/lib/rtextures.c.o
+		${cc} ${cflags} ${cppflags} -c external/raylib/src/utils.c     -o external/lib/utils.c.o
+		ar rc external/lib/libraylib.a external/lib/raudio.c.o external/lib/rcore.c.o \
+		      external/lib/rmodels.c.o external/lib/rshapes.c.o external/lib/rtext.c.o \
+		      external/lib/rtextures.c.o external/lib/rtextures.c.o external/lib/utils.c.o
+	fi
 }
 
 check_and_rebuild_libs()
 {
-	switch=OFF
-	[ ${1} = "shared" ] && switch=ON
 	if [ "./build.sh" -nt "${raylib}" ] || [ ! -f "${raylib}" ]; then
-		build_raylib "-D BUILD_SHARED_LIBS=${switch}" "external/raylib/build_${1}"
-		[ ${1} = "shared" ] && cp -L "${raylib_out_lib}" "${raylib}"
+		[ ${1} = "static" ] && build_raylib ${1} "-static"
+		[ ${1} = "shared" ] && build_raylib ${1} "-fPIC -shared"
 	fi
-
-	# NOTE(rnp): we need to build this separately so that we can use functions from
+	# NOTE(rnp): we need to build glfw separately so that we can use functions from
 	# glfw directly - raylib doesn't let us open multiple opengl contexts even if
 	# we never plan on using them with raylib
 	case "${1}" in
@@ -84,7 +93,7 @@ check_and_rebuild_libs()
 		if [ "./build.sh" -nt "${glfw}" ] || [ ! -f ${glfw} ]; then
 			${cc} ${cflags} -static -D_GLFW_X11 \
 				-c external/raylib/src/rglfw.c -o external/lib/rglfw.o
-			ar qc ${glfw} external/lib/rglfw.o
+			ar rc ${glfw} external/lib/rglfw.o
 		fi
 		;;
 	shared)
