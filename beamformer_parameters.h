@@ -17,9 +17,14 @@ enum compute_shaders {
 	CS_LAST
 };
 
-#define DAS_ID_UFORCES  0
-#define DAS_ID_HERCULES 1
-#define DAS_ID_RCA      2
+#define DECODE_MODE_NONE      0
+#define DECODE_MODE_HADAMARD  1
+
+#define DAS_ID_FORCES         0
+#define DAS_ID_UFORCES        1
+#define DAS_ID_HERCULES       2
+#define DAS_ID_RCA_VLS        3
+#define DAS_ID_RCA_TPW        4
 
 #define MAX_BEAMFORMED_SAVED_FRAMES 16
 /* NOTE: This struct follows the OpenGL std140 layout. DO NOT modify unless you have
@@ -36,9 +41,8 @@ typedef struct {
 	v4  output_max_coordinate;  /* [m] Front-Bottom-Right corner of output region (w ignored)*/
 	f32 xdc_element_pitch[2];   /* [m] Transducer Element Pitch {row, col} */
 	uv2 rf_raw_dim;             /* Raw Data Dimensions */
-	u32 transmit_mode;          /* Method/Orientation of Transmit */
+	i32 transmit_mode;          /* Method/Orientation of Transmit */
 	u32 decode;                 /* Decode or just reshape data */
-	u32 channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */
 	f32 speed_of_sound;         /* [m/s] */
 	f32 sampling_frequency;     /* [Hz]  */
 	f32 center_frequency;       /* [Hz]  */
@@ -47,7 +51,7 @@ typedef struct {
 	i32 beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 	f32 f_number;               /* F# (set to 0 to disable) */
 	u32 das_shader_id;
-	f32 _pad[1];
+	f32 _pad[2];
 } BeamformerParameters;
 
 /* NOTE: garbage to get the prepocessor to properly stringize the value of a macro */
@@ -69,9 +73,8 @@ layout(std140, binding = 0) uniform parameters {\n\
 	vec4  output_max_coord;       /* [m] Bottom right corner of output region */\n\
 	vec2  xdc_element_pitch;      /* [m] Transducer Element Pitch {row, col} */\n\
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */\n\
-	uint  transmit_mode;          /* Method/Orientation of Transmit */\n\
+	int   transmit_mode;          /* Method/Orientation of Transmit */\n\
 	uint  decode;                 /* Decode or just reshape data */\n\
-	uint  channel_offset;         /* Offset into channel_mapping: 0 or 128 (rows or columns) */\n\
 	float speed_of_sound;         /* [m/s] */\n\
 	float sampling_frequency;     /* [Hz]  */\n\
 	float center_frequency;       /* [Hz]  */\n\
@@ -82,7 +85,13 @@ layout(std140, binding = 0) uniform parameters {\n\
 	uint  das_shader_id;\n\
 };\n\
 \n\
-#define DAS_ID_UFORCES  " str(DAS_ID_UFORCES) "\n\
-#define DAS_ID_HERCULES " str(DAS_ID_HERCULES) "\n\
-#define DAS_ID_RCA " str(DAS_ID_RCA) "\n\n\
+#define DECODE_MODE_NONE     " str(DECODE_MODE_NONE)     "\n\
+#define DECODE_MODE_HADAMARD " str(DECODE_MODE_HADAMARD) "\n\
+\n\
+#define DAS_ID_FORCES        " str(DAS_ID_FORCES)   "\n\
+#define DAS_ID_UFORCES       " str(DAS_ID_UFORCES)  "\n\
+#define DAS_ID_HERCULES      " str(DAS_ID_HERCULES) "\n\
+#define DAS_ID_RCA_VLS       " str(DAS_ID_RCA_VLS)  "\n\
+#define DAS_ID_RCA_TPW       " str(DAS_ID_RCA_TPW)  "\n\
+\n\
 #line 0\n"

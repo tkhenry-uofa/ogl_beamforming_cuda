@@ -16,6 +16,9 @@ layout(location = 4) uniform float u_cycle_t;
 #define TX_ROWS 0
 #define TX_COLS 1
 
+#define TX_MODE_TX_COLS(a) (((a) & 2) != 0)
+#define TX_MODE_RX_COLS(a) (((a) & 1) != 0)
+
 #if 1
 /* NOTE: interpolation is unnecessary if the data has been demodulated and not decimated */
 vec2 cubic(uint ridx, float t)
@@ -55,12 +58,14 @@ vec3 calc_image_point(vec3 voxel)
 	vec3 image_point   = output_min_coord.xyz + voxel * output_size.xyz / out_data_dim;
 
 	switch (das_shader_id) {
+	case DAS_ID_FORCES:
 	case DAS_ID_UFORCES:
 		/* TODO: fix the math so that the image plane can be aritrary */
 		image_point.y = 0;
 		break;
 	case DAS_ID_HERCULES:
-	case DAS_ID_RCA:
+	case DAS_ID_RCA_TPW:
+	case DAS_ID_RCA_VLS:
 		if (u_volume_export_pass == 0)
 			image_point.y = off_axis_pos;
 		break;
@@ -76,15 +81,15 @@ vec2 apodize(vec2 value, float apodization_arg, float distance)
 	return value * a * a;
 }
 
-vec3 orientation_projection(bool tx_rows)
+vec3 orientation_projection(bool rows)
 {
-	return vec3(float(!tx_rows), float(tx_rows), 1);
+	return vec3(float(!rows), float(rows), 1);
 }
 
-vec3 world_space_to_rca_space(vec3 image_point, int transmit_orientation)
+vec3 world_space_to_rca_space(vec3 image_point, bool rx_rows)
 {
 	vec3 result  = (xdc_transform * vec4(image_point, 1)).xyz;
-	result      *= orientation_projection(transmit_orientation != TX_ROWS);
+	result      *= orientation_projection(rx_rows);
 	return result;
 }
 
@@ -94,25 +99,29 @@ float sample_index(float distance)
 	return time * sampling_frequency;
 }
 
-float planewave_transmit_distance(vec3 point, float transmit_angle, int transmit_orientation)
+float planewave_transmit_distance(vec3 point, float transmit_angle, bool tx_rows)
 {
-	return dot(point * orientation_projection(transmit_orientation == TX_ROWS),
+	return dot(point * orientation_projection(tx_rows),
 	           vec3(sin(transmit_angle), sin(transmit_angle), cos(transmit_angle)));
 }
 
-float cylindricalwave_transmit_distance(vec3 point, float focal_depth, float transmit_angle, int transmit_orientation)
+float cylindricalwave_transmit_distance(vec3 point, float focal_depth, float transmit_angle, bool tx_rows)
 {
 	vec3 f = focal_depth * vec3(sin(transmit_angle), sin(transmit_angle), cos(transmit_angle));
-	return length((point - f) * orientation_projection(transmit_orientation == TX_ROWS));
+	return length((point - f) * orientation_projection(tx_rows));
 }
 
 vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 {
-	/* TODO: pass this in (there is a problem in that it depends on the orientation
-	 * of the array relative to the target/subject). */
 	uint ridx      = 0;
 	int  direction = beamform_plane * (u_volume_export_pass ^ 1);
-	if (direction == TX_ROWS) image_point = image_point.yxz;
+	if (direction != TX_ROWS) image_point = image_point.yxz;
+
+	bool tx_col = TX_MODE_TX_COLS(transmit_mode);
+	bool rx_col = TX_MODE_RX_COLS(transmit_mode);
+
+	vec3 recieve_point = world_space_to_rca_space(image_point, !rx_col);
+	delta *= orientation_projection(!rx_col);
 
 	vec2 sum = vec2(0);
 	/* NOTE: For Each Acquistion in Raw Data */
@@ -121,20 +130,17 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 		uint base_idx = i / 4;
 		uint sub_idx  = i % 4;
 
-		//int transmit_orientation = int(transmit_orientations[base_idx][sub_idx]);
-		int transmit_orientation = TX_ROWS;
 		float focal_depth    = focal_depths[base_idx][sub_idx];
 		float transmit_angle = transmit_angles[base_idx][sub_idx];
 
-		vec3 recieve_point  = world_space_to_rca_space(image_point, transmit_orientation);
 		float transmit_distance;
 		if (isinf(focal_depth)) {
 			transmit_distance = planewave_transmit_distance(image_point, transmit_angle,
-			                                                transmit_orientation);
+			                                                !tx_col);
 		} else {
 			transmit_distance = cylindricalwave_transmit_distance(image_point, focal_depth,
 			                                                      transmit_angle,
-			                                                      transmit_orientation);
+			                                                      !tx_col);
 		}
 
 		vec3 receive_distance = recieve_point;
@@ -143,8 +149,8 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float sidx  = sample_index(transmit_distance + length(receive_distance));
 			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
-			sum        += apodize(cubic(ridx, sidx), apodization_arg, receive_distance[0]) * valid;
-			receive_distance[transmit_orientation]   -= delta[transmit_orientation];
+			sum        += apodize(cubic(ridx, sidx), apodization_arg, length(receive_distance.xy)) * valid;
+			receive_distance   -= delta;
 			ridx       += dec_data_dim.x;
 		}
 	}
@@ -157,24 +163,21 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 	int  direction = beamform_plane * (u_volume_export_pass ^ 1);
 	if (direction != TX_ROWS) image_point = image_point.yxz;
 
-	//int transmit_orientation = int(transmit_orientations[0][0]);
-	int transmit_orientation = TX_ROWS;
-	float focal_depth        = focal_depths[0][0];
-	float transmit_angle     = transmit_angles[0][0];
+	bool tx_col = TX_MODE_TX_COLS(transmit_mode);
+	bool rx_col = TX_MODE_RX_COLS(transmit_mode);
+	float focal_depth    = focal_depths[0][0];
+	float transmit_angle = transmit_angles[0][0];
 
 	vec3 recieve_point = (xdc_transform * vec4(image_point, 1)).xyz;
-
-	if (transmit_orientation == TX_ROWS)
-		delta = delta.yxz;
 
 	float transmit_distance;
 	if (isinf(focal_depth)) {
 		transmit_distance = planewave_transmit_distance(image_point, transmit_angle,
-		                                                transmit_orientation);
+		                                                !tx_col);
 	} else {
 		transmit_distance = cylindricalwave_transmit_distance(image_point, focal_depth,
 		                                                      transmit_angle,
-		                                                      transmit_orientation);
+		                                                      !tx_col);
 	}
 
 	vec2 sum = vec2(0);
@@ -183,8 +186,8 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 		/* NOTE: For Each Virtual Source */
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			vec3 element_position;
-			if (transmit_orientation == TX_ROWS) element_position = vec3(j, i, 0) * delta;
-			else                                 element_position = vec3(i, j, 0) * delta;
+			if (rx_col) element_position = vec3(j, i, 0) * delta;
+			else        element_position = vec3(i, j, 0) * delta;
 			vec3 receive_distance = recieve_point - element_position;
 			float sidx  = sample_index(transmit_distance + length(receive_distance));
 			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
@@ -192,8 +195,9 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 			/* NOTE: tribal knowledge */
 			if (i == 0) valid *= inversesqrt(dec_data_dim.z);
 
-			sum        += apodize(cubic(ridx, sidx), apodization_arg, length(receive_distance.xy)) * valid;
-			ridx       += dec_data_dim.x;
+			sum  += apodize(cubic(ridx, sidx), apodization_arg,
+			                length(receive_distance.xy)) * valid;
+			ridx += dec_data_dim.x;
 		}
 	}
 	return sum;
@@ -202,13 +206,12 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 {
 	/* NOTE: skip first acquisition in uforces since its garbage */
-	uint uforces = uint(dec_data_dim.y != dec_data_dim.z);
+	uint uforces = uint(das_shader_id == DAS_ID_UFORCES);
 	uint ridx    = dec_data_dim.y * dec_data_dim.x * uforces;
 
 	image_point  = (xdc_transform * vec4(image_point, 1)).xyz;
 
 	int transmit_orientation = TX_ROWS;
-	//int transmit_orientation = int(transmit_orientations[0][0]);
 	if (transmit_orientation == TX_ROWS)
 		delta = delta.yxz;
 
@@ -257,13 +260,15 @@ void main()
 	/* NOTE: skip over channels corresponding to other arrays */
 	vec2 sum;
 	switch (das_shader_id) {
+	case DAS_ID_FORCES:
 	case DAS_ID_UFORCES:
 		sum = uFORCES(image_point, vec3(xdc_element_pitch, 0), apod_arg);
 		break;
 	case DAS_ID_HERCULES:
 		sum = HERCULES(image_point, vec3(xdc_element_pitch, 0), apod_arg);
 		break;
-	case DAS_ID_RCA:
+	case DAS_ID_RCA_TPW:
+	case DAS_ID_RCA_VLS:
 		sum = RCA(image_point, vec3(xdc_element_pitch, 0), apod_arg);
 		break;
 	}

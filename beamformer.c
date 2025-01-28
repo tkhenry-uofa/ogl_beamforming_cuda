@@ -396,8 +396,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, u32 raw
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_CUDA_DECODE:
-		ctx->cuda_lib.cuda_decode(raw_data_index * rf_raw_size, output_ssbo_idx,
-		                          ctx->params->raw.channel_offset);
+		ctx->cuda_lib.cuda_decode(raw_data_index * rf_raw_size, output_ssbo_idx, 0);
 		csctx->raw_data_fences[raw_data_index] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;

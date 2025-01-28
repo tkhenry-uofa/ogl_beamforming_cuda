@@ -25,7 +25,6 @@ void main()
 	/* NOTE: offsets for storing the results in the output data */
 	uint out_off = dec_data_dim.x * dec_data_dim.y * acq + dec_data_dim.x * channel + time_sample;
 
-	channel += channel_offset;
 	/* NOTE: channel mapping is stored as u16s so we must do this to extract the final value */
 	uint ch_array_idx = (channel / 8);
 	uint ch_vec_idx   = (channel % 8) / 2;
@@ -49,7 +48,12 @@ void main()
 
 	/* NOTE: Compute N-D dot product */
 	int sum = 0;
-	if (decode == 1) {
+	switch (decode) {
+	case DECODE_MODE_NONE: {
+		ridx += ridx_delta * acq;
+		sum   = (rf_data[ridx] << lfs) >> 16;
+	} break;
+	case DECODE_MODE_HADAMARD: {
 		/* NOTE: offset to get the correct column in hadamard matrix */
 		uint hoff = dec_data_dim.z * acq;
 
@@ -58,9 +62,7 @@ void main()
 			sum  += imageLoad(hadamard, ivec2(acq, i)).x * data;
 			ridx += ridx_delta;
 		}
-	} else {
-		ridx += ridx_delta * acq;
-		sum   = (rf_data[ridx] << lfs) >> 16;
+	} break;
 	}
 	out_data[out_off] = vec2(float(sum), 0);
 }
