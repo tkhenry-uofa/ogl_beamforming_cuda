@@ -38,6 +38,7 @@ MINGW64*)
 	;;
 Linux*)
 	glfw="libglfw.so.3"
+	glfw_flags="-D_GLFW_X11"
 	raylib="libraylib.so"
 	main="main_linux.c"
 	libname="beamformer.so"
@@ -55,7 +56,9 @@ mkdir -p external/lib
 
 build_raylib()
 {
+	cp external/raylib/src/raylib.h external/raylib/src/rlgl.h external/include/
 	cppflags="${2} -DPLATFORM_DESKTOP_GLFW -DGRAPHICS_API_OPENGL_43"
+	cppflags="${cppflags} -Iexternal/raylib/src -Iexternal/raylib/src/external/glfw/include"
 	[ ${1} = "shared" ] && cppflags="${cppflags} -fvisibility=hidden -DBUILD_LIBTYPE_SHARED"
 
 	if [ ${1} = "shared" ]; then
@@ -91,14 +94,15 @@ check_and_rebuild_libs()
 	case "${1}" in
 	static)
 		if [ "./build.sh" -nt "${glfw}" ] || [ ! -f ${glfw} ]; then
-			${cc} ${cflags} -static -D_GLFW_X11 \
+			${cc} ${cflags} ${glfw_flags} -static  \
 				-c external/raylib/src/rglfw.c -o external/lib/rglfw.o
 			ar rc ${glfw} external/lib/rglfw.o
 		fi
 		;;
 	shared)
 		if [ "./build.sh" -nt "${glfw}" ] || [ ! -f "${glfw}" ]; then
-			${cc} ${cflags} -fPIC -shared -D_GLFW_X11 \
+			[ "${win32}" ] && glfw_flags="-D_GLFW_BUILD_DLL"
+			${cc} ${cflags} ${glfw_flags} -fPIC -shared \
 				external/raylib/src/rglfw.c -o ${glfw}
 		fi
 		;;
