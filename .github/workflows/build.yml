@@ -4,21 +4,20 @@ on: [push, pull_request]
 
 jobs:
   linux:
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        cc:
-          - "gcc"
-          - "clang"
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+        cc: ["gcc", "clang"]
     env:
       CC: "${{ matrix.cc }}"
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install libxkbcommon-dev xorg-dev ninja-build
+          sudo apt install libxkbcommon-dev xorg-dev
       - name: Build
         run: ./build.sh
 
@@ -42,7 +41,6 @@ jobs:
           msystem: ${{matrix.sys}}
           update: true
           install: git mingw-w64-${{matrix.env}}-${{matrix.cc}}
-          pacboy: ninja:p cmake:p
 
       - name: Build
         run: NO_MATLAB=1 ./build.sh
