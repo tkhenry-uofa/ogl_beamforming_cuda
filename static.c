@@ -213,24 +213,26 @@ static FILE_WATCH_CALLBACK_FN(reload_compute_shader)
 	s8 shader_text    = os_read_file(&tmp, (c8 *)path.data, fs);
 	shader_text.data -= header_in_arena.len;
 	shader_text.len  += header_in_arena.len;
-	ASSERT(shader_text.data == header_in_arena.data);
 
-	u32 shader_id  = compile_shader(tmp, GL_COMPUTE_SHADER, shader_text);
-	if (shader_id) {
-		glDeleteProgram(cs->programs[ctx->shader]);
-		cs->programs[ctx->shader] = rlLoadComputeShaderProgram(shader_id);
-		glUseProgram(cs->programs[ctx->shader]);
-		glBindBufferBase(GL_UNIFORM_BUFFER, 0, cs->shared_ubo);
-		LABEL_GL_OBJECT(GL_PROGRAM, cs->programs[ctx->shader], ctx->label);
+	if (shader_text.data == header_in_arena.data) {
+		u32 shader_id = compile_shader(tmp, GL_COMPUTE_SHADER, shader_text);
+		if (shader_id) {
+			glDeleteProgram(cs->programs[ctx->shader]);
+			cs->programs[ctx->shader] = rlLoadComputeShaderProgram(shader_id);
+			glUseProgram(cs->programs[ctx->shader]);
+			glBindBufferBase(GL_UNIFORM_BUFFER, 0, cs->shared_ubo);
+			LABEL_GL_OBJECT(GL_PROGRAM, cs->programs[ctx->shader], ctx->label);
 
-		TraceLog(LOG_INFO, "%s loaded", path.data);
+			TraceLog(LOG_INFO, "%s loaded", path.data);
 
-		ctx->ctx->flags |= START_COMPUTE;
+			ctx->ctx->flags |= START_COMPUTE;
+		} else {
+			result = 0;
+		}
+		glDeleteShader(shader_id);
 	} else {
-		result = 0;
+		TraceLog(LOG_INFO, "shader failed to load: %s", path.data);
 	}
-
-	glDeleteShader(shader_id);
 
 	return result;
 }

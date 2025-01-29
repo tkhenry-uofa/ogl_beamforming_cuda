@@ -159,29 +159,23 @@ static PLATFORM_OPEN_FOR_WRITE_FN(os_open_for_write)
 }
 
 static s8
-os_read_file(Arena *a, char *fname, size fsize)
+os_read_file(Arena *a, char *file, size filesize)
 {
-	if (fsize < 0)
-		return (s8){.len = -1};
+	s8 result = {0};
 
-	if (fsize > (size)U32_MAX) {
-		os_write_err_msg(s8("os_read_file: files >4GB are not yet handled on win32\n"));
-		return (s8){.len = -1};
+	if (BETWEEN(filesize, 0, (size)U32_MAX)) {
+		s8 result = s8alloc(a, filesize);
+		iptr h    = CreateFileA(fname, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0);
+		if (h >= 0) {
+			i32 rlen;
+			if (!ReadFile(h, result.data, result.len, &rlen, 0) || rlen != result.len) {
+				result = (s8){0};
+			}
+			CloseHandle(h);
+		}
 	}
 
-	iptr h = CreateFileA(fname, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0);
-	if (h == INVALID_FILE)
-		return (s8){.len = -1};
-
-	s8 ret = s8alloc(a, fsize);
-
-	i32 rlen  = 0;
-	b32 error = !ReadFile(h, ret.data, ret.len, &rlen, 0) || rlen != ret.len;
-	CloseHandle(h);
-	if (error)
-		return (s8){.len = -1};
-
-	return ret;
+	return result;
 }
 
 static PLATFORM_WRITE_NEW_FILE_FN(os_write_new_file)

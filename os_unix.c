@@ -72,23 +72,21 @@ static PLATFORM_OPEN_FOR_WRITE_FN(os_open_for_write)
 }
 
 static s8
-os_read_file(Arena *a, char *fname, size fsize)
+os_read_file(Arena *a, char *file, size filesize)
 {
-	if (fsize < 0)
-		return (s8){.len = -1};
+	s8 result = {0};
 
-	i32 fd = open(fname, O_RDONLY);
-	if (fd < 0)
-		return (s8){.len = -1};
+	i32 fd = open(file, O_RDONLY);
+	if (fd >= 0) {
+		result = s8alloc(a, filesize);
+		size rlen = read(fd, result.data, result.len);
+		if (rlen != result.len) {
+			result = (s8){0};
+		}
+		close(fd);
+	}
 
-	s8 ret    = s8alloc(a, fsize);
-	size rlen = read(fd, ret.data, ret.len);
-	close(fd);
-
-	if (rlen != ret.len)
-		return (s8){.len = -1};
-
-	return ret;
+	return result;
 }
 
 static PLATFORM_WRITE_NEW_FILE_FN(os_write_new_file)
