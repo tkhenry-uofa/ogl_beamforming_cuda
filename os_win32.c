@@ -172,11 +172,18 @@ os_read_file(Arena *a, char *file, size filesize)
 	s8 result = {0};
 
 	if (filesize > 0 && filesize <= (size)U32_MAX) {
-		s8 result = s8alloc(a, filesize);
+		result = s8alloc(a, filesize);
 		iptr h    = CreateFileA(file, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0);
 		if (h >= 0) {
 			i32 rlen;
-			if (!ReadFile(h, result.data, result.len, &rlen, 0) || rlen != result.len) {
+			if (!ReadFile(h, result.data, result.len, &rlen, 0))
+			{
+				printf("ReadFile failed with error %d\n", GetLastError());
+				result = (s8){ 0 };
+			}
+			else if(rlen != result.len) 
+			{
+				printf("ReadFile read %d bytes, expected %d\n", rlen, result.len);
 				result = (s8){0};
 			}
 			CloseHandle(h);

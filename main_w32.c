@@ -140,8 +140,7 @@ main(void)
 		input.mouse.rl   = GetMousePosition();
 
 		i32 bytes_available = 0;
-		input.pipe_data_available = PeekNamedPipe(data_pipe.file, 0, 1 * MEGABYTE, 0,
-		                                          &bytes_available, 0) && bytes_available;
+		input.pipe_data_available = (PeekNamedPipe(data_pipe.file, 0, 1 * MEGABYTE, 0,&bytes_available, 0) && bytes_available);
 
 		beamformer_frame_step(&ctx, &temp_memory, &input);
 

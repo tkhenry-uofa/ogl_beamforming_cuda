@@ -376,7 +376,11 @@ send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim)
 	}
 
 	if (!check_shared_memory(shm_name))
+	{
+		os_close_pipe(&g_pipe);
 		return 0;
+	}
+		
 
 	/* TODO: this probably needs a mutex around it if we want to change it here */
 	g_bp->raw.rf_raw_dim = data_dim;
@@ -386,7 +390,7 @@ send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim)
 		warning_msg("failed to write full data to pipe: wrote: %ld", written);
 	g_bp->upload = 1;
 
-	os_close_pipe(&g_pipe);
+	//os_close_pipe(&g_pipe);
 
 	return 1;
 }
