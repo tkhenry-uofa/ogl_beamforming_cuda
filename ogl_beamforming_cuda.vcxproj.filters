@@ -966,5 +966,6 @@
     <None Include="shaders\sum.glsl" />
     <None Include="shaders\hercules.glsl" />
     <None Include="shaders\demod.glsl" />
+    <None Include="shaders\das.glsl" />
   </ItemGroup>
 </Project>

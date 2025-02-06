@@ -71,14 +71,14 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <NMakeBuildCommandLine>C:\msys64\usr\bin\bash.exe  -c "export MSYSTEM=UCRT64 &amp;&amp; source /etc/profile &amp;&amp; cd - &amp;&amp; ./build_win.sh  -d "</NMakeBuildCommandLine>
+    <NMakeBuildCommandLine>C:\msys64\usr\bin\bash.exe  -c "export MSYSTEM=CLANG64 &amp;&amp; source /etc/profile &amp;&amp; cd - &amp;&amp; ./build_win.sh  -d "</NMakeBuildCommandLine>
     <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(SolutionDir)$(Platform)\$(Configuration)\</LibraryPath>
     <IncludePath>$(ProjectDir)external\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>$(ProjectDir)external\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(SolutionDir)$(Platform)\$(Configuration)\</LibraryPath>
-    <NMakeBuildCommandLine>C:\msys64\usr\bin\bash.exe  -c "export MSYSTEM=UCRT64 &amp;&amp; source /etc/profile &amp;&amp; cd - &amp;&amp; ./build_win.sh  "</NMakeBuildCommandLine>
+    <NMakeBuildCommandLine>C:\msys64\usr\bin\bash.exe  -c "export MSYSTEM=CLANG64 &amp;&amp; source /etc/profile &amp;&amp; cd - &amp;&amp; ./build_win.sh  "</NMakeBuildCommandLine>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -460,6 +460,7 @@
     <None Include="external\raylib\src\minshell.html" />
     <None Include="external\raylib\src\shell.html" />
     <None Include="LICENSE" />
+    <None Include="shaders\das.glsl" />
     <None Include="shaders\demod.glsl" />
     <None Include="shaders\hadamard.glsl" />
     <None Include="shaders\hercules.glsl" />
