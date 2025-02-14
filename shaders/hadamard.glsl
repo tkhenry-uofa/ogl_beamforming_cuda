@@ -59,7 +59,7 @@ void main()
 
 		for (int i = 0; i < dec_data_dim.z; i++) {
 			int data = (rf_data[ridx] << lfs) >> 16;
-			sum  += imageLoad(hadamard, ivec2(acq, i)).x * data;
+			sum  += imageLoad(hadamard, ivec2(i, acq)).x * data;
 			ridx += ridx_delta;
 		}
 	} break;
