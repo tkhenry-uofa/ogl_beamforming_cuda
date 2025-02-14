@@ -332,6 +332,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	s8 render = s8(static_path_join("shaders", "render.glsl"));
 	reload_render_shader(render, (iptr)&ctx->fsctx, *memory);
 	os_add_file_watch(&ctx->platform, memory, render, reload_render_shader, (iptr)&ctx->fsctx);
+	ctx->fsctx.gen_mipmaps = 0;
 
 	/* TODO(rnp): remove this */
 	ComputeShaderCtx *csctx = &ctx->csctx;
