@@ -21,8 +21,6 @@
 #endif
 #endif
 
-#include "intrinsics.c"
-
 #ifdef _DEBUG
 	#ifdef _WIN32
 		#define DEBUG_EXPORT __declspec(dllexport)
@@ -69,6 +67,8 @@ typedef double    f64;
 typedef ptrdiff_t size;
 typedef ptrdiff_t iptr;
 typedef size_t    uptr;
+
+#include "intrinsics.c"
 
 typedef struct { u8 *beg, *end; } Arena;
 typedef struct { Arena *arena; u8 *old_beg; } TempArena;

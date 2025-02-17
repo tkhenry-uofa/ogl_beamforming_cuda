@@ -1,10 +1,24 @@
 #define FORCE_INLINE inline __attribute__((always_inline))
 
 /* TODO(rnp): msvc probably won't build this but there are other things preventing that as well */
-#define clz_u32(a)      __builtin_clz(a)
-#define ctz_u32(a)      __builtin_ctz(a)
 #define sqrt_f32(a)     __builtin_sqrtf(a)
 #define atan2_f32(y, x) __builtin_atan2f(y, x)
+
+static FORCE_INLINE u32
+clz_u32(u32 a)
+{
+	u32 result = 32;
+	if (a) result = __builtin_clz(a);
+	return result;
+}
+
+static FORCE_INLINE u32
+ctz_u32(u32 a)
+{
+	u32 result = 32;
+	if (a) result = __builtin_ctz(a);
+	return result;
+}
 
 #ifdef __ARM_ARCH_ISA_A64
 /* TODO? debuggers just loop here forever and need a manual PC increment (step over) */
