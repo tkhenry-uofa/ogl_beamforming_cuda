@@ -62,12 +62,15 @@ get_gl_params(GLParams *gl, Stream *err)
 		stream_append_s8(err, s8("Failed to determine GL Vendor\n"));
 		os_fatal(stream_to_s8(err));
 	}
+	/* TODO(rnp): str prefix of */
 	switch (vendor[0]) {
 	case 'A': gl->vendor_id = GL_VENDOR_AMD;    break;
 	case 'I': gl->vendor_id = GL_VENDOR_INTEL;  break;
 	case 'N': gl->vendor_id = GL_VENDOR_NVIDIA; break;
-	/* NOTE(rnp): freedreno - might need different handling on win32 but this is fine for now */
+	/* NOTE(rnp): freedreno */
 	case 'f': gl->vendor_id = GL_VENDOR_ARM;    break;
+	/* NOTE(rnp): Microsoft Corporation - weird win32 thing (microsoft is just using mesa for the driver) */
+	case 'M': gl->vendor_id = GL_VENDOR_ARM;    break;
 	default:
 		stream_append_s8(err, s8("Unknown GL Vendor: "));
 		stream_append_s8(err, cstr_to_s8(vendor));
