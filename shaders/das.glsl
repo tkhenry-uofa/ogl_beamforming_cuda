@@ -81,16 +81,14 @@ vec2 apodize(vec2 value, float apodization_arg, float distance)
 	return value * a * a;
 }
 
-vec3 orientation_projection(bool rows)
+vec3 orientation_projection(vec3 point, bool rows)
 {
-	return vec3(float(!rows), float(rows), 1);
+	return point * vec3(!rows, rows, 1);
 }
 
 vec3 world_space_to_rca_space(vec3 image_point, bool rx_rows)
 {
-	vec3 result  = (xdc_transform * vec4(image_point, 1)).xyz;
-	result      *= orientation_projection(rx_rows);
-	return result;
+	return orientation_projection((xdc_transform * vec4(image_point, 1)).xyz, rx_rows);
 }
 
 float sample_index(float distance)
@@ -101,14 +99,14 @@ float sample_index(float distance)
 
 float planewave_transmit_distance(vec3 point, float transmit_angle, bool tx_rows)
 {
-	return dot(point * orientation_projection(tx_rows),
+	return dot(orientation_projection(point, tx_rows),
 	           vec3(sin(transmit_angle), sin(transmit_angle), cos(transmit_angle)));
 }
 
 float cylindricalwave_transmit_distance(vec3 point, float focal_depth, float transmit_angle, bool tx_rows)
 {
 	vec3 f = focal_depth * vec3(sin(transmit_angle), sin(transmit_angle), cos(transmit_angle));
-	return length((point - f) * orientation_projection(tx_rows));
+	return length(orientation_projection(point - f, tx_rows));
 }
 
 vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
@@ -120,8 +118,8 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 	bool tx_col = TX_MODE_TX_COLS(transmit_mode);
 	bool rx_col = TX_MODE_RX_COLS(transmit_mode);
 
-	vec3 recieve_point = world_space_to_rca_space(image_point, !rx_col);
-	delta *= orientation_projection(!rx_col);
+	vec3 receive_point = world_space_to_rca_space(image_point, !rx_col);
+	delta = orientation_projection(delta, !rx_col);
 
 	vec2 sum = vec2(0);
 	/* NOTE: For Each Acquistion in Raw Data */
@@ -143,7 +141,7 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 			                                                      !tx_col);
 		}
 
-		vec3 receive_distance = recieve_point;
+		vec3 receive_distance = receive_point;
 		/* NOTE: For Each Receiver */
 		// uint j = (dec_data_dim.z - 1) * uint(clamp(u_cycle_t, 0, 1)); {
 		for (uint j = 0; j < dec_data_dim.y; j++) {
@@ -168,7 +166,7 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 	float focal_depth    = focal_depths[0][0];
 	float transmit_angle = transmit_angles[0][0];
 
-	vec3 recieve_point = (xdc_transform * vec4(image_point, 1)).xyz;
+	vec3 receive_point = (xdc_transform * vec4(image_point, 1)).xyz;
 
 	float transmit_distance;
 	if (isinf(focal_depth)) {
@@ -188,7 +186,7 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 			vec3 element_position;
 			if (rx_col) element_position = vec3(j, i, 0) * delta;
 			else        element_position = vec3(i, j, 0) * delta;
-			vec3 receive_distance = recieve_point - element_position;
+			vec3 receive_distance = receive_point - element_position;
 			float sidx  = sample_index(transmit_distance + length(receive_distance));
 			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
 
@@ -210,10 +208,6 @@ vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 	uint ridx    = dec_data_dim.y * dec_data_dim.x * uforces;
 
 	image_point  = (xdc_transform * vec4(image_point, 1)).xyz;
-
-	int transmit_orientation = TX_ROWS;
-	if (transmit_orientation == TX_ROWS)
-		delta = delta.yxz;
 
 	vec3 focal_point_offset = vec3(0, delta.y * floor(dec_data_dim.y / 2), 0);
 	delta.y = 0;
@@ -242,7 +236,6 @@ vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 
 void main()
 {
-
 	/* NOTE: Convert voxel to physical coordinates */
 	ivec3 out_coord   = ivec3(gl_GlobalInvocationID) + u_volume_export_dim_offset;
 	vec3  image_point = calc_image_point(vec3(gl_GlobalInvocationID)
