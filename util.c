@@ -319,6 +319,12 @@ round_down_power_of_2(u32 a)
 }
 
 static b32
+uv2_equal(uv2 a, uv2 b)
+{
+	return a.x == b.x && a.y == b.y;
+}
+
+static b32
 uv3_equal(uv3 a, uv3 b)
 {
 	return a.x == b.x && a.y == b.y && a.z == b.z;

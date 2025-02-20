@@ -105,12 +105,11 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 {
 	ComputeShaderCtx *cs     = &ctx->csctx;
 	BeamformerParameters *bp = &ctx->params->raw;
-	uv4 dec_data_dim         = bp->dec_data_dim;
-	uv2 rf_raw_dim           = bp->rf_raw_dim;
-	ctx->csctx.dec_data_dim  = dec_data_dim;
-	ctx->csctx.rf_raw_dim    = rf_raw_dim;
-	size rf_raw_size         = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
-	size rf_decoded_size     = decoded_data_size(cs);
+
+	uv4 dec_data_dim = bp->dec_data_dim;
+	uv2 rf_raw_dim   = bp->rf_raw_dim;
+	cs->dec_data_dim = dec_data_dim;
+	cs->rf_raw_dim   = rf_raw_dim;
 
 	glDeleteBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
 	glCreateBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
@@ -128,15 +127,18 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		break;
 	}
 
+	size rf_raw_size      = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
 	size full_rf_buf_size = ARRAY_COUNT(cs->raw_data_fences) * rf_raw_size;
+
 	glDeleteBuffers(1, &cs->raw_data_ssbo);
 	glCreateBuffers(1, &cs->raw_data_ssbo);
 	glNamedBufferStorage(cs->raw_data_ssbo, full_rf_buf_size, 0, storage_flags);
-	LABEL_GL_OBJECT(GL_BUFFER, cs->raw_data_ssbo, s8("Raw_Data_SSBO"));
+	LABEL_GL_OBJECT(GL_BUFFER, cs->raw_data_ssbo, s8("Raw_RF_SSBO"));
 
+	size rf_decoded_size = decoded_data_size(cs);
 	Stream label = stream_alloc(&a, 256);
-	stream_append_s8(&label, s8("RF_SSBO_"));
-	u32 s_widx  = label.widx;
+	stream_append_s8(&label, s8("Decoded_RF_SSBO_"));
+	u32 s_widx = label.widx;
 	for (u32 i = 0; i < ARRAY_COUNT(cs->rf_data_ssbos); i++) {
 		glNamedBufferStorage(cs->rf_data_ssbos[i], rf_decoded_size, 0, 0);
 		stream_append_u64(&label, i);
@@ -152,6 +154,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	case GL_VENDOR_INTEL:
 		cs->raw_data_arena.beg = glMapNamedBufferRange(cs->raw_data_ssbo, 0,
 		                                               full_rf_buf_size, map_flags);
+		cs->raw_data_arena.end = cs->raw_data_arena.beg + full_rf_buf_size;
 		break;
 	case GL_VENDOR_NVIDIA:
 		cs->raw_data_arena = ctx->platform.alloc_arena(cs->raw_data_arena, full_rf_buf_size);
@@ -628,10 +631,6 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		 * next frame to try again */
 		if (work) {
 			ComputeShaderCtx *cs = &ctx->csctx;
-			if (!uv4_equal(cs->dec_data_dim, bp->dec_data_dim)) {
-				alloc_shader_storage(ctx, *arena);
-				/* TODO: we may need to invalidate all queue items here */
-			}
 
 			if (ctx->params->export_next_frame) {
 				/* TODO: we don't really want the beamformer opening/closing files */
@@ -651,6 +650,12 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 				uv3 out_dim = ctx->params->raw.output_points.xyz;
 				alloc_beamform_frame(&ctx->gl, frame, out_dim, 0, s8("Beamformed_Volume"));
 				work->compute_ctx.frame = frame;
+			}
+
+			if (!uv2_equal(cs->rf_raw_dim,   bp->rf_raw_dim) ||
+			    !uv4_equal(cs->dec_data_dim, bp->dec_data_dim))
+			{
+				alloc_shader_storage(ctx, *arena);
 			}
 
 			u32  raw_index    = work->compute_ctx.raw_data_ssbo_index;
