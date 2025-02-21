@@ -51,7 +51,8 @@ typedef struct {
 	i32 beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 	f32 f_number;               /* F# (set to 0 to disable) */
 	u32 das_shader_id;
-	f32 _pad[2];
+	u32 readi_group_id;         /* Which readi group this data is from */
+	u32 readi_group_size;       /* Size of readi transmit group */
 } BeamformerParameters;
 
 /* NOTE: garbage to get the prepocessor to properly stringize the value of a macro */
@@ -83,6 +84,8 @@ layout(std140, binding = 0) uniform parameters {\n\
 	int   beamform_plane;         /* Plane to Beamform in 2D HERCULES */\n\
 	float f_number;               /* F# (set to 0 to disable) */\n\
 	uint  das_shader_id;\n\
+	uint  readi_group_id;         /* Which readi group this data is from */\n\
+	uint  readi_group_size;       /* Size of readi transmit group */\n\
 };\n\
 \n\
 #define DECODE_MODE_NONE     " str(DECODE_MODE_NONE)     "\n\
