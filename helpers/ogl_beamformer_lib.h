@@ -41,4 +41,5 @@ LIB_FN b32 send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim);
  * out_data: must be allocated by the caller as 2 f32s per output point. */
 LIB_FN void beamform_data_synchronized(char *pipe_name, char *shm_name,
                                        i16 *data, uv2 data_dim,
-                                       uv4 output_points, f32 *out_data);
+                                       uv4 output_points, f32 *out_data,
+                                       i32 timeout_ms);
