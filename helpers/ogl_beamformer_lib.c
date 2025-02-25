@@ -222,7 +222,7 @@ static size
 os_write(iptr f, void *data, size data_size)
 {
 	i32 written = 0;
-	b32 result = WriteFile(f, (u8 *)data + total_written, data_size - total_written, &written, 0);
+	b32 result = WriteFile(f, (u8 *)data, data_size, &written, 0);
 	if (!result) {
 		i32 error = GetLastError();
 		warning_msg("os_write(data_size = %td): error: %d", data_size, error);
