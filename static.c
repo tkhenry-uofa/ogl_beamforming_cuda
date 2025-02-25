@@ -102,32 +102,29 @@ get_gl_params(GLParams *gl, Stream *err)
 	glGetIntegerv(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &gl->max_ssbo_size);
 	glGetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE,        &gl->max_ubo_size);
 	glGetIntegerv(GL_MAX_SERVER_WAIT_TIMEOUT,       &gl->max_server_wait_time);
+
+	/* NOTE(rnp): sometimes GL_MINOR_VERSION doesn't actually report the drivers
+	 * supported version. Since at this point GL has been fully loaded we can
+	 * check that at least one of the GL 4.5 function pointers are available */
+	if (gl->version_minor < 5 && glCreateBuffers)
+		gl->version_minor = 5;
 }
 
 static void
-validate_gl_requirements(GLParams *gl)
+validate_gl_requirements(GLParams *gl, Arena a)
 {
-	ASSERT(gl->max_ubo_size >= sizeof(BeamformerParameters));
-	/* NOTE: nVidia's driver seems to misreport the version */
-	b32 invalid = 0;
-	if (gl->version_major < 4)
-		invalid = 1;
+	Stream s = arena_stream(&a);
 
-	switch (gl->vendor_id) {
-	case GL_VENDOR_AMD:
-	case GL_VENDOR_ARM:
-	case GL_VENDOR_INTEL:
-		if (gl->version_major == 4 && gl->version_minor < 5)
-			invalid = 1;
-		break;
-	case GL_VENDOR_NVIDIA:
-		if (gl->version_major == 4 && gl->version_minor < 3)
-			invalid = 1;
-		break;
+	if (gl->max_ubo_size < sizeof(BeamformerParameters)) {
+		stream_append_s8(&s, s8("GPU must support UBOs of at least "));
+		stream_append_i64(&s, sizeof(BeamformerParameters));
+		stream_append_s8(&s, s8(" bytes!\n"));
 	}
 
-	if (invalid)
-		os_fatal(s8("Only OpenGL Versions 4.5 or newer are supported!\n"));
+	if (gl->version_major < 4 || (gl->version_major == 4 && gl->version_minor < 5))
+		stream_append_s8(&s, s8("Only OpenGL Versions 4.5 or newer are supported!\n"));
+
+	if (s.widx) os_fatal(stream_to_s8(&s));
 }
 
 static void
@@ -269,7 +266,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	/* NOTE: Gather information about the GPU */
 	get_gl_params(&ctx->gl, &ctx->error_stream);
 	dump_gl_params(&ctx->gl, *memory);
-	validate_gl_requirements(&ctx->gl);
+	validate_gl_requirements(&ctx->gl, *memory);
 
 	glfwWindowHint(GLFW_VISIBLE, 0);
 	iptr raylib_window_handle = (iptr)GetPlatformWindowHandle();
