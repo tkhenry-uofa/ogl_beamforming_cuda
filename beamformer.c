@@ -2,7 +2,7 @@
 #include "beamformer.h"
 
 static f32 dt_for_frame;
-static f32 cycle_t;
+static u32 cycle_t;
 
 static size
 decoded_data_size(ComputeShaderCtx *cs)
@@ -551,9 +551,6 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 
 	BeamformerParameters *bp = &ctx->params->raw;
 
-	if (ctx->csctx.programs[CS_DAS])
-		glProgramUniform1f(ctx->csctx.programs[CS_DAS], ctx->csctx.cycle_t_id, cycle_t);
-
 	while (work) {
 		switch (work->type) {
 		case BW_RELOAD_SHADER: {
@@ -629,6 +626,9 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 				ctx->params->upload = 0;
 			}
 
+			if (cs->programs[CS_DAS])
+				glProgramUniform1ui(cs->programs[CS_DAS], cs->cycle_t_id, cycle_t++);
+
 			uv3 try_dim = ctx->params->raw.output_points.xyz;
 			if (!uv3_equal(try_dim, frame->dim)) {
 				size frame_index = frame - ctx->beamform_frames;
@@ -680,9 +680,6 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 {
 	dt_for_frame = GetFrameTime();
-
-	cycle_t += dt_for_frame;
-	if (cycle_t > 1) cycle_t -= 1;
 
 	if (IsWindowResized()) {
 		ctx->window_size.h = GetScreenHeight();

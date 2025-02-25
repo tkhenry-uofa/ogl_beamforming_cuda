@@ -8,7 +8,7 @@ layout(std430, binding = 1) readonly restrict buffer buffer_1 {
 layout(rg32f, binding = 0) writeonly uniform image3D u_out_data_tex;
 
 layout(location = 2) uniform ivec3 u_voxel_offset;
-layout(location = 3) uniform float u_cycle_t;
+layout(location = 3) uniform uint  u_cycle_t;
 
 #define C_SPLINE 0.5
 
