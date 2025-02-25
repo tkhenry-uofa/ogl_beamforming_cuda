@@ -37,7 +37,7 @@ dispatch_file_watch_events(Platform *platform, Arena arena)
 				if (event->wd != dir->handle)
 					continue;
 
-				s8  file = cstr_to_s8(event->name);
+				s8  file = c_str_to_s8(event->name);
 				u64 hash = s8_hash(file);
 				for (u32 i = 0; i < dir->file_watch_count; i++) {
 					FileWatch *fw = dir->file_watches + i;

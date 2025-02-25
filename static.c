@@ -89,7 +89,7 @@ get_gl_params(GLParams *gl, Stream *err)
 	case 'M': gl->vendor_id = GL_VENDOR_ARM;    break;
 	default:
 		stream_append_s8(err, s8("Unknown GL Vendor: "));
-		stream_append_s8(err, cstr_to_s8(vendor));
+		stream_append_s8(err, c_str_to_s8(vendor));
 		stream_append_byte(err, '\n');
 		os_fatal(stream_to_s8(err));
 		break;
@@ -276,7 +276,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	GLWorkerThreadContext *worker = &ctx->platform.compute_worker;
 	worker->window_handle = glfwCreateWindow(320, 240, "", 0, raylib_window_handle);
 	worker->sync_handle   = os_create_sync_object(memory);
-	worker->handle        = os_create_thread((iptr)worker, "[compute]",
+	worker->handle        = os_create_thread(*memory, (iptr)worker, s8("[compute]"),
 	                                         compute_worker_thread_entry_point);
 	/* TODO(rnp): we should lock this down after we have something working */
 	worker->user_context  = (iptr)ctx;

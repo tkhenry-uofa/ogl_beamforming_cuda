@@ -182,7 +182,7 @@ static PLATFORM_READ_WHOLE_FILE_FN(os_read_whole_file)
 	if (h >= 0 && GetFileInformationByHandle(h, &fileinfo)) {
 		size filesize = (size)fileinfo.nFileSizeHigh << 32;
 		filesize     |= (size)fileinfo.nFileSizeLow;
-		result        = s8alloc(arena, filesize);
+		result        = s8_alloc(arena, filesize);
 
 		ASSERT(filesize <= (size)U32_MAX);
 
@@ -254,7 +254,7 @@ os_load_library(char *name, char *temp_name, Stream *e)
 
 	void *res = LoadLibraryA(name);
 	if (!res && e) {
-		s8 errs[] = {s8("WARNING: os_load_library("), cstr_to_s8(name), s8("): ")};
+		s8 errs[] = {s8("WARNING: os_load_library("), c_str_to_s8(name), s8("): ")};
 		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
 		stream_append_i64(e, GetLastError());
 		stream_append_byte(e, '\n');
@@ -275,7 +275,7 @@ os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 		return 0;
 	void *res = GetProcAddress(h, name);
 	if (!res && e) {
-		s8 errs[] = {s8("WARNING: os_lookup_dynamic_symbol("), cstr_to_s8(name), s8("): ")};
+		s8 errs[] = {s8("WARNING: os_lookup_dynamic_symbol("), c_str_to_s8(name), s8("): ")};
 		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
 		stream_append_i64(e, GetLastError());
 		stream_append_byte(e, '\n');
@@ -305,11 +305,7 @@ static PLATFORM_ADD_FILE_WATCH_FN(os_add_file_watch)
 
 		dir         = fwctx->directory_watches + fwctx->directory_watch_count++;
 		dir->hash   = hash;
-
-		dir->name   = push_s8(a, directory);
-		arena_commit(a, 1);
-		dir->name.data[dir->name.len] = 0;
-
+		dir->name   = push_s8_zero(a, directory);
 		dir->handle = CreateFileA((c8 *)dir->name.data, GENERIC_READ, FILE_SHARE_READ, 0,
 		                          OPEN_EXISTING,
 		                          FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OVERLAPPED, 0);
@@ -332,11 +328,10 @@ static PLATFORM_ADD_FILE_WATCH_FN(os_add_file_watch)
 }
 
 static iptr
-os_create_thread(iptr user_context, char *name, platform_thread_entry_point_fn *fn)
+os_create_thread(Arena arena, iptr user_context, s8 name, platform_thread_entry_point_fn *fn)
 {
 	iptr result = CreateThread(0, 0, (iptr)fn, user_context, 0, 0);
-	/* TODO(rnp): name needs to be utf16 encoded */
-	//SetThreadDescription(result, s8_to_16(arena, name).data);
+	SetThreadDescription(result, s8_to_s16(&arena, name).data);
 	return result;
 }
 

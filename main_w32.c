@@ -35,23 +35,17 @@ typedef struct {
 #include "static.c"
 
 static void
-w32_wide_char_to_mb(Stream *s, u16 *wstr, u32 wide_char_length)
-{
-	/* NOTE(rnp): this assumes the wstr is strictly ASCII */
-	s->errors |= (s->cap - s->widx) < wide_char_length;
-	if (!s->errors) {
-		for (u32 i = 0; i < wide_char_length; i++)
-			s->data[s->widx++] = wstr[i] & 0xFF;
-	}
-}
-
-static void
 dispatch_file_watch(Platform *platform, FileWatchDirectory *fw_dir, u8 *buf, Arena arena)
 {
 	i64 offset = 0;
-	Stream path = stream_alloc(&arena, 256);
+	TempArena save_point = {0};
 	w32_file_notify_info *fni = (w32_file_notify_info *)buf;
 	do {
+		end_temp_arena(save_point);
+		save_point = begin_temp_arena(&arena);
+
+		Stream path = {.data = arena_commit(&arena, KB(1)), .cap = KB(1)};
+
 		if (fni->action != FILE_ACTION_MODIFIED) {
 			path.widx = 0;
 			stream_append_s8(&path, s8("unknown file watch event: "));
@@ -60,12 +54,12 @@ dispatch_file_watch(Platform *platform, FileWatchDirectory *fw_dir, u8 *buf, Are
 			os_write_err_msg(stream_to_s8(&path));
 		}
 
-		path.widx = 0;
 		stream_append_s8(&path, fw_dir->name);
 		stream_append_byte(&path, '\\');
 
-		s8 file_name = {.data = path.data + path.widx, .len = fni->filename_size / 2};
-		w32_wide_char_to_mb(&path, fni->filename, fni->filename_size / 2);
+		s8 file_name = s16_to_s8(&arena, (s16){.data = fni->filename,
+		                                       .len  = fni->filename_size / 2});
+		stream_append_s8(&path, file_name);
 		stream_append_byte(&path, 0);
 		path.widx--;
 

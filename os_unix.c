@@ -80,7 +80,7 @@ static PLATFORM_READ_WHOLE_FILE_FN(os_read_whole_file)
 	struct stat sb;
 	i32 fd = open(file, O_RDONLY);
 	if (fd >= 0 && fstat(fd, &sb) >= 0) {
-		result = s8alloc(arena, sb.st_size);
+		result = s8_alloc(arena, sb.st_size);
 		size rlen = read(fd, result.data, result.len);
 		if (rlen != result.len)
 			result = (s8){0};
@@ -186,8 +186,8 @@ os_load_library(char *name, char *temp_name, Stream *e)
 	}
 	void *res = dlopen(name, RTLD_NOW|RTLD_LOCAL);
 	if (!res && e) {
-		s8 errs[] = {s8("WARNING: os_load_library("), cstr_to_s8(name), s8("): "),
-		             cstr_to_s8(dlerror()), s8("\n")};
+		s8 errs[] = {s8("WARNING: os_load_library("), c_str_to_s8(name), s8("): "),
+		             c_str_to_s8(dlerror()), s8("\n")};
 		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
 		os_write_err_msg(stream_to_s8(e));
 		e->widx = 0;
@@ -206,8 +206,8 @@ os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 		return 0;
 	void *res = dlsym(h, name);
 	if (!res && e) {
-		s8 errs[] = {s8("WARNING: os_lookup_dynamic_symbol("), cstr_to_s8(name), s8("): "),
-		             cstr_to_s8(dlerror()), s8("\n")};
+		s8 errs[] = {s8("WARNING: os_lookup_dynamic_symbol("), c_str_to_s8(name), s8("): "),
+		             c_str_to_s8(dlerror()), s8("\n")};
 		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
 		os_write_err_msg(stream_to_s8(e));
 		e->widx = 0;
@@ -238,11 +238,7 @@ static PLATFORM_ADD_FILE_WATCH_FN(os_add_file_watch)
 
 		dir         = fwctx->directory_watches + fwctx->directory_watch_count++;
 		dir->hash   = hash;
-
-		dir->name   = push_s8(a, directory);
-		arena_commit(a, 1);
-		dir->name.data[dir->name.len] = 0;
-
+		dir->name   = push_s8_zero(a, directory);
 		i32 mask    = IN_MOVED_TO|IN_CLOSE_WRITE;
 		dir->handle = inotify_add_watch(fwctx->handle, (c8 *)dir->name.data, mask);
 	}
@@ -252,11 +248,11 @@ static PLATFORM_ADD_FILE_WATCH_FN(os_add_file_watch)
 
 i32 pthread_setname_np(pthread_t, char *);
 static iptr
-os_create_thread(iptr user_context, char *name, platform_thread_entry_point_fn *fn)
+os_create_thread(Arena arena, iptr user_context, s8 name, platform_thread_entry_point_fn *fn)
 {
 	pthread_t result;
 	pthread_create(&result, 0, (void *(*)(void *))fn, (void *)user_context);
-	pthread_setname_np(result, name);
+	pthread_setname_np(result, (char *)name.data);
 	return (iptr)result;
 }
 

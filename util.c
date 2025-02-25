@@ -39,11 +39,19 @@ mem_move(u8 *src, u8 *dest, size n)
 }
 
 
-static void
+static u8 *
 arena_commit(Arena *a, size size)
 {
 	ASSERT(a->end - a->beg >= size);
+	u8 *result = a->beg;
 	a->beg += size;
+	return result;
+}
+
+static void
+arena_pop(Arena *a, size length)
+{
+	a->beg -= length;
 }
 
 #define alloc(a, t, n)    (t *)alloc_(a, sizeof(t), _Alignof(t), n)
@@ -93,6 +101,67 @@ end_temp_arena(TempArena ta)
 		ASSERT(a->beg >= ta.old_beg)
 		a->beg = ta.old_beg;
 	}
+}
+
+static u32
+utf8_encode(u8 *out, u32 cp)
+{
+	u32 result = 1;
+	if (cp <= 0x7F) {
+		out[0] = cp & 0x7F;
+	} else if (cp <= 0x7FF) {
+		result = 2;
+		out[0] = ((cp >>  6) & 0x1F) | 0xC0;
+		out[1] = ((cp >>  0) & 0x3F) | 0x80;
+	} else if (cp <= 0xFFFF) {
+		result = 3;
+		out[0] = ((cp >> 12) & 0x0F) | 0xE0;
+		out[1] = ((cp >>  6) & 0x3F) | 0x80;
+		out[2] = ((cp >>  0) & 0x3F) | 0x80;
+	} else if (cp <= 0x10FFFF) {
+		result = 4;
+		out[0] = ((cp >> 18) & 0x07) | 0xF0;
+		out[1] = ((cp >> 12) & 0x3F) | 0x80;
+		out[2] = ((cp >>  6) & 0x3F) | 0x80;
+		out[3] = ((cp >>  0) & 0x3F) | 0x80;
+	} else {
+		out[0] = '?';
+	}
+	return result;
+}
+
+static UnicodeDecode
+utf16_decode(u16 *data, size length)
+{
+	UnicodeDecode result = {.cp = U32_MAX};
+	if (length) {
+		result.consumed = 1;
+		result.cp = data[0];
+		if (length > 1 && BETWEEN(data[0], 0xD800, 0xDBFF)
+		               && BETWEEN(data[1], 0xDC00, 0xDFFF))
+		{
+			result.consumed = 2;
+			result.cp = ((data[0] - 0xD800) << 10) | ((data[1] - 0xDC00) + 0x10000);
+		}
+	}
+	return result;
+}
+
+static u32
+utf16_encode(u16 *out, u32 cp)
+{
+	u32 result = 1;
+	if (cp == U32_MAX) {
+		out[0] = '?';
+	} else if (cp < 0x10000) {
+		out[0] = cp;
+	} else {
+		u32 value = cp - 0x10000;
+		out[0] = 0xD800 + (value >> 10u);
+		out[1] = 0xDC00 + (value & 0x3FFu);
+		result = 2;
+	}
+	return result;
 }
 
 static Stream
@@ -270,7 +339,7 @@ s8_hash(s8 v)
 }
 
 static s8
-cstr_to_s8(char *cstr)
+c_str_to_s8(char *cstr)
 {
 	s8 result = {.data = (u8 *)cstr};
 	while (*cstr) { result.len++; cstr++; }
@@ -299,15 +368,64 @@ s8_cut_head(s8 s, size cut)
 }
 
 static s8
-s8alloc(Arena *a, size len)
+s8_alloc(Arena *a, size len)
 {
 	return (s8){ .data = alloc(a, u8, len), .len = len };
 }
 
 static s8
+s16_to_s8(Arena *a, s16 in)
+{
+	s8 result = {0};
+	if (in.len) {
+		size commit = in.len * 4;
+		size length = 0;
+		u8 *data = arena_commit(a, commit + 1);
+		u16 *beg = in.data;
+		u16 *end = in.data + in.len;
+		while (beg < end) {
+			UnicodeDecode decode = utf16_decode(beg, end - beg);
+			length += utf8_encode(data + length, decode.cp);
+			beg    += decode.consumed;
+		}
+		data[length] = 0;
+		result = (s8){.len = length, .data = data};
+		arena_pop(a, commit - length);
+	}
+	return result;
+}
+
+static s16
+s8_to_s16(Arena *a, s8 in)
+{
+	s16 result = {0};
+	if (in.len) {
+		size required = 2 * in.len + 1;
+		u16 *data     = alloc(a, u16, required);
+		size length   = 0;
+		/* TODO(rnp): utf8_decode */
+		for (size i = 0; i < in.len; i++) {
+			u32 cp  = in.data[i];
+			length += utf16_encode(data + length, cp);
+		}
+		result = (s16){.len = length, .data = data};
+		arena_pop(a, required - length);
+	}
+	return result;
+}
+
+static s8
 push_s8(Arena *a, s8 str)
 {
-	s8 result = s8alloc(a, str.len);
+	s8 result = s8_alloc(a, str.len);
+	mem_copy(str.data, result.data, result.len);
+	return result;
+}
+
+static s8
+push_s8_zero(Arena *a, s8 str)
+{
+	s8 result = s8_alloc(a, str.len + 1);
 	mem_copy(str.data, result.data, result.len);
 	return result;
 }

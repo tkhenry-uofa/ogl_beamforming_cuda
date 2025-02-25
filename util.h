@@ -37,22 +37,23 @@
 
 #define static_assert _Static_assert
 
-#define ARRAY_COUNT(a) (sizeof(a) / sizeof(*a))
-#define ABS(x)         ((x) < 0 ? (-x) : (x))
-#define CLAMP(x, a, b) ((x) < (a) ? (a) : (x) > (b) ? (b) : (x))
-#define CLAMP01(x)     CLAMP(x, 0, 1)
-#define ISPOWEROF2(a)  (((a) & ((a) - 1)) == 0)
-#define MIN(a, b)      ((a) < (b) ? (a) : (b))
-#define MAX(a, b)      ((a) > (b) ? (a) : (b))
-#define ORONE(x)       ((x)? (x) : 1)
-#define SIGN(x)        ((x) < 0? -1 : 1)
+#define ARRAY_COUNT(a)   (sizeof(a) / sizeof(*a))
+#define ABS(x)           ((x) < 0 ? (-x) : (x))
+#define BETWEEN(x, a, b) ((x) >= (a) && (x) <= (b))
+#define CLAMP(x, a, b)   ((x) < (a) ? (a) : (x) > (b) ? (b) : (x))
+#define CLAMP01(x)       CLAMP(x, 0, 1)
+#define ISPOWEROF2(a)    (((a) & ((a) - 1)) == 0)
+#define MIN(a, b)        ((a) < (b) ? (a) : (b))
+#define MAX(a, b)        ((a) > (b) ? (a) : (b))
+#define ORONE(x)         ((x)? (x) : 1)
+#define SIGN(x)          ((x) < 0? -1 : 1)
 
-#define KB(a)          ((a) << 10ULL)
-#define MB(a)          ((a) << 20ULL)
-#define GB(a)          ((a) << 30ULL)
+#define KB(a)            ((a) << 10ULL)
+#define MB(a)            ((a) << 20ULL)
+#define GB(a)            ((a) << 30ULL)
 
-#define U32_MAX        (0xFFFFFFFFUL)
-#define F32_INFINITY   (__builtin_inff())
+#define U32_MAX          (0xFFFFFFFFUL)
+#define F32_INFINITY     (__builtin_inff())
 
 typedef char      c8;
 typedef uint8_t   u8;
@@ -77,6 +78,10 @@ typedef struct { Arena *arena; u8 *old_beg; } TempArena;
 
 typedef struct { size len; u8 *data; } s8;
 #define s8(s) (s8){.len = ARRAY_COUNT(s) - 1, .data = (u8 *)s}
+
+typedef struct { size len; u16 *data; } s16;
+
+typedef struct { u32 cp, consumed; } UnicodeDecode;
 
 /* NOTE: raylib stubs */
 #ifndef RAYLIB_H
