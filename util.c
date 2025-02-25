@@ -425,7 +425,8 @@ push_s8(Arena *a, s8 str)
 static s8
 push_s8_zero(Arena *a, s8 str)
 {
-	s8 result = s8_alloc(a, str.len + 1);
+	s8 result   = s8_alloc(a, str.len + 1);
+	result.len -= 1;
 	mem_copy(str.data, result.data, result.len);
 	return result;
 }
