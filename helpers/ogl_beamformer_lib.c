@@ -301,15 +301,14 @@ set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 b32
 send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim)
 {
-	b32 result = 0;
-
-	if (g_pipe.file == INVALID_FILE) {
+	b32 result = g_pipe.file != INVALID_FILE;
+	if (!result) {
 		g_pipe = os_open_named_pipe(pipe_name);
 		result = g_pipe.file != INVALID_FILE;
 		if (!result)
 			error_msg("failed to open pipe");
 	}
-	result &= !check_shared_memory(shm_name);
+	result &= check_shared_memory(shm_name);
 
 	if (result) {
 		g_bp->raw.rf_raw_dim = data_dim;
