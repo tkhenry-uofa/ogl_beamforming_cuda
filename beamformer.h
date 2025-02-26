@@ -108,8 +108,6 @@ typedef struct {
 	v2 last_mouse;
 } BeamformerInput;
 
-#define MAX_FRAMES_IN_FLIGHT 3
-
 #define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims, u16 *channel_mapping)
 typedef INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_fn);
 INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_stub) {}
@@ -196,10 +194,12 @@ typedef struct {
 	 * for Intel or AMD and mapping the buffer is preferred. In either case incoming data can
 	 * be written to the arena at the appropriate offset for the current raw_data_index. An
 	 * additional BufferSubData is needed on NVIDIA to upload the data. */
-	GLsync raw_data_fences[MAX_FRAMES_IN_FLIGHT];
-	Arena  raw_data_arena;
-	u32    raw_data_ssbo;
-	u32    raw_data_index;
+	/* NOTE: The raw data ssbo is not mapped on NVIDIA because their drivers _will_ store
+	 * the buffer in the system memory. This doesn't happen for other vendors and
+	 * mapping the buffer is preferred. In either case incoming data can be written to
+	 * the arena. An additional BufferSubData is needed on NVIDIA to upload the data. */
+	Arena raw_data_arena;
+	u32   raw_data_ssbo;
 
 	/* NOTE: Decoded data is only relevant in the context of a single frame. We use two
 	 * buffers so that they can be swapped when chaining multiple compute stages */

@@ -158,12 +158,11 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		break;
 	}
 
-	size rf_raw_size      = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
-	size full_rf_buf_size = ARRAY_COUNT(cs->raw_data_fences) * rf_raw_size;
+	size rf_raw_size = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
 
 	glDeleteBuffers(1, &cs->raw_data_ssbo);
 	glCreateBuffers(1, &cs->raw_data_ssbo);
-	glNamedBufferStorage(cs->raw_data_ssbo, full_rf_buf_size, 0, storage_flags);
+	glNamedBufferStorage(cs->raw_data_ssbo, rf_raw_size, 0, storage_flags);
 	LABEL_GL_OBJECT(GL_BUFFER, cs->raw_data_ssbo, s8("Raw_RF_SSBO"));
 
 	size rf_decoded_size = decoded_data_size(cs);
@@ -184,11 +183,11 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	case GL_VENDOR_ARM:
 	case GL_VENDOR_INTEL:
 		cs->raw_data_arena.beg = glMapNamedBufferRange(cs->raw_data_ssbo, 0,
-		                                               full_rf_buf_size, map_flags);
-		cs->raw_data_arena.end = cs->raw_data_arena.beg + full_rf_buf_size;
+		                                               rf_raw_size, map_flags);
+		cs->raw_data_arena.end = cs->raw_data_arena.beg + rf_raw_size;
 		break;
 	case GL_VENDOR_NVIDIA:
-		cs->raw_data_arena = ctx->platform.alloc_arena(cs->raw_data_arena, full_rf_buf_size);
+		cs->raw_data_arena = ctx->platform.alloc_arena(cs->raw_data_arena, rf_raw_size);
 		ctx->cuda_lib.register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
 		                                    cs->raw_data_ssbo);
 		ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E,
@@ -357,12 +356,9 @@ compute_cursor_finished(struct compute_cursor *cursor)
 }
 
 static void
-do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, u32 raw_data_index,
-                  enum compute_shaders shader)
+do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, enum compute_shaders shader)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
-	uv2  rf_raw_dim         = ctx->params->raw.rf_raw_dim;
-	size rf_raw_size        = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
 
 	glUseProgram(csctx->programs[shader]);
 
@@ -371,20 +367,16 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, u32 raw
 
 	switch (shader) {
 	case CS_HADAMARD:
-		glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo,
-		                  raw_data_index * rf_raw_size, rf_raw_size);
-
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
 		glBindImageTexture(0, csctx->hadamard_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8I);
 		glDispatchCompute(ORONE(csctx->dec_data_dim.x / 32),
 		                  ORONE(csctx->dec_data_dim.y / 32),
 		                  ORONE(csctx->dec_data_dim.z));
-		csctx->raw_data_fences[raw_data_index] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_CUDA_DECODE:
-		ctx->cuda_lib.cuda_decode(raw_data_index * rf_raw_size, output_ssbo_idx, 0);
-		csctx->raw_data_fences[raw_data_index] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+		ctx->cuda_lib.cuda_decode(0, output_ssbo_idx, 0);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_CUDA_HILBERT:
@@ -578,36 +570,14 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			#undef X
 		} break;
 		case BW_LOAD_RF_DATA: {
-			u32 raw_index = cs->raw_data_index;
-			if (cs->raw_data_fences[raw_index]) {
-				GLsync fence = cs->raw_data_fences[raw_index];
-				i32 status   = glClientWaitSync(fence, 0, 0);
-				if (status != GL_ALREADY_SIGNALED) {
-					ctx->platform.write_file(ctx->platform.error_file_handle,
-					                         s8("stall while loading RF data\n"));
-					u64 timeout = ctx->gl.max_server_wait_time;
-					for (;;) {
-						status = glClientWaitSync(fence, 0, timeout);
-						if (status == GL_CONDITION_SATISFIED ||
-						    status == GL_ALREADY_SIGNALED)
-						{
-							break;
-						}
-					}
-				}
-				glDeleteSync(cs->raw_data_fences[raw_index]);
-				cs->raw_data_fences[raw_index] = 0;
-			}
-
 			if (!uv2_equal(cs->rf_raw_dim,   bp->rf_raw_dim) ||
 			    !uv4_equal(cs->dec_data_dim, bp->dec_data_dim))
 			{
 				alloc_shader_storage(ctx, arena);
 			}
 
-			uv2  rf_raw_dim   = cs->rf_raw_dim;
-			size rf_raw_size  = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
-			void *rf_data_buf = cs->raw_data_arena.beg + raw_index * rf_raw_size;
+			size rf_raw_size  = cs->rf_raw_dim.x * cs->rf_raw_dim.y * sizeof(i16);
+			void *rf_data_buf = cs->raw_data_arena.beg;
 
 			size rlen = ctx->platform.read_file(work->file_handle, rf_data_buf, rf_raw_size);
 			if (rlen != rf_raw_size) {
@@ -626,8 +596,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 				case GL_VENDOR_INTEL:
 					break;
 				case GL_VENDOR_NVIDIA:
-					glNamedBufferSubData(cs->raw_data_ssbo, raw_index * rlen,
-					                     rlen, rf_data_buf);
+					glNamedBufferSubData(cs->raw_data_ssbo, 0, rlen, rf_data_buf);
 				}
 			}
 			ctx->ready_for_rf = 1;
@@ -660,7 +629,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			for (u32 i = 0; i < stage_count; i++) {
 				frame->timer_active[stages[i]] = 1;
 				glBeginQuery(GL_TIME_ELAPSED, frame->timer_ids[stages[i]]);
-				do_compute_shader(ctx, arena, frame, cs->raw_data_index, stages[i]);
+				do_compute_shader(ctx, arena, frame, stages[i]);
 				glEndQuery(GL_TIME_ELAPSED);
 			}
 			/* NOTE(rnp): block until work completes so that we can record timings */
