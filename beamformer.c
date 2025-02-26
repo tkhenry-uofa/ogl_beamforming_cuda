@@ -138,9 +138,9 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	BeamformerParameters *bp = &ctx->params->raw;
 
 	uv4 dec_data_dim = bp->dec_data_dim;
-	uv2 rf_raw_dim   = bp->rf_raw_dim;
+	u32 rf_raw_size  = ctx->params->raw_data_size;
 	cs->dec_data_dim = dec_data_dim;
-	cs->rf_raw_dim   = rf_raw_dim;
+	cs->rf_raw_size  = rf_raw_size;
 
 	glDeleteBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
 	glCreateBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
@@ -157,8 +157,6 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		/* NOTE: register_cuda_buffers will handle the updated ssbo */
 		break;
 	}
-
-	size rf_raw_size = rf_raw_dim.x * rf_raw_dim.y * sizeof(i16);
 
 	glDeleteBuffers(1, &cs->raw_data_ssbo);
 	glCreateBuffers(1, &cs->raw_data_ssbo);
@@ -570,21 +568,20 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			#undef X
 		} break;
 		case BW_LOAD_RF_DATA: {
-			if (!uv2_equal(cs->rf_raw_dim,   bp->rf_raw_dim) ||
+			if (cs->rf_raw_size != ctx->params->raw_data_size ||
 			    !uv4_equal(cs->dec_data_dim, bp->dec_data_dim))
 			{
 				alloc_shader_storage(ctx, arena);
 			}
 
-			size rf_raw_size  = cs->rf_raw_dim.x * cs->rf_raw_dim.y * sizeof(i16);
 			void *rf_data_buf = cs->raw_data_arena.beg;
-
-			size rlen = ctx->platform.read_file(work->file_handle, rf_data_buf, rf_raw_size);
-			if (rlen != rf_raw_size) {
+			size rlen = ctx->platform.read_file(work->file_handle, rf_data_buf,
+			                                    cs->rf_raw_size);
+			if (rlen != cs->rf_raw_size) {
 				stream_append_s8(&ctx->error_stream, s8("Partial Read Occurred: "));
 				stream_append_i64(&ctx->error_stream, rlen);
 				stream_append_byte(&ctx->error_stream, '/');
-				stream_append_i64(&ctx->error_stream, rf_raw_size);
+				stream_append_i64(&ctx->error_stream, cs->rf_raw_size);
 				stream_append_byte(&ctx->error_stream, '\n');
 				ctx->platform.write_file(ctx->platform.error_file_handle,
 				                         stream_to_s8(&ctx->error_stream));

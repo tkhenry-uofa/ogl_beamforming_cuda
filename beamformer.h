@@ -145,6 +145,7 @@ typedef struct {
 	enum compute_shaders compute_stages[16];
 	u32                  compute_stages_count;
 	b32                  upload;
+	u32                  raw_data_size;
 	b32                  export_next_frame;
 	c8                   export_pipe_name[1024];
 } BeamformerParametersFull;
@@ -213,7 +214,7 @@ typedef struct {
 	b32 processing_compute;
 
 	uv4 dec_data_dim;
-	uv2 rf_raw_dim;
+	u32 rf_raw_size;
 
 	#define X(idx, name) i32 name ## _id;
 	CS_UNIFORMS
