@@ -294,6 +294,9 @@ struct compute_cursor {
 	iv3 cursor;
 	iv3 dispatch;
 	iv3 target;
+	u32 points_per_dispatch;
+	u32 completed_points;
+	u32 total_points;
 };
 
 static struct compute_cursor
@@ -313,17 +316,19 @@ start_compute_cursor(uv3 dim, u32 max_points)
 	result.target.y = MAX(dim.y / result.dispatch.y / DAS_LOCAL_SIZE_Y, 1);
 	result.target.z = MAX(dim.z / result.dispatch.z / DAS_LOCAL_SIZE_Z, 1);
 
+	result.points_per_dispatch = 1;
+	result.points_per_dispatch *= result.dispatch.x * DAS_LOCAL_SIZE_X;
+	result.points_per_dispatch *= result.dispatch.y * DAS_LOCAL_SIZE_Y;
+	result.points_per_dispatch *= result.dispatch.z * DAS_LOCAL_SIZE_Z;
+
+	result.total_points = dim.x * dim.y * dim.z;
+
 	return result;
 }
 
 static iv3
 step_compute_cursor(struct compute_cursor *cursor)
 {
-	iv3 result = cursor->cursor;
-	result.x *= cursor->dispatch.x * DAS_LOCAL_SIZE_X;
-	result.y *= cursor->dispatch.y * DAS_LOCAL_SIZE_Y;
-	result.z *= cursor->dispatch.z * DAS_LOCAL_SIZE_Z;
-
 	cursor->cursor.x += 1;
 	if (cursor->cursor.x >= cursor->target.x) {
 		cursor->cursor.x  = 0;
@@ -334,13 +339,20 @@ step_compute_cursor(struct compute_cursor *cursor)
 		}
 	}
 
+	cursor->completed_points += cursor->points_per_dispatch;
+
+	iv3 result = cursor->cursor;
+	result.x *= cursor->dispatch.x * DAS_LOCAL_SIZE_X;
+	result.y *= cursor->dispatch.y * DAS_LOCAL_SIZE_Y;
+	result.z *= cursor->dispatch.z * DAS_LOCAL_SIZE_Z;
+
 	return result;
 }
 
 static b32
 compute_cursor_finished(struct compute_cursor *cursor)
 {
-	b32 result = cursor->cursor.z > cursor->target.z;
+	b32 result = cursor->completed_points >= cursor->total_points;
 	return result;
 }
 
@@ -410,10 +422,13 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, u32 raw
 		 * transmit_count * channel_count product */
 		u32 max_points_per_dispatch = KB(64);
 		struct compute_cursor cursor = start_compute_cursor(frame->dim, max_points_per_dispatch);
-		for (iv3 offset = step_compute_cursor(&cursor);
+		f32 percent_per_step = (f32)cursor.points_per_dispatch / (f32)cursor.total_points;
+		csctx->processing_progress = -percent_per_step;
+		for (iv3 offset = {0};
 		     !compute_cursor_finished(&cursor);
 		     offset = step_compute_cursor(&cursor))
 		{
+			csctx->processing_progress += percent_per_step;
 			/* IMPORTANT(rnp): prevents OS from coalescing and killing our shader */
 			glFinish();
 			glUniform3iv(csctx->voxel_offset_id, 1, offset.E);
@@ -650,6 +665,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			}
 			/* NOTE(rnp): block until work completes so that we can record timings */
 			glFinish();
+			cs->processing_progress = 1;
 
 			for (u32 i = 0; i < ARRAY_COUNT(frame->timer_ids); i++) {
 				u64 ns = 0;

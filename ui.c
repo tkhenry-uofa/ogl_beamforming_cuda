@@ -7,9 +7,9 @@ colour_from_normalized(v4 rgba)
 }
 
 static Color
-fade(Color a, f32 alpha)
+fade(Color a, f32 visibility)
 {
-	a.a = (u8)((f32)a.a * alpha);
+	a.a = (u8)((f32)a.a * visibility);
 	return a;
 }
 
@@ -650,35 +650,6 @@ draw_settings_ui(BeamformerCtx *ctx, Rect r, v2 mouse)
 	draw_r.pos.y  += 2 * LISTING_LINE_PAD;
 	draw_r.size.y -= 2 * LISTING_LINE_PAD;
 
-	#if 0
-	/* TODO: work this into the work queue */
-	bmv = (BPModifiableValue){&ctx->partial_compute_ctx.volume_dim.x, bmv_store_power_of_two,
-	                          .ilimits = (iv2){.x = 1, .y = ctx->gl.max_3d_texture_dim},
-	                          MV_INT, 1, 1};
-	draw_r = do_text_input_listing(s8("Export Dimension X:"), s8(""), bmv, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
-
-	bmv = (BPModifiableValue){&ctx->partial_compute_ctx.volume_dim.y, bmv_store_power_of_two,
-	                          .ilimits = (iv2){.x = 1, .y = ctx->gl.max_3d_texture_dim},
-	                          MV_INT, 1, 1};
-	draw_r = do_text_input_listing(s8("Export Dimension Y:"), s8(""), bmv, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
-
-	bmv = (BPModifiableValue){&ctx->partial_compute_ctx.volume_dim.z, bmv_store_power_of_two,
-	                          .ilimits = (iv2){.x = 1, .y = ctx->gl.max_3d_texture_dim},
-	                          MV_INT, 1, 1};
-	draw_r = do_text_input_listing(s8("Export Dimension Z:"), s8(""), bmv, ctx, arena,
-	                               draw_r, mouse, hover_t + idx++);
-
-	Rect btn_r = draw_r;
-	btn_r.size.h  = ctx->font.baseSize * 1.3;
-	btn_r.size.w *= 0.6;
-	if (do_text_button(ctx, s8("Dump Raw Volume"), btn_r, mouse, hover_t + idx++)) {
-		if (!ctx->partial_compute_ctx.state) {
-		}
-	}
-	#endif
-
 	/* NOTE: if C compilers didn't suck this would be a static assert */
 	ASSERT(idx <= ARRAY_COUNT(hover_t));
 }
@@ -724,33 +695,29 @@ draw_debug_overlay(BeamformerCtx *ctx, BeamformFrame *frame, Arena arena, Rect r
 	v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
 	draw_text(ui->font, stream_to_s8(&buf), rpos, 0, colour_from_normalized(FG_COLOUR));
 
-	{
-		static v2 pos       = {.x = 32,  .y = 128};
-		static v2 scale     = {.x = 1.0, .y = 1.0};
-		static u32 txt_idx  = 0;
-		static s8 txt[2]    = { s8("-_-"), s8("^_^") };
-		static v2 ts[2];
-		if (ts[0].x == 0) {
-			ts[0] = measure_text(ui->font, txt[0]);
-			ts[1] = measure_text(ui->font, txt[1]);
-		}
+	pos.y -= ui->font_height;
+	if (ctx->csctx.processing_compute) ui->progress_display_t_velocity += 65 * dt_for_frame;
+	else                               ui->progress_display_t_velocity -= 45 * dt_for_frame;
 
-		pos.x += 130 * dt_for_frame * scale.x;
-		pos.y += 120 * dt_for_frame * scale.y;
+	ui->progress_display_t_velocity = CLAMP(ui->progress_display_t_velocity, -10, 10);
+	ui->progress_display_t += ui->progress_display_t_velocity * dt_for_frame;
+	ui->progress_display_t  = CLAMP01(ui->progress_display_t);
 
-		if (pos.x > (ws.w - ts[txt_idx].x) || pos.x < 0) {
-			txt_idx  = !txt_idx;
-			pos.x    = CLAMP(pos.x, 0, ws.w - ts[txt_idx].x);
-			scale.x *= -1.0;
-		}
-
-		if (pos.y > (ws.h - ts[txt_idx].y) || pos.y < 0) {
-			txt_idx  = !txt_idx;
-			pos.y    = CLAMP(pos.y, 0, ws.h - ts[txt_idx].y);
-			scale.y *= -1.0;
-		}
-
-		draw_text(ui->font, txt[txt_idx], pos, 0, RED);
+	if (ui->progress_display_t > (1.0 / 255.0)) {
+		s8 progress_text = s8("Compute Progress:");
+		v2 txt_s         = measure_text(ui->font, progress_text);
+		rpos = (v2){.x = pos.x + txt_s.x + 8, .y = pos.y};
+		draw_text(ui->font, progress_text, pos, 0,
+		          fade(colour_from_normalized(FG_COLOUR), ui->progress_display_t));
+		Rect prect = {.pos = rpos, .size = {.w = r.size.w - rpos.x, .h = txt_s.h}};
+		prect = scale_rect_centered(prect, (v2){.x = 1, .y = 0.7});
+		Rect fprect = prect;
+		fprect.size.w *= ctx->csctx.processing_progress;
+		DrawRectangleRounded(fprect.rl, 2, 0, fade(colour_from_normalized(HOVERED_COLOUR),
+		                     ui->progress_display_t));
+		DrawRectangleRoundedLinesEx(prect.rl, 2, 0, 4.0, colour_from_normalized(BG_COLOUR));
+		prect = scale_rect_centered(prect, (v2){.x = 0.99, .y = 1});
+		DrawRectangleRoundedLinesEx(prect.rl, 2, 0, 2.5, fade(BLACK, ui->progress_display_t));
 	}
 }
 

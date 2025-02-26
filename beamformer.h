@@ -170,6 +170,9 @@ typedef struct {
 	v2  ruler_stop_p;
 	u32 ruler_state;
 
+	f32 progress_display_t;
+	f32 progress_display_t_velocity;
+
 	BeamformerUIParameters params;
 	b32                    flush_params;
 	/* TODO(rnp): this is nasty and should be removed */
@@ -206,6 +209,7 @@ typedef struct {
 
 	u32 shared_ubo;
 
+	f32 processing_progress;
 	b32 processing_compute;
 
 	uv4 dec_data_dim;
