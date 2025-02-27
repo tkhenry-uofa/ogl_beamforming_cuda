@@ -109,11 +109,11 @@ os_disconnect_pipe(Pipe p)
 }
 
 static void
-os_close_pipe(Pipe* p)
+os_close_pipe(iptr *file, char *name)
 {
-	close(p->file);
-	unlink(p->name);
-	p->file = INVALID_FILE;
+	if (file) close(*file);
+	if (name) unlink(name);
+	*file = INVALID_FILE;
 }
 
 static b32
@@ -189,10 +189,10 @@ os_disconnect_pipe(Pipe p)
 }
 
 static void
-os_close_pipe(Pipe *p)
+os_close_pipe(iptr *file, char *name)
 {
-	CloseHandle(p->file);
-	p->file = INVALID_FILE;
+	if (file) CloseHandle(*file);
+	*file = INVALID_FILE;
 }
 
 static b32
@@ -322,7 +322,7 @@ send_raw_data(char *pipe_name, char *shm_name, void *data, u32 data_size)
 		result = written == data_size;
 		if (!result) {
 			warning_msg("failed to write data to pipe: retrying...");
-			os_close_pipe(&g_pipe);
+			os_close_pipe(&g_pipe.file, 0);
 			os_release_shared_memory((iptr)g_bp, sizeof(*g_bp));
 			g_bp   = 0;
 			g_pipe = os_open_named_pipe(pipe_name);
@@ -409,6 +409,6 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, i16 *data, uv2 data_
 	}
 
 	os_disconnect_pipe(export_pipe);
-	os_close_pipe(&export_pipe);
-	os_close_pipe(&g_pipe);
+	os_close_pipe(&export_pipe.file, export_pipe.name);
+	os_close_pipe(&g_pipe.file, 0);
 }
