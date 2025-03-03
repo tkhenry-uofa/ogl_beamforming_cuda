@@ -65,7 +65,9 @@ vec3 calc_image_point(vec3 voxel)
 	case DAS_ID_HERCULES:
 	case DAS_ID_RCA_TPW:
 	case DAS_ID_RCA_VLS:
-		image_point.y = off_axis_pos;
+		/* TODO(rnp): this can be removed when we use an abitrary plane transform */
+		if (!all(greaterThan(out_data_dim, vec3(1, 1, 1))))
+			image_point.y = off_axis_pos;
 		break;
 	}
 
