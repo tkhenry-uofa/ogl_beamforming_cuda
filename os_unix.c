@@ -15,6 +15,20 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#ifdef _DEBUG
+static void *
+os_get_module(char *name, Stream *e)
+{
+	void *result = dlopen(name, RTLD_NOW|RTLD_LOCAL|RTLD_NOLOAD);
+	if (!result && e) {
+		s8 errs[] = {s8("os_get_module(\""), c_str_to_s8(name), s8("\"): "),
+		             c_str_to_s8(dlerror()), s8("\n")};
+		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+	}
+	return result;
+}
+#endif
+
 static PLATFORM_WRITE_FILE_FN(os_write_file)
 {
 	while (raw.len) {
@@ -184,36 +198,33 @@ os_load_library(char *name, char *temp_name, Stream *e)
 		if (os_copy_file(name, temp_name))
 			name = temp_name;
 	}
-	void *res = dlopen(name, RTLD_NOW|RTLD_LOCAL);
-	if (!res && e) {
-		s8 errs[] = {s8("WARNING: os_load_library("), c_str_to_s8(name), s8("): "),
+
+	void *result = dlopen(name, RTLD_NOW|RTLD_LOCAL);
+	if (!result && e) {
+		s8 errs[] = {s8("os_load_library(\""), c_str_to_s8(name), s8("\"): "),
 		             c_str_to_s8(dlerror()), s8("\n")};
 		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
-		os_write_err_msg(stream_to_s8(e));
-		e->widx = 0;
 	}
 
 	if (temp_name)
 		unlink(temp_name);
 
-	return res;
+	return result;
 }
 
 static void *
 os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 {
-	if (!h)
-		return 0;
-	void *res = dlsym(h, name);
-	if (!res && e) {
-		s8 errs[] = {s8("WARNING: os_lookup_dynamic_symbol("), c_str_to_s8(name), s8("): "),
-		             c_str_to_s8(dlerror()), s8("\n")};
-		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
-		os_write_err_msg(stream_to_s8(e));
-		e->widx = 0;
+	void *result = 0;
+	if (h) {
+		result = dlsym(h, name);
+		if (!result && e) {
+			s8 errs[] = {s8("os_lookup_dynamic_symbol(\""), c_str_to_s8(name),
+			             s8("\"): "), c_str_to_s8(dlerror()), s8("\n")};
+			stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+		}
 	}
-
-	return res;
+	return result;
 }
 
 static void
@@ -273,4 +284,13 @@ os_sleep_thread(iptr sync_handle)
 static PLATFORM_WAKE_THREAD_FN(os_wake_thread)
 {
 	sem_post((sem_t *)sync_handle);
+}
+
+/* TODO(rnp): what do if not X11? */
+iptr glfwGetGLXContext(iptr);
+
+static iptr
+os_get_native_gl_context(iptr window)
+{
+	return glfwGetGLXContext(window);
 }

@@ -99,6 +99,7 @@ W32(b32)    FreeLibrary(void *);
 W32(i32)    GetFileAttributesA(c8 *);
 W32(b32)    GetFileInformationByHandle(iptr, w32_file_info *);
 W32(i32)    GetLastError(void);
+W32(void *) GetModuleHandleA(c8 *);
 W32(void *) GetProcAddress(void *, c8 *);
 W32(b32)    GetQueuedCompletionStatus(iptr, u32 *, uptr *, w32_overlapped **, u32);
 W32(iptr)   GetStdHandle(i32);
@@ -113,6 +114,21 @@ W32(u32)    WaitForSingleObjectEx(iptr, u32, b32);
 W32(b32)    WriteFile(iptr, u8 *, i32, i32 *, void *);
 W32(void *) VirtualAlloc(u8 *, size, u32, u32);
 W32(b32)    VirtualFree(u8 *, size, u32);
+
+#ifdef _DEBUG
+static void *
+os_get_module(char *name, Stream *e)
+{
+	void *result = GetModuleHandleA(name);
+	if (!result && e) {
+		s8 errs[] = {s8("os_get_module(\""), c_str_to_s8(name), s8("\"): ")};
+		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+		stream_append_i64(e, GetLastError());
+		stream_append_byte(e, '\n');
+	}
+	return result;
+}
+#endif
 
 static PLATFORM_WRITE_FILE_FN(os_write_file)
 {
@@ -252,37 +268,34 @@ os_load_library(char *name, char *temp_name, Stream *e)
 			name = temp_name;
 	}
 
-	void *res = LoadLibraryA(name);
-	if (!res && e) {
-		s8 errs[] = {s8("WARNING: os_load_library("), c_str_to_s8(name), s8("): ")};
+	void *result = LoadLibraryA(name);
+	if (!result && e) {
+		s8 errs[] = {s8("os_load_library(\""), c_str_to_s8(name), s8("\"): ")};
 		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
 		stream_append_i64(e, GetLastError());
 		stream_append_byte(e, '\n');
-		os_write_err_msg(stream_to_s8(e));
-		e->widx = 0;
 	}
 
 	if (temp_name)
 		DeleteFileA(temp_name);
 
-	return res;
+	return result;
 }
 
 static void *
 os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 {
-	if (!h)
-		return 0;
-	void *res = GetProcAddress(h, name);
-	if (!res && e) {
-		s8 errs[] = {s8("WARNING: os_lookup_dynamic_symbol("), c_str_to_s8(name), s8("): ")};
-		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
-		stream_append_i64(e, GetLastError());
-		stream_append_byte(e, '\n');
-		os_write_err_msg(stream_to_s8(e));
-		e->widx = 0;
+	void *result = 0;
+	if (h) {
+		result = GetProcAddress(h, name);
+		if (!result && e) {
+			s8 errs[] = {s8("os_lookup_dynamic_symbol(\""), c_str_to_s8(name), s8("\"): ")};
+			stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+			stream_append_i64(e, GetLastError());
+			stream_append_byte(e, '\n');
+		}
 	}
-	return res;
+	return result;
 }
 
 static void
@@ -351,4 +364,12 @@ os_sleep_thread(iptr sync_handle)
 static PLATFORM_WAKE_THREAD_FN(os_wake_thread)
 {
 	ReleaseSemaphore(sync_handle, 1, 0);
+}
+
+iptr glfwGetWGLContext(iptr);
+
+static iptr
+os_get_native_gl_context(iptr window)
+{
+	return glfwGetWGLContext(window);
 }

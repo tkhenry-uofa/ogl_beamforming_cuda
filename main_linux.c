@@ -10,13 +10,15 @@
 #define OS_DEBUG_LIB_NAME      "./beamformer.so"
 #define OS_DEBUG_LIB_TEMP_NAME "./beamformer_temp.so"
 
-#define OS_CUDA_LIB_NAME      "./external/cuda_toolkit.so"
-#define OS_CUDA_LIB_TEMP_NAME "./external/cuda_toolkit_temp.so"
+#define OS_CUDA_LIB_NAME       "./external/cuda_toolkit.so"
+#define OS_CUDA_LIB_TEMP_NAME  "./external/cuda_toolkit_temp.so"
 
-#define OS_PIPE_NAME "/tmp/beamformer_data_fifo"
-#define OS_SMEM_NAME "/ogl_beamformer_parameters"
+#define OS_RENDERDOC_SONAME    "librenderdoc.so"
 
-#define OS_PATH_SEPERATOR "/"
+#define OS_PIPE_NAME           "/tmp/beamformer_data_fifo"
+#define OS_SMEM_NAME           "/ogl_beamformer_parameters"
+
+#define OS_PATH_SEPERATOR      "/"
 
 #include "static.c"
 

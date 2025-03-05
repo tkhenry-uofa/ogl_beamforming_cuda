@@ -4,6 +4,14 @@
 static f32 dt_for_frame;
 static u32 cycle_t;
 
+#ifndef _DEBUG
+#define start_renderdoc_capture(...)
+#define end_renderdoc_capture(...)
+#else
+#define start_renderdoc_capture(p, gl) if ((p)->start_frame_capture) (p)->start_frame_capture(gl, 0)
+#define end_renderdoc_capture(p, gl)   if ((p)->end_frame_capture)   (p)->end_frame_capture(gl, 0)
+#endif
+
 static size
 decoded_data_size(ComputeShaderCtx *cs)
 {
@@ -612,6 +620,8 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 		} break;
 		case BW_COMPUTE: {
 			atomic_store(&cs->processing_compute, 1);
+			start_renderdoc_capture(&ctx->platform, gl_context);
+
 			BeamformFrame *frame = work->frame;
 			if (ctx->params->upload) {
 				glNamedBufferSubData(cs->shared_ubo, 0, sizeof(ctx->params->raw),
@@ -656,6 +666,8 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 
 			frame->ready_to_present = 1;
 			cs->processing_compute  = 0;
+
+			end_renderdoc_capture(&ctx->platform, gl_context);
 		} break;
 		case BW_SAVE_FRAME: {
 			BeamformFrame *frame = work->output_frame_ctx.frame;

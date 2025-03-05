@@ -27,9 +27,11 @@
 	#else
 		#define DEBUG_EXPORT
 	#endif
+	#define DEBUG_DECL(a) a
 	#define ASSERT(c) do { if (!(c)) debugbreak(); } while (0);
 #else
 	#define DEBUG_EXPORT static
+	#define DEBUG_DECL(a)
 	#define ASSERT(c)
 #endif
 
@@ -210,6 +212,7 @@ typedef struct {
 	Arena arena;
 	iptr  handle;
 	iptr  window_handle;
+	iptr  gl_context;
 	iptr  sync_handle;
 	iptr  user_context;
 	b32   asleep;
@@ -285,6 +288,20 @@ typedef PLATFORM_THREAD_ENTRY_POINT_FN(platform_thread_entry_point_fn);
 	X(write_new_file)  \
 	X(write_file)
 
+#define RENDERDOC_GET_API_FN(name) b32 name(u32 version, void **out_api)
+typedef RENDERDOC_GET_API_FN(renderdoc_get_api_fn);
+
+#define RENDERDOC_START_FRAME_CAPTURE_FN(name) void name(iptr gl_context, iptr window_handle)
+typedef RENDERDOC_START_FRAME_CAPTURE_FN(renderdoc_start_frame_capture_fn);
+
+#define RENDERDOC_END_FRAME_CAPTURE_FN(name) b32 name(iptr gl_context, iptr window_handle)
+typedef RENDERDOC_END_FRAME_CAPTURE_FN(renderdoc_end_frame_capture_fn);
+
+typedef __attribute__((aligned(16))) u8 RenderDocAPI[216];
+#define RENDERDOC_API_FN_ADDR(a, offset) (*(iptr *)((*a) + offset))
+#define RENDERDOC_START_FRAME_CAPTURE(a) (renderdoc_start_frame_capture_fn *)RENDERDOC_API_FN_ADDR(a, 152)
+#define RENDERDOC_END_FRAME_CAPTURE(a)   (renderdoc_end_frame_capture_fn *)  RENDERDOC_API_FN_ADDR(a, 168)
+
 #define X(name) platform_ ## name ## _fn *name;
 struct Platform {
 	PLATFORM_FNS
@@ -292,6 +309,9 @@ struct Platform {
 	iptr             os_context;
 	iptr             error_file_handle;
 	GLWorkerThreadContext compute_worker;
+
+	DEBUG_DECL(renderdoc_start_frame_capture_fn *start_frame_capture);
+	DEBUG_DECL(renderdoc_end_frame_capture_fn   *end_frame_capture);
 };
 #undef X
 

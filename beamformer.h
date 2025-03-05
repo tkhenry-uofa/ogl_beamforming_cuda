@@ -342,7 +342,7 @@ typedef struct BeamformerCtx {
                                                  BeamformerInput *input)
 typedef BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step_fn);
 
-#define BEAMFORMER_COMPLETE_COMPUTE_FN(name) void name(iptr user_context, Arena arena)
+#define BEAMFORMER_COMPLETE_COMPUTE_FN(name) void name(iptr user_context, Arena arena, iptr gl_context)
 typedef BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute_fn);
 
 #define BEAMFORM_WORK_QUEUE_PUSH_FN(name) BeamformWork *name(BeamformWorkQueue *q)

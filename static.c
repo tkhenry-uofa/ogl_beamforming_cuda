@@ -33,6 +33,9 @@ static FILE_WATCH_CALLBACK_FN(debug_reload)
 	DEBUG_ENTRY_POINTS
 	#undef X
 
+	if (err.widx)
+		os_write_err_msg(stream_to_s8(&err));
+
 	os_write_err_msg(s8("Reloaded Main Executable\n"));
 	input->executable_reloaded = 1;
 
@@ -44,6 +47,24 @@ debug_init(Platform *p, iptr input, Arena *arena)
 {
 	p->add_file_watch(p, arena, s8(OS_DEBUG_LIB_NAME), debug_reload, input);
 	debug_reload(p, (s8){0}, input, *arena);
+
+	Arena  tmp = *arena;
+	Stream err = arena_stream(&tmp);
+	void *rdoc = os_get_module(OS_RENDERDOC_SONAME, 0);
+	if (rdoc) {
+		renderdoc_get_api_fn *get_api = os_lookup_dynamic_symbol(rdoc, "RENDERDOC_GetAPI", &err);
+		if (get_api) {
+			RenderDocAPI *api = 0;
+			if (get_api(10600, (void **)&api)) {
+				p->start_frame_capture = RENDERDOC_START_FRAME_CAPTURE(api);
+				p->end_frame_capture   = RENDERDOC_END_FRAME_CAPTURE(api);
+				stream_append_s8(&err, s8("loaded: " OS_RENDERDOC_SONAME "\n"));
+			}
+		}
+	}
+
+	if (err.widx)
+		os_write_err_msg(stream_to_s8(&err));
 }
 
 #endif /* _DEBUG */
@@ -218,6 +239,9 @@ static FILE_WATCH_CALLBACK_FN(load_cuda_lib)
 		#define X(name) cl->name = os_lookup_dynamic_symbol(cl->lib, #name, &err);
 		CUDA_LIB_FNS
 		#undef X
+
+		if (err.widx)
+			os_write_err_msg(stream_to_s8(&err));
 	}
 
 	#define X(name) if (!cl->name) cl->name = name ## _stub;
@@ -233,18 +257,18 @@ void glfwWindowHint(i32, i32);
 iptr glfwCreateWindow(i32, i32, char *, iptr, iptr);
 void glfwMakeContextCurrent(iptr);
 
-#include <stdio.h>
 static PLATFORM_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
 {
 	GLWorkerThreadContext *ctx = (GLWorkerThreadContext *)_ctx;
 
 	glfwMakeContextCurrent(ctx->window_handle);
+	ctx->gl_context = os_get_native_gl_context(ctx->window_handle);
 
 	for (;;) {
 		ctx->asleep = 1;
 		os_sleep_thread(ctx->sync_handle);
 		ctx->asleep = 0;
-		beamformer_complete_compute(ctx->user_context, ctx->arena);
+		beamformer_complete_compute(ctx->user_context, ctx->arena, ctx->gl_context);
 	}
 
 	unreachable();
