@@ -31,16 +31,21 @@ lerp_v4(v4 a, v4 b, f32 t)
 }
 
 static s8
-das_shader_id_to_s8(DASShaderID shader)
+push_das_shader_id(Stream *s, DASShaderID shader, u32 transmit_count)
 {
-	s8 result = {0};
 	switch (shader) {
-	#define X(type, id, pretty) case id: result = s8(pretty); break;
+	#define X(type, id, pretty) case id: stream_append_s8(s, s8(pretty)); break;
 	DAS_TYPES
 	#undef X
 	default: break;
 	}
-	return result;
+
+	if (shader == DAS_UFORCES) {
+		stream_append_byte(s, '-');
+		stream_append_u64(s, transmit_count);
+	}
+
+	return stream_to_s8(s);
 }
 
 static v2
@@ -331,7 +336,8 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect, B
 	}
 
 	{
-		s8 shader = das_shader_id_to_s8(frame->das_shader_id);
+		buf.widx  = 0;
+		s8 shader = push_das_shader_id(&buf, frame->das_shader_id, frame->compound_count);
 		v2 txt_s  = measure_text(ui->font, shader);
 		v2 txt_p  = {
 			.x = vr.pos.x + vr.size.w - txt_s.w - 16,

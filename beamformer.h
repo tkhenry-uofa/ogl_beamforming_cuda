@@ -243,7 +243,9 @@ typedef struct {
 	b32 in_flight;
 	b32 ready_to_present;
 	DASShaderID das_shader_id;
+	u32 compound_count;
 
+	/* TODO(rnp): move this out so that saved frame copies can save some space */
 	u32 timer_ids[CS_LAST];
 	f32 compute_times[CS_LAST];
 	b32 timer_active[CS_LAST];
