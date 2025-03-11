@@ -1,6 +1,4 @@
 /* See LICENSE for license details. */
-layout(local_size_x = 32, local_size_y = 1, local_size_z = 32) in;
-
 layout(std430, binding = 1) readonly restrict buffer buffer_1 {
 	vec2 rf_data[];
 };

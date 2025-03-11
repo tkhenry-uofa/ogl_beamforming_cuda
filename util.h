@@ -39,6 +39,10 @@
 
 #define static_assert _Static_assert
 
+/* NOTE: garbage to get the prepocessor to properly stringize the value of a macro */
+#define str_(x) #x
+#define str(x) str_(x)
+
 #define ARRAY_COUNT(a)   (sizeof(a) / sizeof(*a))
 #define ABS(x)           ((x) < 0 ? (-x) : (x))
 #define BETWEEN(x, a, b) ((x) >= (a) && (x) <= (b))

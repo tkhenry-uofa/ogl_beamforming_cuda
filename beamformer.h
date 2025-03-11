@@ -142,12 +142,12 @@ typedef struct {
 
 typedef struct {
 	BeamformerParameters raw;
-	enum compute_shaders compute_stages[16];
-	u32                  compute_stages_count;
-	b32                  upload;
-	u32                  raw_data_size;
-	b32                  export_next_frame;
-	c8                   export_pipe_name[1024];
+	ComputeShaderID compute_stages[16];
+	u32             compute_stages_count;
+	b32             upload;
+	u32             raw_data_size;
+	b32             export_next_frame;
+	c8              export_pipe_name[1024];
 } BeamformerParametersFull;
 
 typedef struct {
@@ -267,7 +267,7 @@ typedef struct {
 	void *beamformer_ctx;
 	s8    label;
 	s8    path;
-	u32   shader;
+	ComputeShaderID shader;
 	b32   needs_header;
 } ComputeShaderReloadContext;
 

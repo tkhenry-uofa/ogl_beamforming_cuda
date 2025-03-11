@@ -362,7 +362,7 @@ compute_cursor_finished(struct compute_cursor *cursor)
 }
 
 static void
-do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, enum compute_shaders shader)
+do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, ComputeShaderID shader)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
 
@@ -511,6 +511,37 @@ link_program(Platform *platform, Arena a, u32 shader_id)
 	return result;
 }
 
+static s8
+push_compute_shader_header(Arena *a, ComputeShaderID shader)
+{
+	s8 result = {.data = a->beg};
+	push_s8(a, s8(COMPUTE_SHADER_HEADER));
+	switch (shader) {
+	case CS_DAS: {
+		push_s8(a, s8("layout("
+		              "local_size_x = " str(DAS_LOCAL_SIZE_X) ", "
+		              "local_size_y = " str(DAS_LOCAL_SIZE_Y) ", "
+		              "local_size_z = " str(DAS_LOCAL_SIZE_Z) ") "
+		              "in;\n\n"));
+		#define X(type, id, pretty) push_s8(a, s8("#define DAS_ID_" #type " " #id "\n"));
+		DAS_TYPES
+		#undef X
+	} break;
+	case CS_DECODE_FLOAT: {
+		push_s8(a, s8("#define INPUT_DATA_TYPE_FLOAT\n\n"));
+	} /* FALLTHROUGH */
+	case CS_DECODE: {
+		#define X(type, id, pretty) push_s8(a, s8("#define DECODE_MODE_" #type " " #id "\n"));
+		DECODE_TYPES
+		#undef X
+	} break;
+	default: break;
+	}
+	s8 end = push_s8(a, s8("\n#line 1\n"));
+	result.len = end.data + end.len - result.data;
+	return result;
+}
+
 static void
 reload_compute_shader(BeamformerCtx *ctx, s8 path, ComputeShaderReloadContext *csr, Arena tmp)
 {
@@ -518,14 +549,8 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, ComputeShaderReloadContext *c
 
 	/* NOTE: arena works as stack (since everything here is 1 byte aligned) */
 	s8 header = {.data = tmp.beg};
-	if (csr->needs_header) {
-		header = push_s8(&tmp, s8(COMPUTE_SHADER_HEADER));
-		if (csr->shader == CS_DECODE_FLOAT) {
-			s8 extra = push_s8(&tmp, s8(COMPUTE_FLOAT_DECODE_HEADER));
-			ASSERT(extra.data == header.data + header.len);
-			header.len += extra.len;
-		}
-	}
+	if (csr->needs_header)
+		header = push_compute_shader_header(&tmp, csr->shader);
 
 	s8 shader_text = ctx->platform.read_whole_file(&tmp, (c8 *)path.data);
 	shader_text.data -= header.len;
@@ -644,7 +669,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			frame->max_coordinate = ctx->params->raw.output_max_coordinate;
 
 			u32 stage_count = ctx->params->compute_stages_count;
-			enum compute_shaders *stages = ctx->params->compute_stages;
+			ComputeShaderID *stages = ctx->params->compute_stages;
 			for (u32 i = 0; i < stage_count; i++) {
 				frame->timer_active[stages[i]] = 1;
 				glBeginQuery(GL_TIME_ELAPSED, frame->timer_ids[stages[i]]);

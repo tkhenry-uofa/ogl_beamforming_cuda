@@ -11,21 +11,27 @@
 	X(MIN_MAX,      6, "min_max",  0, "Min/Max")        \
 	X(SUM,          7, "sum",      0, "Sum")
 
-enum compute_shaders {
+typedef enum {
 	#define X(e, n, s, h, pn) CS_ ##e = n,
 	COMPUTE_SHADERS
 	#undef X
 	CS_LAST
-};
+} ComputeShaderID;
 
-#define DECODE_MODE_NONE      0
-#define DECODE_MODE_HADAMARD  1
+#define DECODE_TYPES \
+	X(NONE,     0, "None")     \
+	X(HADAMARD, 1, "Hadamard")
 
-#define DAS_ID_FORCES         0
-#define DAS_ID_UFORCES        1
-#define DAS_ID_HERCULES       2
-#define DAS_ID_RCA_VLS        3
-#define DAS_ID_RCA_TPW        4
+#define DAS_TYPES \
+	X(FORCES,   0, "FORCES")   \
+	X(UFORCES,  1, "UFORCES")  \
+	X(HERCULES, 2, "HERCULES") \
+	X(RCA_VLS,  3, "VLS")      \
+	X(RCA_TPW,  4, "TPW")
+
+#define DAS_LOCAL_SIZE_X 32
+#define DAS_LOCAL_SIZE_Y  1
+#define DAS_LOCAL_SIZE_Z 32
 
 #define MAX_BEAMFORMED_SAVED_FRAMES 16
 /* NOTE: This struct follows the OpenGL std140 layout. DO NOT modify unless you have
@@ -77,10 +83,6 @@ _Static_assert((offsetof(BeamformerParameters, output_min_coordinate) & 15) == 0
 _Static_assert((sizeof(BeamformerParameters) & 15) == 0,
                "sizeof(BeamformerParameters) must be a multiple of 16");
 
-/* NOTE: garbage to get the prepocessor to properly stringize the value of a macro */
-#define str_(x) #x
-#define str(x) str_(x)
-
 #define COMPUTE_SHADER_HEADER "\
 #version 460 core\n\
 \n\
@@ -108,24 +110,4 @@ layout(std140, binding = 0) uniform parameters {\n\
 	float f_number;               /* F# (set to 0 to disable) */\n\
 	uint  readi_group_id;         /* Which readi group this data is from */\n\
 	uint  readi_group_size;       /* Size of readi transmit group */\n\
-};\n\
-\n\
-#define DECODE_MODE_NONE     " str(DECODE_MODE_NONE)     "\n\
-#define DECODE_MODE_HADAMARD " str(DECODE_MODE_HADAMARD) "\n\
-\n\
-#define DAS_ID_FORCES        " str(DAS_ID_FORCES)   "\n\
-#define DAS_ID_UFORCES       " str(DAS_ID_UFORCES)  "\n\
-#define DAS_ID_HERCULES      " str(DAS_ID_HERCULES) "\n\
-#define DAS_ID_RCA_VLS       " str(DAS_ID_RCA_VLS)  "\n\
-#define DAS_ID_RCA_TPW       " str(DAS_ID_RCA_TPW)  "\n\
-\n\
-#line 1\n"
-
-#define COMPUTE_FLOAT_DECODE_HEADER "\
-#define INPUT_DATA_TYPE_FLOAT\n\
-#line 1\n"
-
-/* TODO(rnp): bake this into the das shader header */
-#define DAS_LOCAL_SIZE_X 32
-#define DAS_LOCAL_SIZE_Y  1
-#define DAS_LOCAL_SIZE_Z 32
+};\n\n"
