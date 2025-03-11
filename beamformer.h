@@ -224,6 +224,12 @@ typedef struct {
 	b32             gen_mipmaps;
 } FragmentShaderCtx;
 
+typedef enum {
+#define X(type, id, pretty) DAS_ ##type = id,
+DAS_TYPES
+#undef X
+} DASShaderID;
+
 typedef struct {
 	uv3 dim;
 	u32 texture;
@@ -236,7 +242,7 @@ typedef struct {
 	u32 mips;
 	b32 in_flight;
 	b32 ready_to_present;
-	u32 das_shader_id;
+	DASShaderID das_shader_id;
 
 	u32 timer_ids[CS_LAST];
 	f32 compute_times[CS_LAST];

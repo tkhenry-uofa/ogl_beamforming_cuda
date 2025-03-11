@@ -31,7 +31,7 @@ lerp_v4(v4 a, v4 b, f32 t)
 }
 
 static s8
-das_shader_text(u32 shader)
+das_shader_id_to_s8(DASShaderID shader)
 {
 	s8 result = {0};
 	switch (shader) {
@@ -331,7 +331,7 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect, B
 	}
 
 	{
-		s8 shader = das_shader_text(frame->das_shader_id);
+		s8 shader = das_shader_id_to_s8(frame->das_shader_id);
 		v2 txt_s  = measure_text(ui->font, shader);
 		v2 txt_p  = {
 			.x = vr.pos.x + vr.size.w - txt_s.w - 16,

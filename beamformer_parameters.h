@@ -18,10 +18,12 @@ typedef enum {
 	CS_LAST
 } ComputeShaderID;
 
+/* X(type, id, pretty name) */
 #define DECODE_TYPES \
 	X(NONE,     0, "None")     \
 	X(HADAMARD, 1, "Hadamard")
 
+/* X(type, id, pretty name) */
 #define DAS_TYPES \
 	X(FORCES,   0, "FORCES")   \
 	X(UFORCES,  1, "UFORCES")  \
