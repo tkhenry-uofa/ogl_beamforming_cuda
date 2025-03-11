@@ -30,6 +30,19 @@ lerp_v4(v4 a, v4 b, f32 t)
 	};
 }
 
+static s8
+das_shader_text(u32 shader)
+{
+	s8 result = {0};
+	switch (shader) {
+	#define X(type, id, pretty) case id: result = s8(pretty); break;
+	DAS_TYPES
+	#undef X
+	default: break;
+	}
+	return result;
+}
+
 static v2
 measure_text(Font font, s8 text)
 {
@@ -132,7 +145,7 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 	f32 value     = start_value;
 
 	v2 sp = {0}, ep = {.y = RULER_TICK_LENGTH};
-	v2 tp = {.x = ui->small_font_height / 2, .y = ep.y + RULER_TEXT_PAD};
+	v2 tp = {.x = ui->small_font.baseSize / 2, .y = ep.y + RULER_TEXT_PAD};
 	for (u32 j = 0; j <= segments; j++) {
 		DrawLineEx(sp.rl, ep.rl, 3, ruler_colour);
 
@@ -180,7 +193,7 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, Variable var, v2 mouse, i32 directio
 	u32  tick_count;
 	if (direction == SB_AXIAL) {
 		tick_rect.size.x  = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
-		tick_count        = tick_rect.size.y / (1.5 * ui->small_font_height);
+		tick_count        = tick_rect.size.y / (1.5 * ui->small_font.baseSize);
 		start_pos.y      += tick_rect.size.y;
 		markers[0]        = tick_rect.size.y - sb->zoom_starting_point.y;
 		markers[1]        = tick_rect.size.y - relative_mouse.y;
@@ -188,7 +201,7 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, Variable var, v2 mouse, i32 directio
 		sb->screen_space_to_value = (v2){.y = (*sb->max_value - *sb->min_value) / tick_rect.size.y};
 	} else {
 		tick_rect.size.y  = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
-		tick_count        = tick_rect.size.x / (1.5 * ui->small_font_height);
+		tick_count        = tick_rect.size.x / (1.5 * ui->small_font.baseSize);
 		end_pos.x        += tick_rect.size.x;
 		markers[0]        = sb->zoom_starting_point.x;
 		markers[1]        = relative_mouse.x;
@@ -227,8 +240,8 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect, B
 
 	f32 pad    = 1.2 * txt_s.x + RULER_TICK_LENGTH;
 	Rect vr    = display_rect;
-	vr.pos.x  += 0.5 * ui->small_font_height;
-	vr.pos.y  += 0.5 * ui->small_font_height;
+	vr.pos.x  += 0.5 * ui->small_font.baseSize;
+	vr.pos.y  += 0.5 * ui->small_font.baseSize;
 	vr.size.h  = display_rect.size.h - pad;
 	vr.size.w  = display_rect.size.w - pad;
 
@@ -315,6 +328,18 @@ draw_display_overlay(BeamformerCtx *ctx, Arena a, v2 mouse, Rect display_rect, B
 		};
 		draw_text(ui->small_font, stream_to_s8(&buf), txt_p, 0,
 		          colour_from_normalized(RULER_COLOUR));
+	}
+
+	{
+		s8 shader = das_shader_text(frame->das_shader_id);
+		v2 txt_s  = measure_text(ui->font, shader);
+		v2 txt_p  = {
+			.x = vr.pos.x + vr.size.w - txt_s.w - 16,
+			.y = vr.pos.y + 4,
+		};
+		draw_text(ui->font, shader, txt_p, 0, BLACK);
+		txt_p = floor_v2(sub_v2(txt_p, (v2){.x = -1.5, .y = -1.5}));
+		draw_text(ui->font, shader, txt_p, 0, colour_from_normalized(RULER_COLOUR));
 	}
 
 	/* TODO(rnp): store converted ruler points instead of screen points */
@@ -686,7 +711,7 @@ draw_debug_overlay(BeamformerCtx *ctx, BeamformFrame *frame, Arena arena, Rect r
 		compute_time_sum += frame->compute_times[index];
 	}
 
-	pos.y -= ui->font_height;
+	pos.y -= ui->font.baseSize;
 	draw_text(ui->font, s8("Compute Total:"), pos, 0, colour_from_normalized(FG_COLOUR));
 	buf.widx = 0;
 	stream_append_f64_e(&buf, compute_time_sum);
@@ -695,7 +720,7 @@ draw_debug_overlay(BeamformerCtx *ctx, BeamformFrame *frame, Arena arena, Rect r
 	v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
 	draw_text(ui->font, stream_to_s8(&buf), rpos, 0, colour_from_normalized(FG_COLOUR));
 
-	pos.y -= ui->font_height;
+	pos.y -= ui->font.baseSize;
 	if (ctx->csctx.processing_compute) ui->progress_display_t_velocity += 65 * dt_for_frame;
 	else                               ui->progress_display_t_velocity -= 45 * dt_for_frame;
 
@@ -1053,9 +1078,6 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	ui->font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
 	ui->small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 22, 0, 0);
 
-	ui->font_height       = measure_text(ui->font, s8("8\\W")).h;
-	ui->small_font_height = measure_text(ui->small_font, s8("8\\W")).h;
-
 	/* TODO: multiple views */
 	ui->scale_bars[0][SB_LATERAL].min_value = &ui->params.output_min_coordinate.x;
 	ui->scale_bars[0][SB_LATERAL].max_value = &ui->params.output_max_coordinate.x;
@@ -1068,6 +1090,7 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	ui->scale_bars[0][SB_LATERAL].zoom_starting_point = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
 	ui->scale_bars[0][SB_AXIAL].zoom_starting_point   = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
 
+	ui->read_params = 1;
 }
 
 static void

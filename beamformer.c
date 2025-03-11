@@ -667,6 +667,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			frame->in_flight      = 1;
 			frame->min_coordinate = ctx->params->raw.output_min_coordinate;
 			frame->max_coordinate = ctx->params->raw.output_max_coordinate;
+			frame->das_shader_id  = ctx->params->raw.das_shader_id;
 
 			u32 stage_count = ctx->params->compute_stages_count;
 			ComputeShaderID *stages = ctx->params->compute_stages;

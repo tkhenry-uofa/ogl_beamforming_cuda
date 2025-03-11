@@ -156,8 +156,6 @@ typedef struct {
 
 	Font font;
 	Font small_font;
-	f32  font_height;
-	f32  small_font_height;
 
 	InteractionState interaction;
 	InputState       text_input_state;
@@ -238,6 +236,7 @@ typedef struct {
 	u32 mips;
 	b32 in_flight;
 	b32 ready_to_present;
+	u32 das_shader_id;
 
 	u32 timer_ids[CS_LAST];
 	f32 compute_times[CS_LAST];

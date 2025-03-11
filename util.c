@@ -516,6 +516,14 @@ mul_v2(v2 a, v2 b)
 	return result;
 }
 
+static v2
+floor_v2(v2 a)
+{
+	v2 result;
+	result.x = (u32)a.x;
+	result.y = (u32)a.y;
+	return result;
+}
 
 static f32
 magnitude_v2(v2 a)
