@@ -53,6 +53,7 @@
 #define MAX(a, b)        ((a) > (b) ? (a) : (b))
 #define ORONE(x)         ((x)? (x) : 1)
 #define SIGN(x)          ((x) < 0? -1 : 1)
+#define SWAP(a, b)       {typeof(a) __tmp = (a); (a) = (b); (b) = __tmp;}
 
 #define KB(a)            ((a) << 10ULL)
 #define MB(a)            ((a) << 20ULL)
@@ -174,41 +175,6 @@ typedef struct {
 	u32   cap;
 	b32   errors;
 } Stream;
-
-enum variable_type {
-	VT_NULL,
-	VT_B32,
-	VT_F32,
-	VT_I32,
-	VT_GROUP,
-};
-
-enum variable_group_type {
-	VG_LISTING,
-	VG_V2,
-	VG_V4,
-	VG_UV4,
-};
-
-typedef struct {
-	void *store;
-	union {
-		v2  f32_limits;
-		iv2 i32_limits;
-	};
-	f32 display_scale;
-	f32 scroll_scale;
-	u32 type;
-	u32 flags;
-} Variable;
-
-typedef struct {
-	Variable *first;
-	Variable *last;
-	u32 type;
-} VariableGroup;
-
-#define NULL_VARIABLE (Variable){.store = 0, .type = VT_NULL}
 
 typedef struct Platform Platform;
 

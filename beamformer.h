@@ -10,28 +10,7 @@
 
 #include "util.h"
 
-#define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
-#define FG_COLOUR              (v4){.r = 0.92, .g = 0.88, .b = 0.78, .a = 1.0}
-#define FOCUSED_COLOUR         (v4){.r = 0.86, .g = 0.28, .b = 0.21, .a = 1.0}
-#define HOVERED_COLOUR         (v4){.r = 0.11, .g = 0.50, .b = 0.59, .a = 1.0}
-#define RULER_COLOUR           (v4){.r = 1.00, .g = 0.70, .b = 0.00, .a = 1.0}
-
-#define INFO_COLUMN_WIDTH      560
-/* NOTE: extra space used for allowing mouse clicks after end of text */
-#define TEXT_BOX_EXTRA_X       10.0f
-
-#define TEXT_HOVER_SPEED       5.0f
-
-#define RULER_TEXT_PAD         10.0f
-#define RULER_TICK_LENGTH      20.0f
-
-#define RECT_BTN_COLOUR        (Color){.r = 0x43, .g = 0x36, .b = 0x3a, .a = 0xff}
-#define RECT_BTN_BORDER_COLOUR (Color){.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xCC}
-#define RECT_BTN_ROUNDNESS     0.3f
-#define RECT_BTN_BORDER_WIDTH  6.0f
-
-/* TODO: multiple views */
-#define MAX_DISPLAYS 1
+#define INFO_COLUMN_WIDTH      480
 
 enum gl_vendor_ids {
 	GL_VENDOR_AMD,
@@ -39,65 +18,6 @@ enum gl_vendor_ids {
 	GL_VENDOR_INTEL,
 	GL_VENDOR_NVIDIA,
 };
-
-typedef struct {
-	u8   buf[64];
-	i32  buf_len;
-	i32  cursor;
-	f32  cursor_blink_t;
-	f32  cursor_blink_scale;
-} InputState;
-
-enum variable_flags {
-	V_CAUSES_COMPUTE = 1 << 29,
-	V_GEN_MIPMAPS    = 1 << 30,
-};
-
-enum interaction_states {
-	IS_NONE,
-	IS_NOP,
-	IS_SET,
-	IS_DRAG,
-	IS_SCROLL,
-	IS_TEXT,
-
-	IS_DISPLAY,
-	IS_SCALE_BAR,
-};
-
-enum ruler_state {
-	RS_NONE,
-	RS_START,
-	RS_HOLD,
-};
-
-enum scale_bar_directions {
-	SB_LATERAL,
-	SB_AXIAL,
-};
-
-typedef struct {
-	Variable hot;
-	Variable next_hot;
-	Variable active;
-	u32      hot_state;
-	u32      state;
-} InteractionState;
-
-typedef struct v2_sll {
-	struct v2_sll *next;
-	v2             v;
-} v2_sll;
-
-typedef struct {
-	f32    *min_value, *max_value;
-	v2_sll *savepoint_stack;
-	v2      zoom_starting_point;
-	v2      screen_offset;
-	v2      screen_space_to_value;
-	f32     hover_t;
-	b32     scroll_both;
-} ScaleBar;
 
 typedef struct {
 	b32  executable_reloaded;
@@ -149,34 +69,6 @@ typedef struct {
 	b32             export_next_frame;
 	c8              export_pipe_name[1024];
 } BeamformerParametersFull;
-
-typedef struct {
-	TempArena frame_temporary_arena;
-	Arena     arena_for_frame;
-
-	Font font;
-	Font small_font;
-
-	InteractionState interaction;
-	InputState       text_input_state;
-
-	ScaleBar scale_bars[MAX_DISPLAYS][2];
-	v2_sll   *scale_bar_savepoint_freelist;
-
-	v2  ruler_start_p;
-	v2  ruler_stop_p;
-	u32 ruler_state;
-
-	f32 progress_display_t;
-	f32 progress_display_t_velocity;
-
-	BeamformerUIParameters params;
-	b32                    flush_params;
-	/* TODO(rnp): this is nasty and should be removed */
-	b32                    read_params;
-
-	iptr                   last_displayed_frame;
-} BeamformerUI;
 
 #define CS_UNIFORMS \
 	X(CS_DAS,     voxel_offset) \
@@ -320,8 +212,10 @@ typedef struct BeamformerCtx {
 	/* TODO(rnp): is there a better way of tracking this? */
 	b32 ready_for_rf;
 
-	Arena ui_backing_store;
-	BeamformerUI *ui;
+	Arena  ui_backing_store;
+	void  *ui;
+	/* TODO(rnp): this is nasty and should be removed */
+	b32    ui_read_params;
 
 	BeamformFrame beamform_frames[MAX_BEAMFORMED_SAVED_FRAMES];
 	u32 next_render_frame_index;

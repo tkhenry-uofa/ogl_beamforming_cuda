@@ -776,7 +776,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 
 			if (ctx->params->upload) {
 				/* TODO(rnp): clean this up */
-				ctx->ui->read_params = 1;
+				ctx->ui_read_params = 1;
 			}
 
 			alloc_output_image(ctx, bp->output_points.xyz);
