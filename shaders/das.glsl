@@ -127,7 +127,7 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 		uint sub_idx  = i % 4;
 
 		float focal_depth    = focal_depths[base_idx][sub_idx];
-		float transmit_angle = transmit_angles[base_idx][sub_idx];
+		float transmit_angle = radians(transmit_angles[base_idx][sub_idx]);
 
 		float transmit_distance;
 		if (isinf(focal_depth)) {
@@ -162,7 +162,7 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 	bool tx_col = TX_MODE_TX_COLS(transmit_mode);
 	bool rx_col = TX_MODE_RX_COLS(transmit_mode);
 	float focal_depth    = focal_depths[0][0];
-	float transmit_angle = transmit_angles[0][0];
+	float transmit_angle = radians(transmit_angles[0][0]);
 
 	vec3 receive_point = (xdc_transform * vec4(image_point, 1)).xyz;
 
