@@ -90,6 +90,7 @@ struct Variable {
 	} u;
 	Variable *next;
 	Variable *parent;
+	u32       flags;
 	VariableType type;
 };
 
@@ -101,11 +102,8 @@ enum variable_flags {
 };
 
 typedef struct {
-	Variable     base;
-	VariableType subtype;
-	u32          flags;
-
-	s8 suffix;
+	Variable base;
+	s8       suffix;
 	/* TODO(rnp): think of something better than this */
 	union {
 		struct {s8 *names; u32 count;} name_table;
@@ -115,6 +113,7 @@ typedef struct {
 			v2  limits;
 		} params;
 	};
+	VariableType subtype;
 	f32 hover_t;
 } BeamformerVariable;
 
@@ -152,9 +151,7 @@ typedef struct {
 typedef struct {
 	Variable *hot;
 	Variable *next_hot;
-	/* TODO(rnp): it would be better if we didn't depend on BeamformerVariable being
-	 * the biggest Variable here and for the scratch variable */
-	BeamformerVariable active;
+	Variable *active;
 	InteractionType hot_type;
 	InteractionType type;
 } InteractionState;
@@ -166,7 +163,8 @@ typedef struct {
 	Font font;
 	Font small_font;
 
-	BeamformerVariable scratch_beamformer_variable;
+	BeamformerVariable *scratch_variable;
+	BeamformerVariable scratch_variables[2];
 
 	InteractionState interaction;
 	InputState       text_input_state;
@@ -253,11 +251,12 @@ stream_append_variable(Stream *s, Variable *var)
 
 
 static Variable *
-add_variable(Variable *group, Arena *arena, s8 name, VariableType type, Font font)
+add_variable(Variable *group, Arena *arena, s8 name, u32 flags, VariableType type, Font font)
 {
 	Variable *result;
 	if (type == VT_BEAMFORMER_VARIABLE) result = (Variable *)push_struct(arena, BeamformerVariable);
 	else                                result = push_struct(arena, Variable);
+	result->flags  = flags;
 	result->type   = type;
 	result->name   = name;
 	result->parent = group;
@@ -276,7 +275,7 @@ add_variable(Variable *group, Arena *arena, s8 name, VariableType type, Font fon
 static Variable *
 add_variable_group(Variable *group, Arena *arena, s8 name, VariableGroupType type, Font font)
 {
-	Variable *result     = add_variable(group, arena, name, VT_GROUP, font);
+	Variable *result     = add_variable(group, arena, name, 0, VT_GROUP, font);
 	result->u.group.type = type;
 	return result;
 }
@@ -292,12 +291,11 @@ static void
 add_beamformer_variable_f32(Variable *group, Arena *arena, s8 name, s8 suffix, f32 *store,
                             v2 limits, f32 display_scale, f32 scroll_scale, u32 flags, Font font)
 {
-	BeamformerVariable *bv   = (BeamformerVariable *)add_variable(group, arena, name,
+	BeamformerVariable *bv   = (BeamformerVariable *)add_variable(group, arena, name, flags,
 	                                                              VT_BEAMFORMER_VARIABLE, font);
 	bv->suffix               = suffix;
 	bv->base.u.generic       = store;
 	bv->subtype              = VT_F32;
-	bv->flags                = flags;
 	bv->params.display_scale = display_scale;
 	bv->params.scroll_scale  = scroll_scale;
 	bv->params.limits        = limits;
@@ -307,11 +305,10 @@ static void
 add_beamformer_variable_b32(Variable *group, Arena *arena, s8 name, s8 false_text, s8 true_text,
                             b32 *store, u32 flags, Font font)
 {
-	BeamformerVariable *bv  = (BeamformerVariable *)add_variable(group, arena, name,
+	BeamformerVariable *bv  = (BeamformerVariable *)add_variable(group, arena, name, flags,
 	                                                             VT_BEAMFORMER_VARIABLE, font);
 	bv->base.u.generic      = store;
 	bv->subtype             = VT_B32;
-	bv->flags               = flags;
 	bv->name_table.names    = alloc(arena, s8, 2);
 	bv->name_table.count    = 2;
 	bv->name_table.names[0] = false_text;
@@ -609,7 +606,7 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, ScaleBar *sb, ScaleBarDirection dire
 	}
 
 	if (hover_text(mouse, tick_rect, &sb->hover_t, 1)) {
-		Variable *var  = zero_struct(&ui->scratch_beamformer_variable.base);
+		Variable *var  = zero_struct(&ui->scratch_variable->base);
 		var->u.generic = sb;
 		var->type      = VT_SCALE_BAR;
 		is->hot_type   = IT_SCALE_BAR;
@@ -703,11 +700,11 @@ draw_beamform_view(BeamformerCtx *ctx, Arena a, v2 mouse, BeamformerFrameView *v
 	pixels_to_mm.y /= vr.size.y * 1e-3;
 
 	if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
-		BeamformerVariable *bv   = zero_struct(&ui->scratch_beamformer_variable);
+		BeamformerVariable *bv   = zero_struct(ui->scratch_variable);
 		bv->base.type            = VT_BEAMFORMER_VARIABLE;
 		bv->base.u.generic       = &ctx->fsctx.threshold;
+		bv->base.flags           = V_GEN_MIPMAPS;
 		bv->subtype              = VT_F32;
-		bv->flags                = V_GEN_MIPMAPS;
 		bv->params.limits        = (v2){.y = 240};
 		bv->params.display_scale = 1;
 		bv->params.scroll_scale  = 1;
@@ -778,8 +775,8 @@ draw_text_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 a
 	InputState *is       = &ui->text_input_state;
 	/* TODO(rnp): hack: but this will be removed soon */
 	b32 var_text_active = (ui->interaction.type == IT_TEXT) &&
-	                      ((var->type == ui->interaction.active.base.type) &&
-	                       ((iptr)var->u.generic == (iptr)ui->interaction.active.base.u.generic));
+	                      ((var->type == ui->interaction.active->type) &&
+	                       ((iptr)var->u.generic == (iptr)ui->interaction.active->u.generic));
 
 	Stream buf = arena_stream(&arena);
 	if (var_text_active) stream_append_s8(&buf, (s8){.len = is->buf_len, .data = is->buf});
@@ -843,9 +840,9 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 			advance  = draw_text(ui->font, bv->base.name, at, NORMALIZED_FG_COLOUR).y;
 			at.x    += x_off + LISTING_CENTER_PAD;
 
-			if (bv->flags & V_INPUT && bv->flags & V_TEXT) {
+			if (var->flags & V_INPUT && var->flags & V_TEXT) {
 				draw_text_beamformer_variable(ui, ui->arena, var, at, mouse, &bv->hover_t);
-			} else if (bv->flags & V_INPUT) {
+			} else if (var->flags & V_INPUT) {
 				draw_beamformer_variable(ui, ui->arena, var, at, mouse, &bv->hover_t);
 			} else {
 				Arena  arena = ui->arena;
@@ -888,9 +885,13 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 				case VG_V4: {
 					at.x += draw_text(ui->font, s8("{"), at, NORMALIZED_FG_COLOUR).x;
 					while (v) {
-						at.x += draw_beamformer_variable(ui, ui->arena,
-						                                 (Variable *)v, at,
-						                                 mouse, &v->hover_t).x;
+						if (v->base.flags & V_TEXT) {
+							at.x += draw_text_beamformer_variable(ui, ui->arena,
+							            (Variable *)v, at, mouse, &v->hover_t).x;
+						} else {
+							at.x += draw_beamformer_variable(ui, ui->arena,
+							             (Variable *)v, at, mouse, &v->hover_t).x;
+						}
 						v = (BeamformerVariable *)v->base.next;
 						if (v) at.x += draw_text(ui->font, s8(", "), at,
 							                 NORMALIZED_FG_COLOUR).x;
@@ -1196,7 +1197,7 @@ scale_bar_interaction(BeamformerCtx *ctx, v2 mouse)
 {
 	BeamformerUI *ui        = ctx->ui;
 	InteractionState *is    = &ui->interaction;
-	ScaleBar *sb            = is->active.base.u.generic;
+	ScaleBar *sb            = is->active->u.generic;
 	b32 mouse_left_pressed  = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
 	b32 mouse_right_pressed = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
 	f32 mouse_wheel         = GetMouseWheelMoveV().y;
@@ -1276,23 +1277,20 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mous
 		case VT_F32: {
 			if (scroll) {
 				is->type = IT_SCROLL;
-			} else if (mouse_left_pressed) {
-				/* TODO(rnp): hack: rethink hot_rect idea */
-				if (CheckCollisionPointRec(input->mouse.rl, ui->text_input_state.hot_rect.rl)) {
-					/* TODO(rnp): not all F32 variables should be text input */
-					is->type = IT_TEXT;
-					begin_text_input(&ui->text_input_state, is->hot, input->mouse);
-				}
+			} else if (mouse_left_pressed && is->hot->flags & V_TEXT) {
+				is->type = IT_TEXT;
+				begin_text_input(&ui->text_input_state, is->hot, input->mouse);
 			}
 		} break;
 		default: INVALID_CODE_PATH;
 		}
 	}
 	if (is->type != IT_NONE) {
-		size bytes = is->hot->type == VT_BEAMFORMER_VARIABLE ? sizeof(BeamformerVariable) :
-		                                                       sizeof(Variable);
-
-		mem_copy(is->hot, &is->active, bytes);
+		is->active = is->hot;
+		if ((iptr)is->hot == (iptr)ui->scratch_variables)
+			ui->scratch_variable = ui->scratch_variables + 1;
+		else
+			ui->scratch_variable = ui->scratch_variables + 0;
 	}
 }
 
@@ -1302,40 +1300,38 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 	BeamformerUI *ui = ctx->ui;
 	InteractionState *is = &ui->interaction;
 	switch (is->type) {
-	case IT_NONE: break;
 	case IT_NOP:  break;
 	case IT_SET: {
-		switch (is->active.base.type) {
+		switch (is->active->type) {
 		case VT_GROUP: {
-			is->active.base.u.group.expanded = !is->active.base.u.group.expanded;
+			is->active->u.group.expanded = !is->active->u.group.expanded;
 		} break;
 		case VT_B32: {
-			is->active.base.u.b32 = !is->active.base.u.b32;
+			is->active->u.b32 = !is->active->u.b32;
 		} break;
 		case VT_BEAMFORMER_VARIABLE: {
-			ASSERT(is->active.subtype == VT_B32);
-			b32 *val = is->active.base.u.generic;
+			BeamformerVariable *bv = (BeamformerVariable *)is->active;
+			ASSERT(bv->subtype == VT_B32);
+			b32 *val = is->active->u.generic;
 			*val     = !(*val);
 		} break;
 		default: INVALID_CODE_PATH;
 		}
 	} break;
 	case IT_DISPLAY: display_interaction_end(ui); /* FALLTHROUGH */
-	case IT_SCROLL:  scroll_interaction((Variable *)&is->active, GetMouseWheelMoveV().y); break;
-	case IT_TEXT:    end_text_input(&ui->text_input_state, (Variable *)&is->active);      break;
+	case IT_SCROLL:  scroll_interaction(is->active, GetMouseWheelMoveV().y); break;
+	case IT_TEXT:    end_text_input(&ui->text_input_state, is->active);      break;
 	case IT_SCALE_BAR: break;
 	default: INVALID_CODE_PATH;
 	}
 
-	if (is->active.base.type == VT_BEAMFORMER_VARIABLE) {
-		if (is->active.flags & V_CAUSES_COMPUTE)
-			ui->flush_params = 1;
-		if (is->active.flags & V_GEN_MIPMAPS && ctx->fsctx.output.texture.id)
-			ctx->fsctx.gen_mipmaps = 1;
-	}
+	if (is->active->flags & V_CAUSES_COMPUTE)
+		ui->flush_params = 1;
+	if (is->active->flags & V_GEN_MIPMAPS && ctx->fsctx.output.texture.id)
+		ctx->fsctx.gen_mipmaps = 1;
 
-	is->type = IT_NONE;
-	zero_struct(&is->active);
+	is->type   = IT_NONE;
+	is->active = 0;
 }
 
 static void
@@ -1366,7 +1362,7 @@ ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
 		if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
 			ui_end_interact(ctx, input->mouse);
 		} else {
-			switch (is->active.base.type) {
+			switch (is->active->type) {
 			default: break;
 			}
 		}
@@ -1408,7 +1404,8 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	beamformer_parameters_view_init(ctx);
 
 	/* NOTE(rnp): by default we always have at least one view */
-	Variable *var = add_variable(&ui->beamform_views, &ui->arena, s8("Beamformed Views"), VT_BEAMFORMER_VIEW, ui->font);
+	Variable *var = add_variable(&ui->beamform_views, &ui->arena, s8("Beamformed Views"), 0,
+	                             VT_BEAMFORMER_VIEW, ui->font);
 	BeamformerFrameView *bv = var->u.generic = beamformer_frame_view_new(ui, FVT_LATEST);
 	bv->lateral_scale_bar.min_value = &ui->params.output_min_coordinate.x;
 	bv->lateral_scale_bar.max_value = &ui->params.output_max_coordinate.x;
