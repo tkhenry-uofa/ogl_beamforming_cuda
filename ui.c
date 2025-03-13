@@ -1403,6 +1403,8 @@ ui_init(BeamformerCtx *ctx, Arena store)
 
 	beamformer_parameters_view_init(ctx);
 
+	ui->scratch_variable = ui->scratch_variables + 0;
+
 	/* NOTE(rnp): by default we always have at least one view */
 	Variable *var = add_variable(&ui->beamform_views, &ui->arena, s8("Beamformed Views"), 0,
 	                             VT_BEAMFORMER_VIEW, ui->font);
