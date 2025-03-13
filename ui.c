@@ -152,7 +152,9 @@ typedef struct {
 typedef struct {
 	Variable *hot;
 	Variable *next_hot;
-	Variable *active;
+	/* TODO(rnp): it would be better if we didn't depend on BeamformerVariable being
+	 * the biggest Variable here and for the scratch variable */
+	BeamformerVariable active;
 	InteractionType hot_type;
 	InteractionType type;
 } InteractionState;
@@ -774,7 +776,10 @@ static v2
 draw_text_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, f32 *hover_t)
 {
 	InputState *is       = &ui->text_input_state;
-	b32 var_text_active = (ui->interaction.type == IT_TEXT) && (var == ui->interaction.active);
+	/* TODO(rnp): hack: but this will be removed soon */
+	b32 var_text_active = (ui->interaction.type == IT_TEXT) &&
+	                      ((var->type == ui->interaction.active.base.type) &&
+	                       ((iptr)var->u.generic == (iptr)ui->interaction.active.base.u.generic));
 
 	Stream buf = arena_stream(&arena);
 	if (var_text_active) stream_append_s8(&buf, (s8){.len = is->buf_len, .data = is->buf});
@@ -1181,7 +1186,7 @@ display_interaction(BeamformerUI *ui, v2 mouse)
 			ui->ruler_state = RS_NONE;
 			break;
 		}
-	} else if ((mouse_left_pressed && !is_hot) || (mouse_right_pressed && is_hot)) {
+	} else if (mouse_right_pressed && is_hot) {
 		ui->ruler_state = RS_NONE;
 	}
 }
@@ -1191,7 +1196,7 @@ scale_bar_interaction(BeamformerCtx *ctx, v2 mouse)
 {
 	BeamformerUI *ui        = ctx->ui;
 	InteractionState *is    = &ui->interaction;
-	ScaleBar *sb            = is->active->u.generic;
+	ScaleBar *sb            = is->active.base.u.generic;
 	b32 mouse_left_pressed  = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
 	b32 mouse_right_pressed = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
 	f32 mouse_wheel         = GetMouseWheelMoveV().y;
@@ -1272,16 +1277,22 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mous
 			if (scroll) {
 				is->type = IT_SCROLL;
 			} else if (mouse_left_pressed) {
-				/* TODO(rnp): not all F32 variables should be text input */
-				is->type = IT_TEXT;
-				begin_text_input(&ui->text_input_state, is->hot, input->mouse);
+				/* TODO(rnp): hack: rethink hot_rect idea */
+				if (CheckCollisionPointRec(input->mouse.rl, ui->text_input_state.hot_rect.rl)) {
+					/* TODO(rnp): not all F32 variables should be text input */
+					is->type = IT_TEXT;
+					begin_text_input(&ui->text_input_state, is->hot, input->mouse);
+				}
 			}
 		} break;
 		default: INVALID_CODE_PATH;
 		}
 	}
 	if (is->type != IT_NONE) {
-		is->active = is->hot;
+		size bytes = is->hot->type == VT_BEAMFORMER_VARIABLE ? sizeof(BeamformerVariable) :
+		                                                       sizeof(Variable);
+
+		mem_copy(is->hot, &is->active, bytes);
 	}
 }
 
@@ -1294,39 +1305,37 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 	case IT_NONE: break;
 	case IT_NOP:  break;
 	case IT_SET: {
-		switch (is->active->type) {
+		switch (is->active.base.type) {
 		case VT_GROUP: {
-			is->active->u.group.expanded = !is->active->u.group.expanded;
+			is->active.base.u.group.expanded = !is->active.base.u.group.expanded;
 		} break;
 		case VT_B32: {
-			is->active->u.b32 = !is->active->u.b32;
+			is->active.base.u.b32 = !is->active.base.u.b32;
 		} break;
 		case VT_BEAMFORMER_VARIABLE: {
-			BeamformerVariable *bv = (BeamformerVariable *)is->active;
-			ASSERT(bv->subtype == VT_B32);
-			b32 *val = is->active->u.generic;
+			ASSERT(is->active.subtype == VT_B32);
+			b32 *val = is->active.base.u.generic;
 			*val     = !(*val);
 		} break;
 		default: INVALID_CODE_PATH;
 		}
 	} break;
 	case IT_DISPLAY: display_interaction_end(ui); /* FALLTHROUGH */
-	case IT_SCROLL:  scroll_interaction(is->active, GetMouseWheelMoveV().y); break;
-	case IT_TEXT:    end_text_input(&ui->text_input_state, is->active);      break;
+	case IT_SCROLL:  scroll_interaction((Variable *)&is->active, GetMouseWheelMoveV().y); break;
+	case IT_TEXT:    end_text_input(&ui->text_input_state, (Variable *)&is->active);      break;
 	case IT_SCALE_BAR: break;
 	default: INVALID_CODE_PATH;
 	}
 
-	if (is->active->type == VT_BEAMFORMER_VARIABLE) {
-		BeamformerVariable *bv = (BeamformerVariable *)is->active;
-		if (bv->flags & V_CAUSES_COMPUTE)
+	if (is->active.base.type == VT_BEAMFORMER_VARIABLE) {
+		if (is->active.flags & V_CAUSES_COMPUTE)
 			ui->flush_params = 1;
-		if (bv->flags & V_GEN_MIPMAPS && ctx->fsctx.output.texture.id)
+		if (is->active.flags & V_GEN_MIPMAPS && ctx->fsctx.output.texture.id)
 			ctx->fsctx.gen_mipmaps = 1;
 	}
 
-	is->type   = IT_NONE;
-	is->active = 0;
+	is->type = IT_NONE;
+	zero_struct(&is->active);
 }
 
 static void
@@ -1357,7 +1366,7 @@ ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
 		if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
 			ui_end_interact(ctx, input->mouse);
 		} else {
-			switch (is->active->type) {
+			switch (is->active.base.type) {
 			default: break;
 			}
 		}
