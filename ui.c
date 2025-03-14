@@ -7,9 +7,6 @@
 
 #define NORMALIZED_FG_COLOUR   colour_from_normalized(FG_COLOUR)
 
-/* NOTE: extra space used for allowing mouse clicks after end of text */
-#define TEXT_BOX_EXTRA_X       10.0f
-
 #define TEXT_HOVER_SPEED       5.0f
 
 #define RULER_TEXT_PAD         10.0f
@@ -150,7 +147,6 @@ typedef struct {
 
 typedef struct {
 	Variable *hot;
-	Variable *next_hot;
 	Variable *active;
 	InteractionType hot_type;
 	InteractionType type;
@@ -275,7 +271,7 @@ add_variable(Variable *group, Arena *arena, s8 name, u32 flags, VariableType typ
 static Variable *
 add_variable_group(Variable *group, Arena *arena, s8 name, VariableGroupType type, Font font)
 {
-	Variable *result     = add_variable(group, arena, name, 0, VT_GROUP, font);
+	Variable *result     = add_variable(group, arena, name, V_INPUT, VT_GROUP, font);
 	result->u.group.type = type;
 	return result;
 }
@@ -489,6 +485,16 @@ draw_text_r(Font font, s8 text, v2 pos, f32 rotation, Color colour)
 }
 
 static Rect
+extend_rect_centered(Rect r, v2 delta)
+{
+	r.size.w += delta.x;
+	r.size.h += delta.y;
+	r.pos.x  -= delta.x / 2;
+	r.pos.y  -= delta.y / 2;
+	return r;
+}
+
+static Rect
 scale_rect_centered(Rect r, v2 scale)
 {
 	Rect or   = r;
@@ -511,11 +517,11 @@ center_align_text_in_rect(Rect r, s8 text, Font font)
 }
 
 static b32
-hover_text(v2 mouse, Rect text_rect, f32 *hover_t, b32 can_advance)
+hover_text(v2 mouse, Rect text_rect, f32 *hover_t)
 {
 	b32 hovering = CheckCollisionPointRec(mouse.rl, text_rect.rl);
-	if (hovering && can_advance) *hover_t += TEXT_HOVER_SPEED * dt_for_frame;
-	else                         *hover_t -= TEXT_HOVER_SPEED * dt_for_frame;
+	if (hovering) *hover_t += TEXT_HOVER_SPEED * dt_for_frame;
+	else          *hover_t -= TEXT_HOVER_SPEED * dt_for_frame;
 	*hover_t = CLAMP01(*hover_t);
 	return hovering;
 }
@@ -605,7 +611,7 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, ScaleBar *sb, ScaleBarDirection dire
 		sb->screen_space_to_value = (v2){.x = (*sb->max_value - *sb->min_value) / tick_rect.size.x};
 	}
 
-	if (hover_text(mouse, tick_rect, &sb->hover_t, 1)) {
+	if (hover_text(mouse, tick_rect, &sb->hover_t)) {
 		Variable *var  = zero_struct(&ui->scratch_variable->base);
 		var->u.generic = sb;
 		var->type      = VT_SCALE_BAR;
@@ -770,49 +776,29 @@ draw_beamform_view(BeamformerCtx *ctx, Arena a, v2 mouse, BeamformerFrameView *v
 }
 
 static v2
-draw_text_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, f32 *hover_t)
-{
-	InputState *is       = &ui->text_input_state;
-	/* TODO(rnp): hack: but this will be removed soon */
-	b32 var_text_active = (ui->interaction.type == IT_TEXT) &&
-	                      ((var->type == ui->interaction.active->type) &&
-	                       ((iptr)var->u.generic == (iptr)ui->interaction.active->u.generic));
-
-	Stream buf = arena_stream(&arena);
-	if (var_text_active) stream_append_s8(&buf, (s8){.len = is->buf_len, .data = is->buf});
-	else                 stream_append_variable(&buf, var);
-
-	v2   text_size = measure_text(ui->font, stream_to_s8(&buf));
-	Rect text_rect = {.pos = at, .size = text_size};
-
-	if (hover_text(mouse, text_rect, hover_t, !var_text_active)) {
-		ui->interaction.hot = var;
-		is->hot_rect        = text_rect;
-		is->hot_font        = &ui->font;
-	}
-
-	Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, *hover_t));
-	draw_text(ui->font, stream_to_s8(&buf), text_rect.pos, colour);
-
-	return text_size;
-}
-
-static v2
 draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, f32 *hover_t)
 {
 	Stream buf = arena_stream(&arena);
 	stream_append_variable(&buf, var);
 
-	v2   text_size = measure_text(ui->font, stream_to_s8(&buf));
-	Rect text_rect = {.pos = at, .size = text_size};
+	Color colour = NORMALIZED_FG_COLOUR;
+	if (var->flags & V_INPUT) {
+		v2   text_size = measure_text(ui->font, stream_to_s8(&buf));
+		Rect text_rect = {.pos = at, .size = text_size};
+		text_rect = extend_rect_centered(text_rect, (v2){.x = 8});
 
-	if (hover_text(mouse, text_rect, hover_t, 1))
-		ui->interaction.hot = var;
+		if (hover_text(mouse, text_rect, hover_t)) {
+			if (var->flags & V_TEXT) {
+				InputState *is  = &ui->text_input_state;
+				is->hot_rect    = text_rect;
+				is->hot_font    = &ui->font;
+			}
+			ui->interaction.hot = var;
+		}
 
-	Color colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, *hover_t));
-	draw_text(ui->font, stream_to_s8(&buf), text_rect.pos, colour);
-
-	return text_size;
+		colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, *hover_t));
+	}
+	return draw_text(ui->font, stream_to_s8(&buf), at, colour);
 }
 
 #define LISTING_CENTER_PAD 12.0f
@@ -837,19 +823,10 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 			BeamformerVariable *bv = (BeamformerVariable *)var;
 
 			suffix   = bv->suffix;
-			advance  = draw_text(ui->font, bv->base.name, at, NORMALIZED_FG_COLOUR).y;
+			advance  = draw_text(ui->font, var->name, at, NORMALIZED_FG_COLOUR).y;
 			at.x    += x_off + LISTING_CENTER_PAD;
 
-			if (var->flags & V_INPUT && var->flags & V_TEXT) {
-				draw_text_beamformer_variable(ui, ui->arena, var, at, mouse, &bv->hover_t);
-			} else if (var->flags & V_INPUT) {
-				draw_beamformer_variable(ui, ui->arena, var, at, mouse, &bv->hover_t);
-			} else {
-				Arena  arena = ui->arena;
-				Stream buf   = arena_stream(&arena);
-				stream_append_variable(&buf, var);
-				draw_text(ui->font, stream_to_s8(&buf), at, NORMALIZED_FG_COLOUR);
-			}
+			draw_beamformer_variable(ui, ui->arena, var, at, mouse, &bv->hover_t);
 
 			while (var) {
 				if (var->next) {
@@ -885,13 +862,9 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 				case VG_V4: {
 					at.x += draw_text(ui->font, s8("{"), at, NORMALIZED_FG_COLOUR).x;
 					while (v) {
-						if (v->base.flags & V_TEXT) {
-							at.x += draw_text_beamformer_variable(ui, ui->arena,
-							            (Variable *)v, at, mouse, &v->hover_t).x;
-						} else {
-							at.x += draw_beamformer_variable(ui, ui->arena,
-							             (Variable *)v, at, mouse, &v->hover_t).x;
-						}
+						at.x += draw_beamformer_variable(ui, ui->arena,
+						             (Variable *)v, at, mouse, &v->hover_t).x;
+
 						v = (BeamformerVariable *)v->base.next;
 						if (v) at.x += draw_text(ui->font, s8(", "), at,
 							                 NORMALIZED_FG_COLOUR).x;
@@ -989,31 +962,40 @@ draw_debug_overlay(BeamformerCtx *ctx, BeamformFrame *frame, Arena arena, Rect r
 }
 
 static void
-draw_input_cursor(BeamformerUI *ui, v2 mouse)
+draw_active_text_box(BeamformerUI *ui, Variable *var)
 {
 	InputState *is = &ui->text_input_state;
 	Rect box       = is->rect;
 
-	s8 buf = {.len = is->buf_len, .data = is->buf};
-	v2 ts  = measure_text(ui->font, buf);
-	v2 pos = {.x = box.pos.x, .y = box.pos.y + (box.size.y - ts.y) / 2};
+	s8 text          = {.len = is->buf_len, .data = is->buf};
+	v2 text_size     = measure_text(ui->font, text);
+	v2 text_position = {.x = box.pos.x, .y = box.pos.y + (box.size.h - text_size.h) / 2};
 
-	v4 bg = FOCUSED_COLOUR;
-	bg.a  = 0;
-	Color cursor_colour = colour_from_normalized(lerp_v4(bg, FOCUSED_COLOUR,
-	                                                     CLAMP01(is->cursor_blink_t)));
-	buf.len = is->cursor;
-	v2 sts = measure_text(ui->font, buf);
-	f32 cursor_x = pos.x + sts.x;
-	f32 cursor_width;
-	if (is->cursor == is->buf_len) cursor_width = 20;
-	else                           cursor_width = 4;
-	Rect cursor_r = {
-		.pos  = {.x = cursor_x,     .y = pos.y},
-		.size = {.w = cursor_width, .h = ts.h},
+	f32 cursor_width   = (is->cursor == is->buf_len) ? 16 : 4;
+	f32 cursor_offset  = measure_text(ui->font, (s8){.data = text.data, .len = is->cursor}).w;
+	cursor_offset     += text_position.x;
+
+	box.size.w = MAX(box.size.w, text_size.w + cursor_width);
+	Rect background = extend_rect_centered(box, (v2){.x = 12, .y = 8});
+	box = extend_rect_centered(box, (v2){.x = 8, .y = 4});
+
+	Rect cursor = {
+		.pos  = {.x = cursor_offset, .y = text_position.y},
+		.size = {.w = cursor_width,  .h = text_size.h},
 	};
 
-	DrawRectanglePro(cursor_r.rl, (Vector2){0}, 0, cursor_colour);
+	v4 cursor_colour = FOCUSED_COLOUR;
+	cursor_colour.a  = CLAMP01(is->cursor_blink_t);
+
+	f32 hover_t = 1;
+	if (var->type == VT_BEAMFORMER_VARIABLE)
+		hover_t = ((BeamformerVariable *)var)->hover_t;
+
+	DrawRectangleRounded(background.rl, 0.2, 0, fade(BLACK, 0.8));
+	DrawRectangleRounded(box.rl, 0.2, 0, colour_from_normalized(BG_COLOUR));
+	draw_text(*is->font, text, text_position,
+	          colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, hover_t)));
+	DrawRectanglePro(cursor.rl, (Vector2){0}, 0, colour_from_normalized(cursor_colour));
 }
 
 static void
@@ -1104,20 +1086,26 @@ end_text_input(InputState *is, Variable *var)
 		BeamformerVariable *bv = (BeamformerVariable *)var;
 		ASSERT(bv->subtype == VT_F32);
 		scale = bv->params.display_scale;
+		bv->hover_t = 0;
 	}
 	f32 value = parse_f64((s8){.len = is->buf_len, .data = is->buf}) / scale;
 	ui_store_variable(var, &value);
 }
 
 static void
-update_text_input(InputState *is)
+update_text_input(InputState *is, Variable *var)
 {
-	if (is->cursor == -1)
-		return;
+	ASSERT(is->cursor != -1);
 
 	is->cursor_blink_t += is->cursor_blink_scale * dt_for_frame;
 	if (is->cursor_blink_t >= 1) is->cursor_blink_scale = -1.5f;
 	if (is->cursor_blink_t <= 0) is->cursor_blink_scale =  1.5f;
+
+	if (var->type == VT_BEAMFORMER_VARIABLE) {
+		BeamformerVariable *bv = (BeamformerVariable *)var;
+		bv->hover_t -= 2 * TEXT_HOVER_SPEED * dt_for_frame;
+		bv->hover_t  = CLAMP01(bv->hover_t);
+	}
 
 	/* NOTE: handle multiple input keys on a single frame */
 	i32 key = GetCharPressed();
@@ -1354,10 +1342,10 @@ ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
 	switch (is->type) {
 	case IT_NONE: break;
 	case IT_NOP:  break;
-	case IT_DISPLAY: display_interaction(ui, input->mouse);    break;
-	case IT_SCROLL:  ui_end_interact(ctx, input->mouse);       break;
-	case IT_SET:     ui_end_interact(ctx, input->mouse);       break;
-	case IT_TEXT:    update_text_input(&ui->text_input_state); break;
+	case IT_DISPLAY: display_interaction(ui, input->mouse); break;
+	case IT_SCROLL:  ui_end_interact(ctx, input->mouse);    break;
+	case IT_SET:     ui_end_interact(ctx, input->mouse);    break;
+	case IT_TEXT:    update_text_input(&ui->text_input_state, is->active); break;
 	case IT_DRAG: {
 		if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
 			ui_end_interact(ctx, input->mouse);
@@ -1491,6 +1479,6 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 		draw_debug_overlay(ctx, frame_to_draw, ui->arena, lr);
 
 		if (ui->interaction.type == IT_TEXT)
-			draw_input_cursor(ui, mouse);
+			draw_active_text_box(ui, ui->interaction.active);
 	EndDrawing();
 }
