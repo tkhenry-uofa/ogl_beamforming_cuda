@@ -474,6 +474,20 @@ draw_text(Font font, s8 text, v2 pos, Color colour)
 	return result;
 }
 
+/* NOTE(rnp): expensive but of the available options in raylib this gives the best results */
+static v2
+draw_outlined_text(Font font, s8 text, v2 pos, f32 outline_width, Color colour, Color outline)
+{
+	draw_text(font, text, sub_v2(pos, (v2){.x =  outline_width, .y =  outline_width}), outline);
+	draw_text(font, text, sub_v2(pos, (v2){.x =  outline_width, .y = -outline_width}), outline);
+	draw_text(font, text, sub_v2(pos, (v2){.x = -outline_width, .y =  outline_width}), outline);
+	draw_text(font, text, sub_v2(pos, (v2){.x = -outline_width, .y = -outline_width}), outline);
+
+	v2 result = draw_text(font, text, pos, colour);
+
+	return result;
+}
+
 static v2
 draw_text_r(Font font, s8 text, v2 pos, f32 rotation, Color colour)
 {
@@ -746,9 +760,8 @@ draw_beamform_view(BeamformerCtx *ctx, Arena a, v2 mouse, BeamformerFrameView *v
 			.x = vr.pos.x + vr.size.w - txt_s.w - 16,
 			.y = vr.pos.y + 4,
 		};
-		draw_text(ui->font, shader, txt_p, fade(BLACK, 0.8));
-		txt_p = floor_v2(sub_v2(txt_p, (v2){.x = -1.5, .y = -1.5}));
-		draw_text(ui->font, shader, txt_p, colour_from_normalized(RULER_COLOUR));
+		draw_outlined_text(ui->font, shader, txt_p, 1,
+		                   colour_from_normalized(RULER_COLOUR), BLACK);
 	}
 
 	/* TODO(rnp): store converted ruler points instead of screen points */
