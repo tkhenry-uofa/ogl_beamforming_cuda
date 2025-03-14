@@ -433,9 +433,13 @@ push_das_shader_id(Stream *s, DASShaderID shader, u32 transmit_count)
 	default: break;
 	}
 
-	if (shader == DAS_UFORCES) {
+	switch (shader) {
+	case DAS_UFORCES:
+	case DAS_RCA_VLS:
+	case DAS_RCA_TPW:
 		stream_append_byte(s, '-');
 		stream_append_u64(s, transmit_count);
+	default: break;
 	}
 
 	return stream_to_s8(s);
