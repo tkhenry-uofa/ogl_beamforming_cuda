@@ -1127,7 +1127,7 @@ update_text_input(InputState *is, Variable *var)
 	/* NOTE: handle multiple input keys on a single frame */
 	i32 key = GetCharPressed();
 	while (key > 0) {
-		if (is->buf_len == ARRAY_COUNT(is->buf))
+		if ((is->buf_len == ARRAY_COUNT(is->buf)) || (is->cursor == ARRAY_COUNT(is->buf) - 1))
 			break;
 
 		b32 allow_key = ((key >= '0' && key <= '9') || (key == '.') ||
@@ -1151,9 +1151,11 @@ update_text_input(InputState *is, Variable *var)
 
 	if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && is->cursor > 0) {
 		is->cursor--;
-		mem_move(is->buf + is->cursor + 1,
-		         is->buf + is->cursor,
-		         is->buf_len - is->cursor);
+		if (is->cursor < ARRAY_COUNT(is->buf) - 1) {
+			mem_move(is->buf + is->cursor + 1,
+			         is->buf + is->cursor,
+			         is->buf_len - is->cursor);
+		}
 		is->buf_len--;
 	}
 
