@@ -45,6 +45,26 @@ typedef struct v2_sll {
 	v2             v;
 } v2_sll;
 
+typedef struct Variable Variable;
+
+typedef enum {
+	RSD_VERTICAL,
+	RSD_HORIZONTAL,
+} RegionSplitDirection;
+
+typedef struct {
+	Variable *left;
+	Variable *right;
+	f32       fraction;
+	RegionSplitDirection direction;
+} RegionSplit;
+
+/* TODO(rnp): this should be refactored to not need a BeamformerCtx */
+typedef struct {
+	BeamformerCtx *ctx;
+	void          *stats;
+} ComputeStatsView;
+
 typedef enum {
 	VT_NULL,
 	VT_B32,
@@ -52,8 +72,11 @@ typedef enum {
 	VT_I32,
 	VT_GROUP,
 	VT_BEAMFORMER_VARIABLE,
-	VT_BEAMFORMER_VIEW,
+	VT_BEAMFORMER_FRAME_VIEW,
+	VT_COMPUTE_STATS_VIEW,
+	VT_COMPUTE_LATEST_STATS_VIEW,
 	VT_SCALE_BAR,
+	VT_UI_REGION_SPLIT,
 } VariableType;
 
 typedef enum {
@@ -63,8 +86,6 @@ typedef enum {
 	VG_V2,
 	VG_V4,
 } VariableGroupType;
-
-typedef struct Variable Variable;
 
 typedef struct {
 	Variable *first;
@@ -79,11 +100,13 @@ typedef struct {
 struct Variable {
 	s8 name;
 	union {
-		void          *generic;
-		VariableGroup  group;
-		b32            b32;
-		i32            i32;
-		f32            f32;
+		void            *generic;
+		VariableGroup    group;
+		RegionSplit      region_split;
+		ComputeStatsView compute_stats_view;
+		b32              b32;
+		i32              i32;
+		f32              f32;
 	} u;
 	Variable *next;
 	Variable *parent;
@@ -137,11 +160,12 @@ typedef enum {
 } BeamformerFrameViewType;
 
 typedef struct {
-	BeamformFrame *frame;
+	void *store;
 	ScaleBar lateral_scale_bar;
 	ScaleBar axial_scale_bar;
 	Variable menu;
-	Rect     display_rect;
+	/* TODO(rnp): hack, this needs to be removed to support multiple views */
+	FragmentShaderCtx *ctx;
 	BeamformerFrameViewType type;
 } BeamformerFrameView;
 
@@ -153,8 +177,7 @@ typedef struct {
 } InteractionState;
 
 typedef struct {
-	TempArena frame_temporary_arena;
-	Arena     arena;
+	Arena arena;
 
 	Font font;
 	Font small_font;
@@ -165,13 +188,12 @@ typedef struct {
 	InteractionState interaction;
 	InputState       text_input_state;
 
-	Variable *parameters_view;
-
-	Variable beamform_views;
+	Variable *regions;
 
 	v2_sll *scale_bar_savepoint_freelist;
 
-	BeamformFrame *latest_frame;
+	BeamformFrame      *latest_frame;
+	ComputeShaderStats *latest_compute_stats;
 
 	v2  ruler_start_p;
 	v2  ruler_stop_p;
@@ -257,7 +279,7 @@ add_variable(Variable *group, Arena *arena, s8 name, u32 flags, VariableType typ
 	result->name   = name;
 	result->parent = group;
 
-	if (group) {
+	if (group && group->type == VT_GROUP) {
 		if (group->u.group.last) group->u.group.last = group->u.group.last->next = result;
 		else                     group->u.group.last = group->u.group.first      = result;
 
@@ -281,6 +303,16 @@ end_variable_group(Variable *group)
 {
 	ASSERT(group->type == VT_GROUP);
 	return group->parent;
+}
+
+static Variable *
+add_ui_split(Variable *parent, Arena *arena, s8 name, f32 fraction,
+             RegionSplitDirection direction, Font font)
+{
+	Variable *result = add_variable(parent, arena, name, 0, VT_UI_REGION_SPLIT, font);
+	result->u.region_split.direction = direction;
+	result->u.region_split.fraction  = fraction;
+	return result;
 }
 
 static void
@@ -311,89 +343,88 @@ add_beamformer_variable_b32(Variable *group, Arena *arena, s8 name, s8 false_tex
 	bv->name_table.names[1] = true_text;
 }
 
-static void
-beamformer_parameters_view_init(BeamformerCtx *ctx)
+static Variable *
+add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 {
 	BeamformerUI *ui           = ctx->ui;
 	BeamformerUIParameters *bp = &ui->params;
 
 	v2 v2_inf = {.x = -F32_INFINITY, .y = F32_INFINITY};
 
-	Variable *group = add_variable_group(0, &ui->arena, s8("Parameters List"), VG_LIST, ui->font);
-	ui->parameters_view = group;
+	Variable *result = add_variable_group(parent, &ui->arena, s8("Parameters List"), VG_LIST, ui->font);
 
-	add_beamformer_variable_f32(group, &ui->arena, s8("Sampling Frequency:"), s8("[MHz]"),
+	add_beamformer_variable_f32(result, &ui->arena, s8("Sampling Frequency:"), s8("[MHz]"),
 	                            &bp->sampling_frequency, (v2){0}, 1e-6, 0, 0, ui->font);
 
-	add_beamformer_variable_f32(group, &ui->arena, s8("Center Frequency:"), s8("[MHz]"),
+	add_beamformer_variable_f32(result, &ui->arena, s8("Center Frequency:"), s8("[MHz]"),
 	                            &bp->center_frequency, (v2){.y = 100e-6}, 1e-6, 1e5,
 	                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-	add_beamformer_variable_f32(group, &ui->arena, s8("Speed of Sound:"), s8("[m/s]"),
+	add_beamformer_variable_f32(result, &ui->arena, s8("Speed of Sound:"), s8("[m/s]"),
 	                            &bp->speed_of_sound, (v2){.y = 1e6}, 1, 10,
 	                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-	group = add_variable_group(group, &ui->arena, s8("Lateral Extent:"), VG_V2, ui->font);
+	result = add_variable_group(result, &ui->arena, s8("Lateral Extent:"), VG_V2, ui->font);
 	{
-		add_beamformer_variable_f32(group, &ui->arena, s8("Min:"), s8("[mm]"),
+		add_beamformer_variable_f32(result, &ui->arena, s8("Min:"), s8("[mm]"),
 		                            &bp->output_min_coordinate.x, v2_inf, 1e3, 0.5e-3,
 		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-		add_beamformer_variable_f32(group, &ui->arena, s8("Max:"), s8("[mm]"),
+		add_beamformer_variable_f32(result, &ui->arena, s8("Max:"), s8("[mm]"),
 		                            &bp->output_max_coordinate.x, v2_inf, 1e3, 0.5e-3,
 		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 	}
-	group = end_variable_group(group);
+	result = end_variable_group(result);
 
-	group = add_variable_group(group, &ui->arena, s8("Axial Extent:"), VG_V2, ui->font);
+	result = add_variable_group(result, &ui->arena, s8("Axial Extent:"), VG_V2, ui->font);
 	{
-		add_beamformer_variable_f32(group, &ui->arena, s8("Min:"), s8("[mm]"),
+		add_beamformer_variable_f32(result, &ui->arena, s8("Min:"), s8("[mm]"),
 		                            &bp->output_min_coordinate.z, v2_inf, 1e3, 0.5e-3,
 		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-		add_beamformer_variable_f32(group, &ui->arena, s8("Max:"), s8("[mm]"),
+		add_beamformer_variable_f32(result, &ui->arena, s8("Max:"), s8("[mm]"),
 		                            &bp->output_max_coordinate.z, v2_inf, 1e3, 0.5e-3,
 		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 	}
-	group = end_variable_group(group);
+	result = end_variable_group(result);
 
-	add_beamformer_variable_f32(group, &ui->arena, s8("Off Axis Position:"), s8("[mm]"),
+	add_beamformer_variable_f32(result, &ui->arena, s8("Off Axis Position:"), s8("[mm]"),
 	                            &bp->off_axis_pos, (v2){.x = -1e3, .y = 1e3}, 1e3,
 	                            0.5e-3, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-	add_beamformer_variable_b32(group, &ui->arena, s8("Beamform Plane:"), s8("XZ"), s8("YZ"),
+	add_beamformer_variable_b32(result, &ui->arena, s8("Beamform Plane:"), s8("XZ"), s8("YZ"),
 	                            (b32 *)&bp->beamform_plane, V_INPUT|V_CAUSES_COMPUTE, ui->font);
 
-	add_beamformer_variable_f32(group, &ui->arena, s8("F#:"), s8(""), &bp->f_number,
+	add_beamformer_variable_f32(result, &ui->arena, s8("F#:"), s8(""), &bp->f_number,
 	                            (v2){.y = 1e3}, 1, 0.1, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-	add_beamformer_variable_f32(group, &ui->arena, s8("Dynamic Range:"), s8("[dB]"),
+	add_beamformer_variable_f32(result, &ui->arena, s8("Dynamic Range:"), s8("[dB]"),
 	                            &ctx->fsctx.db, (v2){.x = -120}, 1, 1,
 	                            V_INPUT|V_TEXT|V_GEN_MIPMAPS, ui->font);
 
-	add_beamformer_variable_f32(group, &ui->arena, s8("Threshold:"), s8(""),
+	add_beamformer_variable_f32(result, &ui->arena, s8("Threshold:"), s8(""),
 	                            &ctx->fsctx.threshold, (v2){.y = 240}, 1, 1,
 	                            V_INPUT|V_TEXT|V_GEN_MIPMAPS, ui->font);
 
-	group = end_variable_group(group);
-	ASSERT(group == 0);
+	return result;
 }
 
-static BeamformerFrameView *
-beamformer_frame_view_new(BeamformerUI *ui, BeamformerFrameViewType type)
+static Variable *
+add_beamformer_frame_view(Variable *parent, Arena *arena, BeamformerFrameViewType type, Font font)
 {
-	BeamformerFrameView *result = push_struct(&ui->arena, typeof(*result));
-	result->type = type;
+	Variable *result = add_variable(parent, arena, s8(""), 0, VT_BEAMFORMER_FRAME_VIEW, font);
+	BeamformerFrameView *bv = result->u.generic = push_struct(arena, typeof(*bv));
+	bv->type = type;
 	return result;
 }
 
 static BeamformFrame *
-beamformer_frame_view_frame(BeamformerUI *ui, BeamformerFrameView *bv)
+beamformer_frame_view_frame(BeamformerFrameView *bv)
 {
 	BeamformFrame *result;
 	switch (bv->type) {
-	case FVT_LATEST: result = ui->latest_frame; break;
-	default:         result = bv->frame;        break;
+	case FVT_LATEST: result = *(BeamformFrame **)bv->store; break;
+	default:         result = bv->store;                    break;
 	}
 	return result;
 }
@@ -645,16 +676,15 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, ScaleBar *sb, ScaleBarDirection dire
 }
 
 static void
-draw_beamform_view(BeamformerCtx *ctx, Arena a, v2 mouse, BeamformerFrameView *view)
+draw_beamformer_frame_view(BeamformerUI *ui, Arena a, BeamformerFrameView *view,
+                           Rect display_rect, v2 mouse)
 {
-	BeamformerUI *ui           = ctx->ui;
 	BeamformerUIParameters *bp = &ui->params;
 	InteractionState *is       = &ui->interaction;
-	Rect display_rect          = view->display_rect;
-	BeamformFrame *frame       = beamformer_frame_view_frame(ui, view);
+	BeamformFrame *frame       = beamformer_frame_view_frame(view);
 
 	Stream buf      = arena_stream(&a);
-	Texture *output = &ctx->fsctx.output.texture;
+	Texture *output = &view->ctx->output.texture;
 
 	v2 txt_s = measure_text(ui->small_font, s8("-288.8 mm"));
 
@@ -726,7 +756,7 @@ draw_beamform_view(BeamformerCtx *ctx, Arena a, v2 mouse, BeamformerFrameView *v
 	if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
 		BeamformerVariable *bv   = zero_struct(ui->scratch_variable);
 		bv->base.type            = VT_BEAMFORMER_VARIABLE;
-		bv->base.u.generic       = &ctx->fsctx.threshold;
+		bv->base.u.generic       = &view->ctx->threshold;
 		bv->base.flags           = V_GEN_MIPMAPS;
 		bv->subtype              = VT_F32;
 		bv->params.limits        = (v2){.y = 240};
@@ -826,9 +856,13 @@ draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2
 static Rect
 draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 {
+	/* TODO(rnp): limit the width of each element so that elements don't overlap */
 	ASSERT(group->type == VT_GROUP);
+
 	r.pos.x  += LISTING_INDENT;
 	r.size.x -= LISTING_INDENT;
+	r.pos.y  += LISTING_INDENT;
+	r.size.y -= LISTING_INDENT;
 
 	Variable *var = group->u.group.first;
 	f32 x_off     = group->u.group.max_name_width;
@@ -913,7 +947,7 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 }
 
 static void
-draw_debug_overlay(BeamformerCtx *ctx, BeamformFrame *frame, Arena arena, Rect r)
+draw_compute_stats(BeamformerCtx *ctx, ComputeShaderStats *stats, Arena arena, Rect r)
 {
 	static s8 labels[CS_LAST] = {
 		#define X(e, n, s, h, pn) [CS_##e] = s8(pn ":"),
@@ -922,10 +956,12 @@ draw_debug_overlay(BeamformerCtx *ctx, BeamformFrame *frame, Arena arena, Rect r
 	};
 
 	BeamformerUI *ui = ctx->ui;
-	uv2 ws = ctx->window_size;
 
 	Stream buf = stream_alloc(&arena, 64);
-	v2 pos     = {.x = 20, .y = ws.h - 10};
+
+	v2 pos;
+	pos.x = r.pos.x + LISTING_INDENT;
+	pos.y = r.pos.y + r.size.h - LISTING_INDENT;
 
 	f32 compute_time_sum = 0;
 	u32 stages = ctx->params->compute_stages_count;
@@ -935,13 +971,13 @@ draw_debug_overlay(BeamformerCtx *ctx, BeamformFrame *frame, Arena arena, Rect r
 		draw_text(ui->font, labels[index], pos, colour_from_normalized(FG_COLOUR));
 
 		buf.widx = 0;
-		stream_append_f64_e(&buf, frame->compute_times[index]);
+		stream_append_f64_e(&buf, stats->times[index]);
 		stream_append_s8(&buf, s8(" [s]"));
 		v2 txt_fs = measure_text(ui->font, stream_to_s8(&buf));
 		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
 		draw_text(ui->font, stream_to_s8(&buf), rpos, colour_from_normalized(FG_COLOUR));
 
-		compute_time_sum += frame->compute_times[index];
+		compute_time_sum += stats->times[index];
 	}
 
 	pos.y -= ui->font.baseSize;
@@ -1014,6 +1050,78 @@ draw_active_text_box(BeamformerUI *ui, Variable *var)
 	draw_text(*is->font, text, text_position,
 	          colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, hover_t)));
 	DrawRectanglePro(cursor.rl, (Vector2){0}, 0, colour_from_normalized(cursor_colour));
+}
+
+static void
+draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
+{
+	switch (var->type) {
+	case VT_GROUP: {
+		draw_variable_list(ui, var, draw_rect, mouse);
+	} break;
+	case VT_BEAMFORMER_FRAME_VIEW: {
+		BeamformerFrameView *view = var->u.generic;
+		if (beamformer_frame_view_frame(view)->ready_to_present)
+			draw_beamformer_frame_view(ui, ui->arena, view, draw_rect, mouse);
+	} break;
+	case VT_COMPUTE_LATEST_STATS_VIEW: {
+		ComputeStatsView *csv = &var->u.compute_stats_view;
+		draw_compute_stats(csv->ctx, *(ComputeShaderStats **)csv->stats, ui->arena, draw_rect);
+	} break;
+	case VT_COMPUTE_STATS_VIEW: {
+		ComputeStatsView *csv = &var->u.compute_stats_view;
+		draw_compute_stats(csv->ctx, csv->stats, ui->arena, draw_rect);
+	} break;
+	default: break;
+	}
+}
+
+static void
+draw_ui_regions(BeamformerUI *ui, Rect window, v2 mouse)
+{
+	struct region_stack_item {
+		Variable *var;
+		Rect      rect;
+	} *region_stack;
+
+	TempArena arena_savepoint = begin_temp_arena(&ui->arena);
+	i32 stack_index = 0;
+
+	region_stack = alloc(&ui->arena, typeof(*region_stack), 256);
+	region_stack[0].var  = ui->regions;
+	region_stack[0].rect = window;
+
+	while (stack_index != -1) {
+		struct region_stack_item *rsi = region_stack + stack_index--;
+		Rect rect = rsi->rect;
+		switch (rsi->var->type) {
+		case VT_UI_REGION_SPLIT: {
+			Rect first, second;
+			RegionSplit *rs = &rsi->var->u.region_split;
+			switch (rs->direction) {
+			case RSD_VERTICAL:
+				split_rect_vertical(rect, rs->fraction, &first, &second);
+				break;
+			case RSD_HORIZONTAL:
+				split_rect_horizontal(rect, rs->fraction, &first, &second);
+				break;
+			};
+			stack_index++;
+			region_stack[stack_index].var  = rs->right;
+			region_stack[stack_index].rect = second;
+			stack_index++;
+			region_stack[stack_index].var  = rs->left;
+			region_stack[stack_index].rect = first;
+			/* TODO(rnp): draw the split */
+		} break;
+		default: {
+			draw_variable(ui, rsi->var, rect, mouse);
+		} break;
+		}
+		ASSERT(stack_index < 256);
+	}
+
+	end_temp_arena(arena_savepoint);
 }
 
 static void
@@ -1318,8 +1426,7 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 			is->active->u.b32 = !is->active->u.b32;
 		} break;
 		case VT_BEAMFORMER_VARIABLE: {
-			BeamformerVariable *bv = (BeamformerVariable *)is->active;
-			ASSERT(bv->subtype == VT_B32);
+			ASSERT(((BeamformerVariable *)is->active)->subtype == VT_B32);
 			b32 *val = is->active->u.generic;
 			*val     = !(*val);
 		} break;
@@ -1403,20 +1510,22 @@ ui_init(BeamformerCtx *ctx, Arena store)
 
 	ui = ctx->ui = push_struct(&store, typeof(*ui));
 	ui->arena = store;
-	ui->frame_temporary_arena = begin_temp_arena(&ui->arena);
 
 	/* TODO: build these into the binary */
 	ui->font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
 	ui->small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 22, 0, 0);
 
-	beamformer_parameters_view_init(ctx);
 
 	ui->scratch_variable = ui->scratch_variables + 0;
+	Variable *split = ui->regions   = add_ui_split(0, &ui->arena, s8("UI Root"), 0.35,
+	                                               RSD_HORIZONTAL, ui->font);
+	split->u.region_split.left      = add_ui_split(split, &ui->arena, s8(""), 0.8,
+	                                               RSD_VERTICAL, ui->font);
+	split->u.region_split.right     = add_beamformer_frame_view(split, &ui->arena,
+	                                                            FVT_LATEST, ui->font);
 
-	/* NOTE(rnp): by default we always have at least one view */
-	Variable *var = add_variable(&ui->beamform_views, &ui->arena, s8("Beamformed Views"), 0,
-	                             VT_BEAMFORMER_VIEW, ui->font);
-	BeamformerFrameView *bv = var->u.generic = beamformer_frame_view_new(ui, FVT_LATEST);
+	BeamformerFrameView *bv         = split->u.region_split.right->u.generic;
+	bv->store                       = &ui->latest_frame;
 	bv->lateral_scale_bar.min_value = &ui->params.output_min_coordinate.x;
 	bv->lateral_scale_bar.max_value = &ui->params.output_max_coordinate.x;
 	bv->axial_scale_bar.min_value   = &ui->params.output_min_coordinate.z;
@@ -1431,6 +1540,17 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	bv->lateral_scale_bar.zoom_starting_point = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
 	bv->axial_scale_bar.zoom_starting_point   = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
 
+	/* TODO(rnp): hack: each view needs their own cut down fragment shader context */
+	bv->ctx = &ctx->fsctx;
+
+	split = split->u.region_split.left;
+	split->u.region_split.left  = add_beamformer_parameters_view(split, ctx);
+	split->u.region_split.right = add_variable(split, &ui->arena, s8(""), 0,
+	                                           VT_COMPUTE_LATEST_STATS_VIEW, ui->font);
+	ComputeStatsView *compute_stats = &split->u.region_split.right->u.compute_stats_view;
+	compute_stats->ctx   = ctx;
+	compute_stats->stats = &ui->latest_compute_stats;
+
 	ctx->ui_read_params = 1;
 }
 
@@ -1444,15 +1564,12 @@ validate_ui_parameters(BeamformerUIParameters *p)
 }
 
 static void
-draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw)
+draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw,
+        ComputeShaderStats *latest_compute_stats)
 {
 	BeamformerUI *ui = ctx->ui;
 	ui->latest_frame = frame_to_draw;
-
-	/* TODO(rnp): we need an ALLOC_END flag so that we can have permanent storage
-	 * or we need a sub arena for the save point stack */
-	//end_temp_arena(ui->frame_temporary_arena);
-	//ui->frame_temporary_arena = begin_temp_arena(&ui->arena);
+	ui->latest_compute_stats = latest_compute_stats;
 
 	/* TODO(rnp): there should be a better way of detecting this */
 	if (ctx->ui_read_params) {
@@ -1478,26 +1595,10 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 	BeginDrawing();
 		ClearBackground(colour_from_normalized(BG_COLOUR));
 
-		v2 mouse = input->mouse;
-		Rect wr = {.size = {.w = (f32)ctx->window_size.w, .h = (f32)ctx->window_size.h}};
-		Rect lr = wr, rr = wr;
-		lr.size.w = INFO_COLUMN_WIDTH;
-		rr.size.w = wr.size.w - lr.size.w;
-		rr.pos.x  = lr.pos.x  + lr.size.w;
+		v2 mouse         = input->mouse;
+		Rect window_rect = {.size = {.w = ctx->window_size.w, .h = ctx->window_size.h}};
 
-		{
-			Rect draw_r = lr;
-			draw_r.pos.y  += 20;
-			draw_r.size.y -= 20;
-			draw_variable_list(ui, ui->parameters_view, draw_r, mouse);
-		}
-		if (ui->latest_frame->ready_to_present) {
-			BeamformerFrameView *view = ui->beamform_views.u.group.first->u.generic;
-			view->display_rect = rr;
-			draw_beamform_view(ctx, ui->arena, mouse, view);
-		}
-		draw_debug_overlay(ctx, frame_to_draw, ui->arena, lr);
-
+		draw_ui_regions(ui, window_rect, mouse);
 		if (ui->interaction.type == IT_TEXT)
 			draw_active_text_box(ui, ui->interaction.active);
 	EndDrawing();

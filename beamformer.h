@@ -10,8 +10,6 @@
 
 #include "util.h"
 
-#define INFO_COLUMN_WIDTH      480
-
 enum gl_vendor_ids {
 	GL_VENDOR_AMD,
 	GL_VENDOR_ARM,
@@ -123,6 +121,15 @@ DAS_TYPES
 } DASShaderID;
 
 typedef struct {
+	/* TODO(rnp): there is assumption here that each shader will occur only once
+	 * per compute. add an insertion index and change these to hold the max number
+	 * of executed compute stages */
+	u32 timer_ids[CS_LAST];
+	f32 times[CS_LAST];
+	b32 timer_active[CS_LAST];
+} ComputeShaderStats;
+
+typedef struct {
 	uv3 dim;
 	u32 texture;
 
@@ -136,11 +143,6 @@ typedef struct {
 	b32 ready_to_present;
 	DASShaderID das_shader_id;
 	u32 compound_count;
-
-	/* TODO(rnp): move this out so that saved frame copies can save some space */
-	u32 timer_ids[CS_LAST];
-	f32 compute_times[CS_LAST];
-	b32 timer_active[CS_LAST];
 } BeamformFrame;
 
 typedef struct {
@@ -171,15 +173,20 @@ typedef struct {
 } ComputeShaderReloadContext;
 
 typedef struct {
-	BeamformFrame *frame;
-	iptr           file_handle;
+	BeamformFrame      *store;
+	ComputeShaderStats *stats;
+} BeamformerWorkFrame;
+
+typedef struct {
+	BeamformerWorkFrame frame;
+	iptr                file_handle;
 } BeamformOutputFrameContext;
 
 /* NOTE: discriminated union based on type */
 typedef struct {
 	union {
 		iptr                        file_handle;
-		BeamformFrame              *frame;
+		BeamformerWorkFrame         frame;
 		BeamformOutputFrameContext  output_frame_ctx;
 		ComputeShaderReloadContext *reload_shader_ctx;
 	};
@@ -217,12 +224,15 @@ typedef struct BeamformerCtx {
 	/* TODO(rnp): this is nasty and should be removed */
 	b32    ui_read_params;
 
-	BeamformFrame beamform_frames[MAX_BEAMFORMED_SAVED_FRAMES];
+	BeamformFrame      beamform_frames[MAX_BEAMFORMED_SAVED_FRAMES];
+	ComputeShaderStats beamform_frame_compute_stats[MAX_BEAMFORMED_SAVED_FRAMES];
 	u32 next_render_frame_index;
 	u32 display_frame_index;
 
 	/* NOTE: this will only be used when we are averaging */
-	BeamformFrame averaged_frame;
+	BeamformFrame      averaged_frame;
+	ComputeShaderStats averaged_frame_compute_stats;
+
 	ComputeShaderCtx  csctx;
 	FragmentShaderCtx fsctx;
 

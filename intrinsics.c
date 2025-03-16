@@ -8,6 +8,7 @@
 #define atomic_load(ptr)     __atomic_load_n(ptr,       __ATOMIC_ACQUIRE)
 #define atomic_and(ptr, n)   __atomic_and_fetch(ptr, n, __ATOMIC_RELEASE)
 #define atomic_add(ptr, n)   __atomic_add_fetch(ptr, n, __ATOMIC_RELEASE)
+#define atomic_inc(ptr, n)   __atomic_fetch_add(ptr, n, __ATOMIC_ACQ_REL)
 
 static FORCE_INLINE u32
 clz_u32(u32 a)

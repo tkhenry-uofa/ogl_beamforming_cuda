@@ -205,19 +205,6 @@ static FILE_WATCH_CALLBACK_FN(queue_compute_shader_reload)
 		work->type = BW_RELOAD_SHADER;
 		work->reload_shader_ctx = csr;
 		beamform_work_queue_push_commit(ctx->beamform_work_queue);
-		if (ctx->platform.compute_worker.asleep &&
-		    ctx->beamform_frames[ctx->display_frame_index].ready_to_present)
-		{
-			BeamformWork *compute = beamform_work_queue_push(ctx->beamform_work_queue);
-			if (compute) {
-				compute->type  = BW_COMPUTE;
-				compute->frame = ctx->beamform_frames + ctx->next_render_frame_index++;
-				compute->frame->ready_to_present = 0;
-				if (ctx->next_render_frame_index >= ARRAY_COUNT(ctx->beamform_frames))
-					ctx->next_render_frame_index = 0;
-				beamform_work_queue_push_commit(ctx->beamform_work_queue);
-			}
-		}
 		ctx->platform.wake_thread(ctx->platform.compute_worker.sync_handle);
 	}
 	return 1;
@@ -281,7 +268,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	InitWindow(ctx->window_size.w, ctx->window_size.h, "OGL Beamformer");
 	/* NOTE: do this after initing so that the window starts out floating in tiling wm */
 	SetWindowState(FLAG_WINDOW_RESIZABLE);
-	SetWindowMinSize(INFO_COLUMN_WIDTH * 2, ctx->window_size.h);
+	SetWindowMinSize(840, ctx->window_size.h);
 
 	/* NOTE: Gather information about the GPU */
 	get_gl_params(&ctx->gl, &ctx->error_stream);

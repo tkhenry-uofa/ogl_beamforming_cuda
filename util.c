@@ -549,6 +549,38 @@ sub_v4(v4 a, v4 b)
 	return result;
 }
 
+static void
+split_rect_horizontal(Rect rect, f32 fraction, Rect *left, Rect *right)
+{
+	if (left) {
+		left->pos    = rect.pos;
+		left->size.h = rect.size.h;
+		left->size.w = rect.size.w * fraction;
+	}
+	if (right) {
+		right->pos    = rect.pos;
+		right->pos.x += rect.size.w * fraction;
+		right->size.h = rect.size.h;
+		right->size.w = rect.size.w * (1.0f - fraction);
+	}
+}
+
+static void
+split_rect_vertical(Rect rect, f32 fraction, Rect *top, Rect *bot)
+{
+	if (top) {
+		top->pos    = rect.pos;
+		top->size.w = rect.size.w;
+		top->size.h = rect.size.h * fraction;
+	}
+	if (bot) {
+		bot->pos    = rect.pos;
+		bot->pos.y += rect.size.h * fraction;
+		bot->size.w = rect.size.w;
+		bot->size.h = rect.size.h * (1.0f - fraction);
+	}
+}
+
 static f64
 parse_f64(s8 s)
 {
