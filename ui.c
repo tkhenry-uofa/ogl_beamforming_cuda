@@ -7,10 +7,13 @@
 
 #define NORMALIZED_FG_COLOUR   colour_from_normalized(FG_COLOUR)
 
-#define TEXT_HOVER_SPEED       5.0f
+#define HOVER_SPEED            5.0f
 
 #define RULER_TEXT_PAD         10.0f
 #define RULER_TICK_LENGTH      20.0f
+
+#define UI_SPLIT_HANDLE_THICK  8.0f
+#define UI_REGION_PAD          16.0f
 
 typedef struct {
 	u8   buf[64];
@@ -93,8 +96,6 @@ typedef struct {
 	b32       expanded;
 	f32       max_name_width;
 	VariableGroupType type;
-	/* TODO(rnp): maybe this should just be in the Variable */
-	f32       hover_t;
 } VariableGroup;
 
 struct Variable {
@@ -112,6 +113,8 @@ struct Variable {
 	Variable *parent;
 	u32       flags;
 	VariableType type;
+
+	f32 hover_t;
 };
 
 enum variable_flags {
@@ -134,7 +137,6 @@ typedef struct {
 		} params;
 	};
 	VariableType subtype;
-	f32 hover_t;
 } BeamformerVariable;
 
 typedef enum {
@@ -544,6 +546,16 @@ extend_rect_centered(Rect r, v2 delta)
 }
 
 static Rect
+shrink_rect_centered(Rect r, v2 delta)
+{
+	r.size.w -= delta.x;
+	r.size.h -= delta.y;
+	r.pos.x  += delta.x / 2;
+	r.pos.y  += delta.y / 2;
+	return r;
+}
+
+static Rect
 scale_rect_centered(Rect r, v2 scale)
 {
 	Rect or   = r;
@@ -566,11 +578,11 @@ center_align_text_in_rect(Rect r, s8 text, Font font)
 }
 
 static b32
-hover_text(v2 mouse, Rect text_rect, f32 *hover_t)
+hover_rect(v2 mouse, Rect rect, f32 *hover_t)
 {
-	b32 hovering = CheckCollisionPointRec(mouse.rl, text_rect.rl);
-	if (hovering) *hover_t += TEXT_HOVER_SPEED * dt_for_frame;
-	else          *hover_t -= TEXT_HOVER_SPEED * dt_for_frame;
+	b32 hovering = CheckCollisionPointRec(mouse.rl, rect.rl);
+	if (hovering) *hover_t += HOVER_SPEED * dt_for_frame;
+	else          *hover_t -= HOVER_SPEED * dt_for_frame;
 	*hover_t = CLAMP01(*hover_t);
 	return hovering;
 }
@@ -660,7 +672,7 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, ScaleBar *sb, ScaleBarDirection dire
 		sb->screen_space_to_value = (v2){.x = (*sb->max_value - *sb->min_value) / tick_rect.size.x};
 	}
 
-	if (hover_text(mouse, tick_rect, &sb->hover_t)) {
+	if (hover_rect(mouse, tick_rect, &sb->hover_t)) {
 		Variable *var  = zero_struct(&ui->scratch_variable->base);
 		var->u.generic = sb;
 		var->type      = VT_SCALE_BAR;
@@ -697,8 +709,8 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, BeamformerFrameView *view,
 	Rect vr    = display_rect;
 	vr.pos.x  += 0.5 * ui->small_font.baseSize;
 	vr.pos.y  += 0.5 * ui->small_font.baseSize;
-	vr.size.h  = display_rect.size.h - pad;
-	vr.size.w  = display_rect.size.w - pad;
+	vr.size.h  = MAX(0, display_rect.size.h - pad);
+	vr.size.w  = MAX(0, display_rect.size.w - pad);
 
 	/* TODO(rnp): make this depend on the requested draw orientation (x-z or y-z or x-y) */
 	v2 output_dim = {
@@ -835,7 +847,7 @@ draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2
 		Rect text_rect = {.pos = at, .size = text_size};
 		text_rect = extend_rect_centered(text_rect, (v2){.x = 8});
 
-		if (hover_text(mouse, text_rect, hover_t)) {
+		if (hover_rect(mouse, text_rect, hover_t)) {
 			if (var->flags & V_TEXT) {
 				InputState *is  = &ui->text_input_state;
 				is->hot_rect    = text_rect;
@@ -853,16 +865,13 @@ draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2
 #define LISTING_INDENT     20.0f
 #define LISTING_LINE_PAD    6.0f
 
-static Rect
+static void
 draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 {
 	/* TODO(rnp): limit the width of each element so that elements don't overlap */
 	ASSERT(group->type == VT_GROUP);
 
-	r.pos.x  += LISTING_INDENT;
-	r.size.x -= LISTING_INDENT;
-	r.pos.y  += LISTING_INDENT;
-	r.size.y -= LISTING_INDENT;
+	r = shrink_rect_centered(r, (v2){.x = 2 * UI_REGION_PAD, .y = UI_REGION_PAD});
 
 	Variable *var = group->u.group.first;
 	f32 x_off     = group->u.group.max_name_width;
@@ -878,7 +887,7 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 			advance  = draw_text(ui->font, var->name, at, NORMALIZED_FG_COLOUR).y;
 			at.x    += x_off + LISTING_CENTER_PAD;
 
-			draw_beamformer_variable(ui, ui->arena, var, at, mouse, &bv->hover_t);
+			draw_beamformer_variable(ui, ui->arena, var, at, mouse, &var->hover_t);
 
 			while (var) {
 				if (var->next) {
@@ -894,7 +903,7 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 		case VT_GROUP: {
 			VariableGroup *g = &var->u.group;
 
-			advance  = draw_beamformer_variable(ui, ui->arena, var, at, mouse, &g->hover_t).y;
+			advance  = draw_beamformer_variable(ui, ui->arena, var, at, mouse, &var->hover_t).y;
 			at.x    += x_off + LISTING_CENTER_PAD;
 			if (g->expanded) {
 				r.pos.x  += LISTING_INDENT;
@@ -915,7 +924,7 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 					at.x += draw_text(ui->font, s8("{"), at, NORMALIZED_FG_COLOUR).x;
 					while (v) {
 						at.x += draw_beamformer_variable(ui, ui->arena,
-						             (Variable *)v, at, mouse, &v->hover_t).x;
+						             (Variable *)v, at, mouse, &v->base.hover_t).x;
 
 						v = (BeamformerVariable *)v->base.next;
 						if (v) at.x += draw_text(ui->font, s8(", "), at,
@@ -940,10 +949,6 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 		r.pos.y  += advance + LISTING_LINE_PAD;
 		r.size.y -= advance + LISTING_LINE_PAD;
 	}
-
-	r.pos.x  -= LISTING_INDENT;
-	r.size.x += LISTING_INDENT;
-	return r;
 }
 
 static void
@@ -959,9 +964,9 @@ draw_compute_stats(BeamformerCtx *ctx, ComputeShaderStats *stats, Arena arena, R
 
 	Stream buf = stream_alloc(&arena, 64);
 
-	v2 pos;
-	pos.x = r.pos.x + LISTING_INDENT;
-	pos.y = r.pos.y + r.size.h - LISTING_INDENT;
+	r = shrink_rect_centered(r, (v2){.x = 2 * UI_REGION_PAD, .y = UI_REGION_PAD});
+	v2 pos = r.pos;
+	pos.y += r.size.h;
 
 	f32 compute_time_sum = 0;
 	u32 stages = ctx->params->compute_stages_count;
@@ -1041,20 +1046,21 @@ draw_active_text_box(BeamformerUI *ui, Variable *var)
 	v4 cursor_colour = FOCUSED_COLOUR;
 	cursor_colour.a  = CLAMP01(is->cursor_blink_t);
 
-	f32 hover_t = 1;
-	if (var->type == VT_BEAMFORMER_VARIABLE)
-		hover_t = ((BeamformerVariable *)var)->hover_t;
-
 	DrawRectangleRounded(background.rl, 0.2, 0, fade(BLACK, 0.8));
 	DrawRectangleRounded(box.rl, 0.2, 0, colour_from_normalized(BG_COLOUR));
 	draw_text(*is->font, text, text_position,
-	          colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, hover_t)));
+	          colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, var->hover_t)));
 	DrawRectanglePro(cursor.rl, (Vector2){0}, 0, colour_from_normalized(cursor_colour));
 }
 
 static void
 draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 {
+	if (var->type != VT_UI_REGION_SPLIT) {
+		v2 shrink = {.x = UI_REGION_PAD, .y = UI_REGION_PAD};
+		draw_rect = shrink_rect_centered(draw_rect, shrink);
+	}
+
 	switch (var->type) {
 	case VT_GROUP: {
 		draw_variable_list(ui, var, draw_rect, mouse);
@@ -1071,6 +1077,36 @@ draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 	case VT_COMPUTE_STATS_VIEW: {
 		ComputeStatsView *csv = &var->u.compute_stats_view;
 		draw_compute_stats(csv->ctx, csv->stats, ui->arena, draw_rect);
+	} break;
+	case VT_UI_REGION_SPLIT: {
+		RegionSplit *rs = &var->u.region_split;
+
+		Rect split, hover;
+		switch (rs->direction) {
+		case RSD_VERTICAL: {
+			split_rect_vertical(draw_rect, rs->fraction, 0, &split);
+			split.pos.x  += UI_REGION_PAD;
+			split.pos.y  -= UI_SPLIT_HANDLE_THICK / 2;
+			split.size.h  = UI_SPLIT_HANDLE_THICK;
+			split.size.w -= 2 * UI_REGION_PAD;
+			hover = extend_rect_centered(split, (v2){.y = UI_REGION_PAD});
+		} break;
+		case RSD_HORIZONTAL: {
+			split_rect_horizontal(draw_rect, rs->fraction, 0, &split);
+			split.pos.x  -= UI_SPLIT_HANDLE_THICK / 2;
+			split.pos.y  += UI_REGION_PAD;
+			split.size.w  = UI_SPLIT_HANDLE_THICK;
+			split.size.h -= 2 * UI_REGION_PAD;
+			hover = extend_rect_centered(split, (v2){.x = UI_REGION_PAD});
+		} break;
+		}
+
+		if (hover_rect(mouse, hover, &var->hover_t))
+			ui->interaction.hot = var;
+
+		v4 colour = HOVERED_COLOUR;
+		colour.a  = var->hover_t;
+		DrawRectangleRounded(split.rl, 0.6, 0, colour_from_normalized(colour));
 	} break;
 	default: break;
 	}
@@ -1094,30 +1130,28 @@ draw_ui_regions(BeamformerUI *ui, Rect window, v2 mouse)
 	while (stack_index != -1) {
 		struct region_stack_item *rsi = region_stack + stack_index--;
 		Rect rect = rsi->rect;
-		switch (rsi->var->type) {
-		case VT_UI_REGION_SPLIT: {
+		draw_variable(ui, rsi->var, rect, mouse);
+
+		if (rsi->var->type == VT_UI_REGION_SPLIT) {
 			Rect first, second;
 			RegionSplit *rs = &rsi->var->u.region_split;
 			switch (rs->direction) {
-			case RSD_VERTICAL:
+			case RSD_VERTICAL: {
 				split_rect_vertical(rect, rs->fraction, &first, &second);
-				break;
-			case RSD_HORIZONTAL:
+			} break;
+			case RSD_HORIZONTAL: {
 				split_rect_horizontal(rect, rs->fraction, &first, &second);
-				break;
-			};
+			} break;
+			}
+
 			stack_index++;
 			region_stack[stack_index].var  = rs->right;
 			region_stack[stack_index].rect = second;
 			stack_index++;
 			region_stack[stack_index].var  = rs->left;
 			region_stack[stack_index].rect = first;
-			/* TODO(rnp): draw the split */
-		} break;
-		default: {
-			draw_variable(ui, rsi->var, rect, mouse);
-		} break;
 		}
+
 		ASSERT(stack_index < 256);
 	}
 
@@ -1212,7 +1246,7 @@ end_text_input(InputState *is, Variable *var)
 		BeamformerVariable *bv = (BeamformerVariable *)var;
 		ASSERT(bv->subtype == VT_F32);
 		scale = bv->params.display_scale;
-		bv->hover_t = 0;
+		var->hover_t = 0;
 	}
 	f32 value = parse_f64((s8){.len = is->buf_len, .data = is->buf}) / scale;
 	ui_store_variable(var, &value);
@@ -1227,11 +1261,8 @@ update_text_input(InputState *is, Variable *var)
 	if (is->cursor_blink_t >= 1) is->cursor_blink_scale = -1.5f;
 	if (is->cursor_blink_t <= 0) is->cursor_blink_scale =  1.5f;
 
-	if (var->type == VT_BEAMFORMER_VARIABLE) {
-		BeamformerVariable *bv = (BeamformerVariable *)var;
-		bv->hover_t -= 2 * TEXT_HOVER_SPEED * dt_for_frame;
-		bv->hover_t  = CLAMP01(bv->hover_t);
-	}
+	var->hover_t -= 2 * HOVER_SPEED * dt_for_frame;
+	var->hover_t  = CLAMP01(var->hover_t);
 
 	/* NOTE: handle multiple input keys on a single frame */
 	i32 key = GetCharPressed();
@@ -1383,6 +1414,7 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mous
 		case VT_NULL:  is->type = IT_NOP; break;
 		case VT_B32:   is->type = IT_SET; break;
 		case VT_GROUP: is->type = IT_SET; break;
+		case VT_UI_REGION_SPLIT: is->type = IT_DRAG; break;
 		case VT_BEAMFORMER_VARIABLE: {
 			BeamformerVariable *bv = (BeamformerVariable *)is->hot;
 			if (bv->subtype == VT_B32) {
@@ -1437,6 +1469,7 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 	case IT_SCROLL:  scroll_interaction(is->active, GetMouseWheelMoveV().y); break;
 	case IT_TEXT:    end_text_input(&ui->text_input_state, is->active);      break;
 	case IT_SCALE_BAR: break;
+	case IT_DRAG:      break;
 	default: INVALID_CODE_PATH;
 	}
 
@@ -1477,8 +1510,32 @@ ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
 		if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
 			ui_end_interact(ctx, input->mouse);
 		} else {
+			v2 ws     = (v2){.w = ctx->window_size.w, .h = ctx->window_size.h};
+			v2 dMouse = sub_v2(input->mouse, input->last_mouse);
+			dMouse    = mul_v2(dMouse, (v2){.x = 1.0f / ws.w, .y = 1.0f / ws.h});
+
 			switch (is->active->type) {
+			case VT_UI_REGION_SPLIT: {
+				f32 min_fraction;
+				RegionSplit *rs = &is->active->u.region_split;
+				switch (rs->direction) {
+				case RSD_VERTICAL: {
+					min_fraction  = (UI_SPLIT_HANDLE_THICK + 0.5 * UI_REGION_PAD) / ws.h;
+					rs->fraction += dMouse.y;
+				} break;
+				case RSD_HORIZONTAL: {
+					min_fraction  = (UI_SPLIT_HANDLE_THICK + 0.5 * UI_REGION_PAD) / ws.w;
+					rs->fraction += dMouse.x;
+				} break;
+				}
+				rs->fraction = CLAMP(rs->fraction, min_fraction, 1 - min_fraction);
+			} break;
 			default: break;
+			}
+
+			if (is->active != is->hot) {
+				is->active->hover_t += HOVER_SPEED * dt_for_frame;
+				is->active->hover_t  = CLAMP01(is->active->hover_t);
 			}
 		}
 	} break;
