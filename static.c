@@ -33,10 +33,9 @@ static FILE_WATCH_CALLBACK_FN(debug_reload)
 	DEBUG_ENTRY_POINTS
 	#undef X
 
-	if (err.widx)
-		os_write_err_msg(stream_to_s8(&err));
+	stream_append_s8(&err, s8("Reloaded Main Executable\n"));
+	os_write_err_msg(stream_to_s8(&err));
 
-	os_write_err_msg(s8("Reloaded Main Executable\n"));
 	input->executable_reloaded = 1;
 
 	return 1;
@@ -63,8 +62,7 @@ debug_init(Platform *p, iptr input, Arena *arena)
 		}
 	}
 
-	if (err.widx)
-		os_write_err_msg(stream_to_s8(&err));
+	os_write_err_msg(stream_to_s8(&err));
 }
 
 #endif /* _DEBUG */
@@ -88,7 +86,7 @@ gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, co
 	stream_append(e, (char *)msg, len);
 	stream_append_byte(e, '\n');
 	os_write_err_msg(stream_to_s8(e));
-	e->widx = 0;
+	stream_reset(e, 0);
 }
 
 static void
@@ -176,8 +174,7 @@ dump_gl_params(GLParams *gl, Arena a)
 	stream_append_s8(&s, s8("\nMax Server Wait Time [ns]:   "));
 	stream_append_i64(&s, gl->max_server_wait_time);
 	stream_append_s8(&s, s8("\n-----------------------\n"));
-	if (!s.errors)
-		os_write_err_msg(stream_to_s8(&s));
+	os_write_err_msg(stream_to_s8(&s));
 #endif
 }
 
@@ -231,17 +228,16 @@ static FILE_WATCH_CALLBACK_FN(load_cuda_lib)
 	CudaLib *cl = (CudaLib *)user_data;
 	b32 result  = os_file_exists((c8 *)path.data);
 	if (result) {
-		os_write_err_msg(s8("loading CUDA lib: " OS_CUDA_LIB_NAME "\n"));
-
 		Stream err = arena_stream(&tmp);
+
+		stream_append_s8(&err, s8("loading CUDA lib: " OS_CUDA_LIB_NAME "\n"));
 		os_unload_library(cl->lib);
 		cl->lib = os_load_library((c8 *)path.data, OS_CUDA_LIB_TEMP_NAME, &err);
 		#define X(name) cl->name = os_lookup_dynamic_symbol(cl->lib, #name, &err);
 		CUDA_LIB_FNS
 		#undef X
 
-		if (err.widx)
-			os_write_err_msg(stream_to_s8(&err));
+		os_write_err_msg(stream_to_s8(&err));
 	}
 
 	#define X(name) if (!cl->name) cl->name = name ## _stub;

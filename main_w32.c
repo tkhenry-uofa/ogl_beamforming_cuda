@@ -49,7 +49,7 @@ dispatch_file_watch(Platform *platform, FileWatchDirectory *fw_dir, u8 *buf, Are
 		Stream path = {.data = arena_commit(&arena, KB(1)), .cap = KB(1)};
 
 		if (fni->action != FILE_ACTION_MODIFIED) {
-			path.widx = 0;
+			stream_reset(&path, 0);
 			stream_append_s8(&path, s8("unknown file watch event: "));
 			stream_append_u64(&path, fni->action);
 			stream_append_byte(&path, '\n');
@@ -63,7 +63,7 @@ dispatch_file_watch(Platform *platform, FileWatchDirectory *fw_dir, u8 *buf, Are
 		                                       .len  = fni->filename_size / 2});
 		stream_append_s8(&path, file_name);
 		stream_append_byte(&path, 0);
-		path.widx--;
+		stream_commit(&path, -1);
 
 		u64 hash = s8_hash(file_name);
 		for (u32 i = 0; i < fw_dir->file_watch_count; i++) {
@@ -126,7 +126,7 @@ poll_pipe(Pipe *p, Stream *e)
 				stream_append_i64(e, GetLastError());
 				stream_append_byte(e, '\n');
 				os_write_err_msg(stream_to_s8(e));
-				e->widx = 0;
+				stream_reset(e, 0);
 			}
 		}
 	}

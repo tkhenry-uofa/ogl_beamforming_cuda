@@ -132,8 +132,8 @@ os_get_module(char *name, Stream *e)
 
 static PLATFORM_WRITE_FILE_FN(os_write_file)
 {
-	i32 wlen;
-	WriteFile(file, raw.data, raw.len, &wlen, 0);
+	i32 wlen = 0;
+	if (raw.len) WriteFile(file, raw.data, raw.len, &wlen, 0);
 	return raw.len == wlen;
 }
 

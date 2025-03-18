@@ -48,10 +48,10 @@ dispatch_file_watch_events(Platform *platform, Arena arena)
 						stream_append_byte(&path, '/');
 						stream_append_s8(&path, file);
 						stream_append_byte(&path, 0);
-						path.widx--;
+						stream_commit(&path, -1);
 						fw->callback(platform, stream_to_s8(&path),
 						             fw->user_data, arena);
-						path.widx = 0;
+						stream_reset(&path, 0);
 						break;
 					}
 				}

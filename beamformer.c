@@ -158,7 +158,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		stream_append_u64(&label, i);
 		s8 rf_label = stream_to_s8(&label);
 		LABEL_GL_OBJECT(GL_BUFFER, cs->rf_data_ssbos[i], rf_label);
-		label.widx = s_widx;
+		stream_reset(&label, s_widx);
 	}
 
 	i32 map_flags = GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT|GL_MAP_UNSYNCHRONIZED_BIT;
@@ -461,7 +461,7 @@ compile_shader(Platform *platform, Arena a, u32 type, s8 shader, s8 name)
 		i32 len = 0, out_len = 0;
 		glGetShaderiv(sid, GL_INFO_LOG_LENGTH, &len);
 		glGetShaderInfoLog(sid, len, &out_len, (char *)(buf.data + buf.widx));
-		buf.widx += out_len;
+		stream_commit(&buf, out_len);
 		glDeleteShader(sid);
 		platform->write_file(platform->error_file_handle, stream_to_s8(&buf));
 
@@ -484,7 +484,7 @@ link_program(Platform *platform, Arena a, u32 shader_id)
 		Stream buf = arena_stream(&a);
 		stream_append_s8(&buf, s8("shader link error: "));
 		glGetProgramInfoLog(result, buf.cap - buf.widx, &len, (c8 *)(buf.data + buf.widx));
-		buf.widx = len;
+		stream_reset(&buf, len);
 		stream_append_byte(&buf, '\n');
 		platform->write_file(platform->error_file_handle, stream_to_s8(&buf));
 		glDeleteProgram(result);

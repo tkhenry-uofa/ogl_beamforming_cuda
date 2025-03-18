@@ -190,6 +190,22 @@ stream_to_s8(Stream *s)
 }
 
 static void
+stream_reset(Stream *s, size index)
+{
+	s->errors = s->cap <= index;
+	if (!s->errors)
+		s->widx = index;
+}
+
+static void
+stream_commit(Stream *s, size count)
+{
+	s->errors |= BETWEEN(s->widx + count, 0, s->cap);
+	if (!s->errors)
+		s->widx += count;
+}
+
+static void
 stream_append(Stream *s, void *data, size count)
 {
 	s->errors |= (s->cap - s->widx) < count;
