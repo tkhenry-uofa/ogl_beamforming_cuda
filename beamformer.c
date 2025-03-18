@@ -437,6 +437,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, Compute
 		ctx->averaged_frame.min_coordinate = frame->min_coordinate;
 		ctx->averaged_frame.max_coordinate = frame->max_coordinate;
 		ctx->averaged_frame.compound_count = frame->compound_count;
+		ctx->averaged_frame.das_shader_id  = frame->das_shader_id;
 	} break;
 	default: ASSERT(0);
 	}
