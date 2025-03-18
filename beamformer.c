@@ -757,7 +757,10 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 						iptr f = ctx->platform.open_for_write(ctx->params->export_pipe_name);
 						export->type = BW_SAVE_FRAME;
 						export->output_frame_ctx.file_handle = f;
-						export->output_frame_ctx.frame       = compute->frame;
+						if (ctx->params->raw.output_points.w > 1)
+							export->output_frame_ctx.frame = &ctx->averaged_frame;
+						else
+							export->output_frame_ctx.frame = compute->frame;
 						beamform_work_queue_push_commit(ctx->beamform_work_queue);
 					}
 					ctx->params->export_next_frame = 0;
