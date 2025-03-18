@@ -749,7 +749,8 @@ draw_beamform_view(BeamformerCtx *ctx, Arena a, v2 mouse, BeamformerFrameView *v
 			.x = vr.pos.x + vr.size.w - txt_s.w - 4,
 			.y = vr.pos.y + vr.size.h - txt_s.h - 4,
 		};
-		draw_text(ui->small_font, stream_to_s8(&buf), txt_p, colour_from_normalized(RULER_COLOUR));
+		draw_outlined_text(ui->small_font, stream_to_s8(&buf), txt_p, 1,
+		                   colour_from_normalized(RULER_COLOUR), BLACK);
 	}
 
 	{
@@ -788,7 +789,7 @@ draw_beamform_view(BeamformerCtx *ctx, Arena a, v2 mouse, BeamformerFrameView *v
 		v2 txt_s = measure_text(ui->small_font, stream_to_s8(&buf));
 		if (pixel_delta.y < 0) txt_p.y -= txt_s.y;
 		if (pixel_delta.x < 0) txt_p.x -= txt_s.x;
-		draw_text(ui->small_font, stream_to_s8(&buf), txt_p, colour);
+		draw_outlined_text(ui->small_font, stream_to_s8(&buf), txt_p, 1, colour, BLACK);
 	}
 }
 
