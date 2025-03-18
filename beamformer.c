@@ -31,20 +31,9 @@ make_valid_test_dim(uv3 in)
 }
 
 static BeamformFrameIterator
-beamform_frame_iterator(BeamformerCtx *ctx, i32 start_index, i32 stop_index)
+beamform_frame_iterator(BeamformerCtx *ctx, u32 start_index, u32 needed_frames)
 {
-	ASSERT(start_index < ARRAY_COUNT(ctx->beamform_frames));
-	ASSERT(stop_index  < ARRAY_COUNT(ctx->beamform_frames));
-	ASSERT(stop_index >= 0 || start_index >= 0);
-
-	u32 needed_frames;
-	if (stop_index < 0 || start_index < 0)
-		needed_frames = ARRAY_COUNT(ctx->beamform_frames);
-	else
-		needed_frames = (u32)(stop_index - start_index) % ARRAY_COUNT(ctx->beamform_frames);
-
-	if (start_index < 0)
-		start_index = stop_index;
+	start_index = start_index % ARRAY_COUNT(ctx->beamform_frames);
 
 	BeamformFrameIterator result;
 	result.frames        = ctx->beamform_frames;
@@ -56,18 +45,7 @@ beamform_frame_iterator(BeamformerCtx *ctx, i32 start_index, i32 stop_index)
 }
 
 static BeamformFrame *
-frame_next_backwards(BeamformFrameIterator *bfi)
-{
-	BeamformFrame *result = 0;
-	if (bfi->cursor != bfi->needed_frames) {
-		u32 index = (bfi->offset - bfi->cursor++) % bfi->capacity;
-		result    = bfi->frames + index;
-	}
-	return result;
-}
-
-static BeamformFrame *
-frame_next_forwards(BeamformFrameIterator *bfi)
+frame_next(BeamformFrameIterator *bfi)
 {
 	BeamformFrame *result = 0;
 	if (bfi->cursor != bfi->needed_frames) {
@@ -444,18 +422,21 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, Compute
 		#endif
 	} break;
 	case CS_SUM: {
+		ctx->averaged_frame.ready_to_present = 0;
+		/* TODO(rnp): hack we need a better way of specifying which frames to sum;
+		 * this is fine for rolling averaging but what if we want to do something else */
+		u32 base_index   = CLAMP(frame - ctx->beamform_frames, 0, ARRAY_COUNT(ctx->beamform_frames));
 		u32 frame_count  = 0;
 		u32 *in_textures = alloc(&arena, u32, MAX_BEAMFORMED_SAVED_FRAMES);
-		BeamformFrameIterator bfi = beamform_frame_iterator(ctx, ctx->display_frame_index,
+		BeamformFrameIterator bfi = beamform_frame_iterator(ctx, 1 + base_index - ctx->params->raw.output_points.w,
 		                                                    ctx->params->raw.output_points.w);
-		for (BeamformFrame *frame = frame_next_backwards(&bfi);
-		     frame;
-		     frame = frame_next_backwards(&bfi))
-		{
-			in_textures[frame_count++] = frame->texture;
-		}
+		for (BeamformFrame *it = frame_next(&bfi); it; it = frame_next(&bfi))
+			in_textures[frame_count++] = it->texture;
 		do_sum_shader(csctx, in_textures, frame_count, 1 / (f32)frame_count,
 		              ctx->averaged_frame.texture, ctx->averaged_frame.dim);
+		ctx->averaged_frame.min_coordinate = frame->min_coordinate;
+		ctx->averaged_frame.max_coordinate = frame->max_coordinate;
+		ctx->averaged_frame.compound_count = frame->compound_count;
 	} break;
 	default: ASSERT(0);
 	}
@@ -670,9 +651,11 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			frame->das_shader_id  = ctx->params->raw.das_shader_id;
 			frame->compound_count = ctx->params->raw.dec_data_dim.z;
 
+			b32 did_sum_shader = 0;
 			u32 stage_count = ctx->params->compute_stages_count;
 			ComputeShaderID *stages = ctx->params->compute_stages;
 			for (u32 i = 0; i < stage_count; i++) {
+				did_sum_shader |= stages[i] == CS_SUM;
 				frame->timer_active[stages[i]] = 1;
 				glBeginQuery(GL_TIME_ELAPSED, frame->timer_ids[stages[i]]);
 				do_compute_shader(ctx, arena, frame, stages[i]);
@@ -691,6 +674,12 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 				frame->compute_times[i] = (f32)ns / 1e9;
 			}
 
+			if (did_sum_shader) {
+				ctx->averaged_frame.ready_to_present = 1;
+				/* TODO(rnp): not really sure what to do here */
+				mem_copy(frame->compute_times, ctx->averaged_frame.compute_times,
+				         sizeof(frame->compute_times));
+			}
 			frame->ready_to_present = 1;
 			cs->processing_compute  = 0;
 
@@ -784,11 +773,8 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 	}
 
 	BeamformFrameIterator bfi = beamform_frame_iterator(ctx, ctx->display_frame_index,
-	                                                    ctx->next_render_frame_index);
-	for (BeamformFrame *frame = frame_next_forwards(&bfi);
-	     frame;
-	     frame = frame_next_forwards(&bfi))
-	{
+	                                                    ctx->next_render_frame_index - ctx->display_frame_index);
+	for (BeamformFrame *frame = frame_next(&bfi); frame; frame = frame_next(&bfi)) {
 		if (frame->in_flight && frame->ready_to_present) {
 			frame->in_flight         = 0;
 			ctx->display_frame_index = (bfi.offset + bfi.cursor - 1) % bfi.capacity;
