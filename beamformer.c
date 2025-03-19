@@ -781,7 +781,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 	for (BeamformFrame *frame = frame_next(&bfi); frame; frame = frame_next(&bfi)) {
 		if (frame->in_flight && frame->ready_to_present) {
 			frame->in_flight         = 0;
-			ctx->display_frame_index = (bfi.offset + bfi.cursor - 1) % bfi.capacity;
+			ctx->display_frame_index = frame - bfi.frames;
 			ctx->fsctx.gen_mipmaps   = 1;
 		}
 	}
