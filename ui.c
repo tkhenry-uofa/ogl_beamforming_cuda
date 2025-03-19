@@ -115,6 +115,7 @@ struct Variable {
 	VariableType type;
 
 	f32 hover_t;
+	f32 name_width;
 };
 
 enum variable_flags {
@@ -276,17 +277,17 @@ add_variable(Variable *group, Arena *arena, s8 name, u32 flags, VariableType typ
 	Variable *result;
 	if (type == VT_BEAMFORMER_VARIABLE) result = (Variable *)push_struct(arena, BeamformerVariable);
 	else                                result = push_struct(arena, Variable);
-	result->flags  = flags;
-	result->type   = type;
-	result->name   = name;
-	result->parent = group;
+	result->flags      = flags;
+	result->type       = type;
+	result->name       = name;
+	result->parent     = group;
+	result->name_width = measure_text(font, name).x;
 
 	if (group && group->type == VT_GROUP) {
 		if (group->u.group.last) group->u.group.last = group->u.group.last->next = result;
 		else                     group->u.group.last = group->u.group.first      = result;
 
-		f32 name_width = measure_text(font, name).x;
-		group->u.group.max_name_width = MAX(group->u.group.max_name_width, name_width);
+		group->u.group.max_name_width = MAX(group->u.group.max_name_width, result->name_width);
 	}
 
 	return result;
@@ -507,6 +508,30 @@ draw_text(Font font, s8 text, v2 pos, Color colour)
 	return result;
 }
 
+static v2
+draw_text_limited(Font font, s8 text, v2 pos, Color colour, f32 space, f32 text_width)
+{
+	v2 result = {.y = font.baseSize};
+	if (text_width < space) {
+		result = draw_text(font, text, pos, colour);
+	} else {
+		f32 elipsis_width = measure_text(font, s8("...")).x;
+		if (elipsis_width < space) {
+			/* TODO(rnp): there must be a better way */
+			while (text.len) {
+				text.len--;
+				f32 width = measure_text(font, text).x;
+				if (width + elipsis_width < space)
+					break;
+			}
+			result.x += draw_text(font, text, pos, colour).x;
+			pos.x    += result.x;
+			result.x += draw_text(font, s8("..."), pos, colour).x;
+		}
+	}
+	return result;
+}
+
 /* NOTE(rnp): expensive but of the available options in raylib this gives the best results */
 static v2
 draw_outlined_text(Font font, s8 text, v2 pos, f32 outline_width, Color colour, Color outline)
@@ -700,10 +725,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, BeamformerFrameView *view,
 
 	v2 txt_s = measure_text(ui->small_font, s8("-288.8 mm"));
 
-	display_rect.pos.x  += 0.02 * display_rect.size.w;
-	display_rect.pos.y  += 0.02 * display_rect.size.h;
-	display_rect.size.w *= 0.96;
-	display_rect.size.h *= 0.96;
+	display_rect = shrink_rect_centered(display_rect, (v2){.x = 2 * UI_REGION_PAD, .y = UI_REGION_PAD});
 
 	f32 pad    = 1.2 * txt_s.x + RULER_TICK_LENGTH;
 	Rect vr    = display_rect;
@@ -750,16 +772,22 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, BeamformerFrameView *view,
 	v2 start_pos  = vr.pos;
 	start_pos.y  += vr.size.y;
 
-	do_scale_bar(ui, &buf, &view->lateral_scale_bar, SB_LATERAL, mouse,
-	             (Rect){.pos = start_pos, .size = vr.size}, bp->output_min_coordinate.x * 1e3,
-	             bp->output_max_coordinate.x * 1e3, s8(" mm"));
+	if (vr.size.w > 0) {
+		do_scale_bar(ui, &buf, &view->lateral_scale_bar, SB_LATERAL, mouse,
+		             (Rect){.pos = start_pos, .size = vr.size},
+		             bp->output_min_coordinate.x * 1e3,
+		             bp->output_max_coordinate.x * 1e3, s8(" mm"));
+	}
 
 	start_pos    = vr.pos;
 	start_pos.x += vr.size.x;
 
-	do_scale_bar(ui, &buf, &view->axial_scale_bar, SB_AXIAL, mouse,
-	             (Rect){.pos = start_pos, .size = vr.size}, bp->output_max_coordinate.z * 1e3,
-	             bp->output_min_coordinate.z * 1e3, s8(" mm"));
+	if (vr.size.h > 0) {
+		do_scale_bar(ui, &buf, &view->axial_scale_bar, SB_AXIAL, mouse,
+		             (Rect){.pos = start_pos, .size = vr.size},
+		             bp->output_max_coordinate.z * 1e3,
+		             bp->output_min_coordinate.z * 1e3, s8(" mm"));
+	}
 
 	v2 pixels_to_mm = output_dim;
 	pixels_to_mm.x /= vr.size.x * 1e-3;
@@ -787,24 +815,29 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, BeamformerFrameView *view,
 		buf.widx = 0;
 		stream_append_v2(&buf, mm);
 		v2 txt_s = measure_text(ui->small_font, stream_to_s8(&buf));
-		v2 txt_p = {
-			.x = vr.pos.x + vr.size.w - txt_s.w - 4,
-			.y = vr.pos.y + vr.size.h - txt_s.h - 4,
-		};
-		draw_outlined_text(ui->small_font, stream_to_s8(&buf), txt_p, 1,
-		                   colour_from_normalized(RULER_COLOUR), BLACK);
+		if (vr.size.w + vr.pos.x - txt_s.w - 4 > display_rect.pos.x && txt_s.h < display_rect.size.h - 4) {
+			v2 txt_p = {
+				.x = vr.pos.x + vr.size.w - txt_s.w - 4,
+				.y = vr.pos.y + vr.size.h - txt_s.h - 4,
+			};
+			draw_outlined_text(ui->small_font, stream_to_s8(&buf), txt_p, 1,
+			                   colour_from_normalized(RULER_COLOUR), BLACK);
+		}
 	}
 
 	{
 		buf.widx  = 0;
 		s8 shader = push_das_shader_id(&buf, frame->das_shader_id, frame->compound_count);
 		v2 txt_s  = measure_text(ui->font, shader);
-		v2 txt_p  = {
-			.x = vr.pos.x + vr.size.w - txt_s.w - 16,
-			.y = vr.pos.y + 4,
-		};
-		draw_outlined_text(ui->font, shader, txt_p, 1,
-		                   colour_from_normalized(RULER_COLOUR), BLACK);
+		/* TODO(rnp): we want this 16 to be proportional to vr size */
+		if (vr.size.w + vr.pos.x - txt_s.w - 16 > display_rect.pos.x && txt_s.h < display_rect.size.h - 4) {
+			v2 txt_p  = {
+				.x = vr.pos.x + vr.size.w - txt_s.w - 16,
+				.y = vr.pos.y + 4,
+			};
+			draw_outlined_text(ui->font, shader, txt_p, 1,
+			                   colour_from_normalized(RULER_COLOUR), BLACK);
+		}
 	}
 
 	/* TODO(rnp): store converted ruler points instead of screen points */
@@ -836,14 +869,15 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, BeamformerFrameView *view,
 }
 
 static v2
-draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, f32 *hover_t)
+draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse,
+                         f32 *hover_t, f32 space)
 {
 	Stream buf = arena_stream(&arena);
 	stream_append_variable(&buf, var);
 
 	Color colour = NORMALIZED_FG_COLOUR;
+	v2 text_size = measure_text(ui->font, stream_to_s8(&buf));
 	if (var->flags & V_INPUT) {
-		v2   text_size = measure_text(ui->font, stream_to_s8(&buf));
 		Rect text_rect = {.pos = at, .size = text_size};
 		text_rect = extend_rect_centered(text_rect, (v2){.x = 8});
 
@@ -858,10 +892,10 @@ draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2
 
 		colour = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, *hover_t));
 	}
-	return draw_text(ui->font, stream_to_s8(&buf), at, colour);
+	return draw_text_limited(ui->font, stream_to_s8(&buf), at, colour, space, text_size.x);
 }
 
-#define LISTING_CENTER_PAD 12.0f
+#define LISTING_ITEM_PAD   12.0f
 #define LISTING_INDENT     20.0f
 #define LISTING_LINE_PAD    6.0f
 
@@ -884,10 +918,11 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 			BeamformerVariable *bv = (BeamformerVariable *)var;
 
 			suffix   = bv->suffix;
-			advance  = draw_text(ui->font, var->name, at, NORMALIZED_FG_COLOUR).y;
-			at.x    += x_off + LISTING_CENTER_PAD;
-
-			draw_beamformer_variable(ui, ui->arena, var, at, mouse, &var->hover_t);
+			advance  = draw_text_limited(ui->font, var->name, at, NORMALIZED_FG_COLOUR,
+			                             r.size.w + r.pos.x - at.x, var->name_width).y;
+			at.x    += x_off + LISTING_ITEM_PAD;
+			at.x    += draw_beamformer_variable(ui, ui->arena, var, at, mouse,
+			                                    &var->hover_t, r.size.w + r.pos.x - at.x).x;
 
 			while (var) {
 				if (var->next) {
@@ -903,8 +938,9 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 		case VT_GROUP: {
 			VariableGroup *g = &var->u.group;
 
-			advance  = draw_beamformer_variable(ui, ui->arena, var, at, mouse, &var->hover_t).y;
-			at.x    += x_off + LISTING_CENTER_PAD;
+			advance  = draw_beamformer_variable(ui, ui->arena, var, at, mouse, &var->hover_t,
+			                                    r.size.w + r.pos.x - at.x).y;
+			at.x    += x_off + LISTING_ITEM_PAD;
 			if (g->expanded) {
 				r.pos.x  += LISTING_INDENT;
 				r.size.x -= LISTING_INDENT;
@@ -921,16 +957,23 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 				case VG_LIST: break;
 				case VG_V2:
 				case VG_V4: {
-					at.x += draw_text(ui->font, s8("{"), at, NORMALIZED_FG_COLOUR).x;
+					at.x += draw_text_limited(ui->font, s8("{"), at, NORMALIZED_FG_COLOUR,
+					                          r.size.w + r.pos.x - at.x,
+					                          measure_text(ui->font, s8("{")).x).x;
 					while (v) {
 						at.x += draw_beamformer_variable(ui, ui->arena,
-						             (Variable *)v, at, mouse, &v->base.hover_t).x;
+						             (Variable *)v, at, mouse, &v->base.hover_t,
+						             r.size.w + r.pos.x - at.x).x;
 
 						v = (BeamformerVariable *)v->base.next;
-						if (v) at.x += draw_text(ui->font, s8(", "), at,
-							                 NORMALIZED_FG_COLOUR).x;
+						if (v) at.x += draw_text_limited(ui->font, s8(", "),
+						                   at, NORMALIZED_FG_COLOUR,
+						                   r.size.w + r.pos.x - at.x,
+						                   measure_text(ui->font, s8(", ")).x).x;
 					}
-					at.x += draw_text(ui->font, s8("}"), at, NORMALIZED_FG_COLOUR).x;
+					at.x += draw_text_limited(ui->font, s8("}"), at, NORMALIZED_FG_COLOUR,
+					                          r.size.w + r.pos.x - at.x,
+					                          measure_text(ui->font, s8("}")).x).x;
 				} break;
 				}
 
@@ -942,8 +985,10 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 
 		if (suffix.len) {
 			v2 suffix_s = measure_text(ui->font, suffix);
-			v2 suffix_p = {.x = r.pos.x + r.size.w - suffix_s.w, .y = r.pos.y};
-			draw_text(ui->font, suffix, suffix_p, NORMALIZED_FG_COLOUR);
+			if (r.size.w + r.pos.x - LISTING_ITEM_PAD - suffix_s.x > at.x) {
+				v2 suffix_p = {.x = r.pos.x + r.size.w - suffix_s.w, .y = r.pos.y};
+				draw_text(ui->font, suffix, suffix_p, NORMALIZED_FG_COLOUR);
+			}
 		}
 
 		r.pos.y  += advance + LISTING_LINE_PAD;
@@ -968,31 +1013,45 @@ draw_compute_stats(BeamformerCtx *ctx, ComputeShaderStats *stats, Arena arena, R
 	v2 pos = r.pos;
 	pos.y += r.size.h;
 
+	s8   compute_total       = s8("Compute Total:");
+	f32  compute_total_width = measure_text(ui->font, compute_total).x;
+	f32  max_label_width     = compute_total_width;
+	f32 *label_widths = alloc(&arena, f32, ARRAY_COUNT(labels));
+	for (u32 i = 0; i < ARRAY_COUNT(labels); i++) {
+		label_widths[i] = measure_text(ui->font, labels[i]).x;
+		max_label_width = MAX(label_widths[i], max_label_width);
+	}
+
 	f32 compute_time_sum = 0;
 	u32 stages = ctx->params->compute_stages_count;
 	for (u32 i = 0; i < stages; i++) {
 		u32 index  = ctx->params->compute_stages[i];
 		pos.y     -= measure_text(ui->font, labels[index]).y;
-		draw_text(ui->font, labels[index], pos, colour_from_normalized(FG_COLOUR));
+		draw_text_limited(ui->font, labels[index], pos, colour_from_normalized(FG_COLOUR),
+		                  r.size.w, label_widths[index]);
 
-		buf.widx = 0;
+		stream_reset(&buf, 0);
 		stream_append_f64_e(&buf, stats->times[index]);
 		stream_append_s8(&buf, s8(" [s]"));
 		v2 txt_fs = measure_text(ui->font, stream_to_s8(&buf));
-		v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
-		draw_text(ui->font, stream_to_s8(&buf), rpos, colour_from_normalized(FG_COLOUR));
+		v2 rpos   = {.x = r.pos.x + max_label_width + LISTING_ITEM_PAD, .y = pos.y};
+		draw_text_limited(ui->font, stream_to_s8(&buf), rpos, colour_from_normalized(FG_COLOUR),
+		                  r.size.w - LISTING_ITEM_PAD - max_label_width, txt_fs.w);
 
 		compute_time_sum += stats->times[index];
 	}
 
 	pos.y -= ui->font.baseSize;
-	draw_text(ui->font, s8("Compute Total:"), pos, colour_from_normalized(FG_COLOUR));
-	buf.widx = 0;
+	draw_text_limited(ui->font, compute_total, pos, colour_from_normalized(FG_COLOUR),
+		          r.size.w, compute_total_width);
+
+	stream_reset(&buf, 0);
 	stream_append_f64_e(&buf, compute_time_sum);
 	stream_append_s8(&buf, s8(" [s]"));
 	v2 txt_fs = measure_text(ui->font, stream_to_s8(&buf));
-	v2 rpos   = {.x = r.pos.x + r.size.w - txt_fs.w, .y = pos.y};
-	draw_text(ui->font, stream_to_s8(&buf), rpos, colour_from_normalized(FG_COLOUR));
+	v2 rpos   = {.x = r.pos.x + max_label_width + LISTING_ITEM_PAD, .y = pos.y};
+	draw_text_limited(ui->font, stream_to_s8(&buf), rpos, colour_from_normalized(FG_COLOUR),
+	                  r.size.w - LISTING_ITEM_PAD - max_label_width, txt_fs.w);
 
 	pos.y -= ui->font.baseSize;
 	if (ctx->csctx.processing_compute) ui->progress_display_t_velocity += 65 * dt_for_frame;
@@ -1005,10 +1064,12 @@ draw_compute_stats(BeamformerCtx *ctx, ComputeShaderStats *stats, Arena arena, R
 	if (ui->progress_display_t > (1.0 / 255.0)) {
 		s8 progress_text = s8("Compute Progress:");
 		v2 txt_s         = measure_text(ui->font, progress_text);
-		rpos = (v2){.x = pos.x + txt_s.x + 8, .y = pos.y};
 		draw_text(ui->font, progress_text, pos,
 		          fade(colour_from_normalized(FG_COLOUR), ui->progress_display_t));
-		Rect prect = {.pos = rpos, .size = {.w = r.size.w - rpos.x, .h = txt_s.h}};
+		Rect prect = {
+			.pos  = {.x = r.pos.x + txt_s.w + LISTING_ITEM_PAD, .y = pos.y},
+			.size = {.w = r.size.w - txt_s.w - LISTING_ITEM_PAD, .h = txt_s.h}
+		};
 		prect = scale_rect_centered(prect, (v2){.x = 1, .y = 0.7});
 		Rect fprect = prect;
 		fprect.size.w *= ctx->csctx.processing_progress;
