@@ -200,7 +200,7 @@ stream_reset(Stream *s, size index)
 static void
 stream_commit(Stream *s, size count)
 {
-	s->errors |= BETWEEN(s->widx + count, 0, s->cap);
+	s->errors |= !BETWEEN(s->widx + count, 0, s->cap);
 	if (!s->errors)
 		s->widx += count;
 }
