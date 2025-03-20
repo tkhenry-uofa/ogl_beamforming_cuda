@@ -1568,7 +1568,7 @@ ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
 	case IT_SET:     ui_end_interact(ctx, input->mouse);    break;
 	case IT_TEXT:    update_text_input(&ui->text_input_state, is->active); break;
 	case IT_DRAG: {
-		if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+		if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
 			ui_end_interact(ctx, input->mouse);
 		} else {
 			v2 ws     = (v2){.w = ctx->window_size.w, .h = ctx->window_size.h};
