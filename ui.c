@@ -1122,6 +1122,7 @@ draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 		draw_rect = shrink_rect_centered(draw_rect, shrink);
 	}
 
+	BeginScissorMode(draw_rect.pos.x, draw_rect.pos.y, draw_rect.size.w, draw_rect.size.h);
 	switch (var->type) {
 	case VT_GROUP: {
 		draw_variable_list(ui, var, draw_rect, mouse);
@@ -1171,6 +1172,7 @@ draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 	} break;
 	default: break;
 	}
+	EndScissorMode();
 }
 
 static void
