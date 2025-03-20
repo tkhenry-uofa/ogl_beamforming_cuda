@@ -587,6 +587,8 @@ extend_rect_centered(Rect r, v2 delta)
 static Rect
 shrink_rect_centered(Rect r, v2 delta)
 {
+	delta.x   = MIN(delta.x, r.size.w);
+	delta.y   = MIN(delta.y, r.size.h);
 	r.size.w -= delta.x;
 	r.size.h -= delta.y;
 	r.pos.x  += delta.x / 2;
