@@ -25,11 +25,12 @@ typedef enum {
 
 /* X(type, id, pretty name) */
 #define DAS_TYPES \
-	X(FORCES,   0, "FORCES")   \
-	X(UFORCES,  1, "UFORCES")  \
-	X(HERCULES, 2, "HERCULES") \
-	X(RCA_VLS,  3, "VLS")      \
-	X(RCA_TPW,  4, "TPW")
+	X(FORCES,    0, "FORCES")    \
+	X(UFORCES,   1, "UFORCES")   \
+	X(HERCULES,  2, "HERCULES")  \
+	X(RCA_VLS,   3, "VLS")       \
+	X(RCA_TPW,   4, "TPW")       \
+	X(UHERCULES, 5, "UHERCULES")
 
 #define DAS_LOCAL_SIZE_X 32
 #define DAS_LOCAL_SIZE_Y  1

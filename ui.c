@@ -481,10 +481,12 @@ push_das_shader_id(Stream *s, DASShaderID shader, u32 transmit_count)
 	default: break;
 	}
 
+	/* TODO(rnp): cleanup - generate with X macro */
 	switch (shader) {
 	case DAS_UFORCES:
 	case DAS_RCA_VLS:
 	case DAS_RCA_TPW:
+	case DAS_UHERCULES:
 		stream_append_byte(s, '-');
 		stream_append_u64(s, transmit_count);
 	default: break;

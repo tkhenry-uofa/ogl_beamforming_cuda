@@ -155,6 +155,7 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 
 vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 {
+	uint uhercules = uint(das_shader_id == DAS_ID_UHERCULES);
 	uint ridx      = 0;
 	int  direction = beamform_plane;
 	if (direction != TX_ROWS) image_point = image_point.yxz;
@@ -178,12 +179,17 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 
 	vec2 sum = vec2(0);
 	/* NOTE: For Each Acquistion in Raw Data */
-	for (uint i = 0; i < dec_data_dim.z; i++) {
+	for (uint i = uhercules; i < dec_data_dim.z; i++) {
+		uint base_idx = ((i - uhercules) / 8);
+		uint sub_idx  = ((i - uhercules) % 8) / 2;
+		uint shift    = (~(i - uhercules) & 1u) * 16u;
+		uint channel  = (uforces_channels[base_idx][sub_idx] << shift) >> 16u;
+
 		/* NOTE: For Each Virtual Source */
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			vec3 element_position;
-			if (rx_col) element_position = vec3(j, i, 0) * delta;
-			else        element_position = vec3(i, j, 0) * delta;
+			if (rx_col) element_position = vec3(j, channel, 0) * delta;
+			else        element_position = vec3(channel, j, 0) * delta;
 			vec3 receive_distance = receive_point - element_position;
 			float sidx  = sample_index(transmit_distance + length(receive_distance));
 			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
@@ -255,6 +261,7 @@ void main()
 		sum = uFORCES(image_point, vec3(xdc_element_pitch, 0), apod_arg);
 		break;
 	case DAS_ID_HERCULES:
+	case DAS_ID_UHERCULES:
 		sum = HERCULES(image_point, vec3(xdc_element_pitch, 0), apod_arg);
 		break;
 	case DAS_ID_RCA_TPW:
