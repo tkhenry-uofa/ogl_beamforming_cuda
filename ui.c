@@ -13,7 +13,11 @@
 #define RULER_TICK_LENGTH      20.0f
 
 #define UI_SPLIT_HANDLE_THICK  8.0f
-#define UI_REGION_PAD          16.0f
+/* TODO(rnp): y_padding seems to not match x_padding */
+#define UI_REGION_PAD          32.0f
+
+/* TODO(rnp) smooth scroll */
+#define UI_SCROLL_SPEED 12.0f
 
 typedef struct {
 	u8   buf[64];
@@ -79,6 +83,7 @@ typedef enum {
 	VT_COMPUTE_STATS_VIEW,
 	VT_COMPUTE_LATEST_STATS_VIEW,
 	VT_SCALE_BAR,
+	VT_UI_LIST,
 	VT_UI_REGION_SPLIT,
 } VariableType;
 
@@ -98,13 +103,21 @@ typedef struct {
 	VariableGroupType type;
 } VariableGroup;
 
+typedef struct {
+	/* NOTE(rnp): superset of group, group must come first */
+	VariableGroup group;
+	f32           needed_height;
+	f32           offset;
+} UIList;
+
 struct Variable {
 	s8 name;
 	union {
 		void            *generic;
-		VariableGroup    group;
-		RegionSplit      region_split;
 		ComputeStatsView compute_stats_view;
+		RegionSplit      region_split;
+		UIList           list;
+		VariableGroup    group;
 		b32              b32;
 		i32              i32;
 		f32              f32;
@@ -283,7 +296,7 @@ add_variable(Variable *group, Arena *arena, s8 name, u32 flags, VariableType typ
 	result->parent     = group;
 	result->name_width = measure_text(font, name).x;
 
-	if (group && group->type == VT_GROUP) {
+	if (group && (group->type == VT_GROUP || group->type == VT_UI_LIST)) {
 		if (group->u.group.last) group->u.group.last = group->u.group.last->next = result;
 		else                     group->u.group.last = group->u.group.first      = result;
 
@@ -354,7 +367,8 @@ add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 
 	v2 v2_inf = {.x = -F32_INFINITY, .y = F32_INFINITY};
 
-	Variable *result = add_variable_group(parent, &ui->arena, s8("Parameters List"), VG_LIST, ui->font);
+	Variable *result = add_variable(parent, &ui->arena, s8("Parameters"), 0, VT_UI_LIST, ui->font);
+	result->u.list.group.type = VG_LIST;
 
 	add_beamformer_variable_f32(result, &ui->arena, s8("Sampling Frequency:"), s8("[MHz]"),
 	                            &bp->sampling_frequency, (v2){0}, 1e-6, 0, 0, ui->font);
@@ -725,8 +739,6 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, BeamformerFrameView *view,
 
 	v2 txt_s = measure_text(ui->small_font, s8("-288.8 mm"));
 
-	display_rect = shrink_rect_centered(display_rect, (v2){.x = 2 * UI_REGION_PAD, .y = UI_REGION_PAD});
-
 	f32 pad    = 1.2 * txt_s.x + RULER_TICK_LENGTH;
 	Rect vr    = display_rect;
 	vr.pos.x  += 0.5 * ui->small_font.baseSize;
@@ -900,15 +912,26 @@ draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2
 #define LISTING_LINE_PAD    6.0f
 
 static void
-draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
+draw_ui_list(BeamformerUI *ui, Variable *ui_list, Rect r, v2 mouse)
 {
-	/* TODO(rnp): limit the width of each element so that elements don't overlap */
-	ASSERT(group->type == VT_GROUP);
+	ASSERT(ui_list->type == VT_UI_LIST);
+	UIList *list = &ui_list->u.list;
 
-	r = shrink_rect_centered(r, (v2){.x = 2 * UI_REGION_PAD, .y = UI_REGION_PAD});
+	/* TODO(rnp): this should get moved up to draw_variable */
+	if (hover_rect(mouse, r, &ui_list->hover_t))
+		ui->interaction.hot = ui_list;
 
-	Variable *var = group->u.group.first;
-	f32 x_off     = group->u.group.max_name_width;
+	if (list->needed_height - r.size.h < list->offset)
+		list->offset = list->needed_height - r.size.h;
+
+	if (list->needed_height - r.size.h < 0)
+		list->offset = 0;
+
+	r.pos.y -= list->offset;
+
+	f32 start_height = r.size.h;
+	Variable *var    = list->group.first;
+	f32 x_off        = list->group.max_name_width;
 	while (var) {
 		s8 suffix   = {0};
 		v2 at       = r.pos;
@@ -994,6 +1017,7 @@ draw_variable_list(BeamformerUI *ui, Variable *group, Rect r, v2 mouse)
 		r.pos.y  += advance + LISTING_LINE_PAD;
 		r.size.y -= advance + LISTING_LINE_PAD;
 	}
+	list->needed_height = start_height - r.size.h;
 }
 
 static void
@@ -1009,7 +1033,6 @@ draw_compute_stats(BeamformerCtx *ctx, ComputeShaderStats *stats, Arena arena, R
 
 	Stream buf = stream_alloc(&arena, 64);
 
-	r = shrink_rect_centered(r, (v2){.x = 2 * UI_REGION_PAD, .y = UI_REGION_PAD});
 	v2 pos = r.pos;
 	pos.y += r.size.h;
 
@@ -1124,8 +1147,8 @@ draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 
 	BeginScissorMode(draw_rect.pos.x, draw_rect.pos.y, draw_rect.size.w, draw_rect.size.h);
 	switch (var->type) {
-	case VT_GROUP: {
-		draw_variable_list(ui, var, draw_rect, mouse);
+	case VT_UI_LIST: {
+		draw_ui_list(ui, var, draw_rect, mouse);
 	} break;
 	case VT_BEAMFORMER_FRAME_VIEW: {
 		BeamformerFrameView *view = var->u.generic;
@@ -1272,6 +1295,10 @@ scroll_interaction(Variable *var, f32 delta)
 		BeamformerVariable *bv = (BeamformerVariable *)var;
 		scroll_interaction_base(bv->subtype, var->u.generic, delta * bv->params.scroll_scale);
 		ui_store_variable(var, var->u.generic);
+	} break;
+	case VT_UI_LIST: {
+		scroll_interaction_base(VT_F32, &var->u.list.offset, UI_SCROLL_SPEED * delta);
+		var->u.list.offset = MAX(0, var->u.list.offset);
 	} break;
 	default: scroll_interaction_base(var->type, &var->u, delta); break;
 	}
@@ -1478,6 +1505,9 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mous
 		case VT_B32:   is->type = IT_SET; break;
 		case VT_GROUP: is->type = IT_SET; break;
 		case VT_UI_REGION_SPLIT: is->type = IT_DRAG; break;
+		case VT_UI_LIST: {
+			if (scroll) is->type = IT_SCROLL;
+		} break;
 		case VT_BEAMFORMER_VARIABLE: {
 			BeamformerVariable *bv = (BeamformerVariable *)is->hot;
 			if (bv->subtype == VT_B32) {
@@ -1637,7 +1667,7 @@ ui_init(BeamformerCtx *ctx, Arena store)
 
 
 	ui->scratch_variable = ui->scratch_variables + 0;
-	Variable *split = ui->regions   = add_ui_split(0, &ui->arena, s8("UI Root"), 0.35,
+	Variable *split = ui->regions   = add_ui_split(0, &ui->arena, s8("UI Root"), 0.4,
 	                                               RSD_HORIZONTAL, ui->font);
 	split->u.region_split.left      = add_ui_split(split, &ui->arena, s8(""), 0.8,
 	                                               RSD_VERTICAL, ui->font);
