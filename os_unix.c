@@ -29,7 +29,7 @@ os_get_module(char *name, Stream *e)
 }
 #endif
 
-static PLATFORM_WRITE_FILE_FN(os_write_file)
+static OS_WRITE_FILE_FN(os_write_file)
 {
 	while (raw.len) {
 		size r = write(file, raw.data, raw.len);
@@ -47,7 +47,7 @@ os_fatal(s8 msg)
 	unreachable();
 }
 
-static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
+static OS_ALLOC_ARENA_FN(os_alloc_arena)
 {
 	Arena result;
 	size pagesize = sysconf(_SC_PAGESIZE);
@@ -68,12 +68,12 @@ static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
 	return result;
 }
 
-static PLATFORM_CLOSE_FN(os_close)
+static OS_CLOSE_FN(os_close)
 {
 	close(file);
 }
 
-static PLATFORM_OPEN_FOR_WRITE_FN(os_open_for_write)
+static OS_OPEN_FOR_WRITE_FN(os_open_for_write)
 {
 	iptr result = open(fname, O_WRONLY|O_TRUNC);
 	if (result == -1)
@@ -81,7 +81,7 @@ static PLATFORM_OPEN_FOR_WRITE_FN(os_open_for_write)
 	return result;
 }
 
-static PLATFORM_READ_WHOLE_FILE_FN(os_read_whole_file)
+static OS_READ_WHOLE_FILE_FN(os_read_whole_file)
 {
 	s8 result = {0};
 
@@ -98,7 +98,7 @@ static PLATFORM_READ_WHOLE_FILE_FN(os_read_whole_file)
 	return result;
 }
 
-static PLATFORM_WRITE_NEW_FILE_FN(os_write_new_file)
+static OS_WRITE_NEW_FILE_FN(os_write_new_file)
 {
 	iptr fd = open(fname, O_WRONLY|O_TRUNC|O_CREAT, 0600);
 	if (fd == INVALID_FILE)
@@ -123,7 +123,7 @@ os_open_named_pipe(char *name)
 	return (Pipe){.file = open(name, O_RDONLY|O_NONBLOCK), .name = name};
 }
 
-static PLATFORM_READ_FILE_FN(os_read_file)
+static OS_READ_FILE_FN(os_read_file)
 {
 	size r = 0, total_read = 0;
 	do {
@@ -229,14 +229,14 @@ os_unload_library(void *h)
 		dlclose(h);
 }
 
-static PLATFORM_ADD_FILE_WATCH_FN(os_add_file_watch)
+static OS_ADD_FILE_WATCH_FN(os_add_file_watch)
 {
 	s8 directory  = path;
 	directory.len = s8_scan_backwards(path, '/');
 	ASSERT(directory.len > 0);
 
 	u64 hash = s8_hash(directory);
-	FileWatchContext *fwctx = &platform->file_watch_context;
+	FileWatchContext *fwctx = &os->file_watch_context;
 	FileWatchDirectory *dir = lookup_file_watch_directory(fwctx, hash);
 	if (!dir) {
 		ASSERT(path.data[directory.len] == '/');
@@ -253,7 +253,7 @@ static PLATFORM_ADD_FILE_WATCH_FN(os_add_file_watch)
 
 i32 pthread_setname_np(pthread_t, char *);
 static iptr
-os_create_thread(Arena arena, iptr user_context, s8 name, platform_thread_entry_point_fn *fn)
+os_create_thread(Arena arena, iptr user_context, s8 name, os_thread_entry_point_fn *fn)
 {
 	pthread_t result;
 	pthread_create(&result, 0, (void *(*)(void *))fn, (void *)user_context);
@@ -275,7 +275,7 @@ os_sleep_thread(iptr sync_handle)
 	sem_wait((sem_t *)sync_handle);
 }
 
-static PLATFORM_WAKE_THREAD_FN(os_wake_thread)
+static OS_WAKE_THREAD_FN(os_wake_thread)
 {
 	sem_post((sem_t *)sync_handle);
 }

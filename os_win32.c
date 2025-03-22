@@ -130,7 +130,7 @@ os_get_module(char *name, Stream *e)
 }
 #endif
 
-static PLATFORM_WRITE_FILE_FN(os_write_file)
+static OS_WRITE_FILE_FN(os_write_file)
 {
 	i32 wlen = 0;
 	if (raw.len) WriteFile(file, raw.data, raw.len, &wlen, 0);
@@ -145,7 +145,7 @@ os_fatal(s8 msg)
 	unreachable();
 }
 
-static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
+static OS_ALLOC_ARENA_FN(os_alloc_arena)
 {
 	Arena result;
 	w32_sys_info Info;
@@ -168,18 +168,18 @@ static PLATFORM_ALLOC_ARENA_FN(os_alloc_arena)
 	return result;
 }
 
-static PLATFORM_CLOSE_FN(os_close)
+static OS_CLOSE_FN(os_close)
 {
 	CloseHandle(file);
 }
 
-static PLATFORM_OPEN_FOR_WRITE_FN(os_open_for_write)
+static OS_OPEN_FOR_WRITE_FN(os_open_for_write)
 {
 	iptr result = CreateFileA(fname, GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
 	return result;
 }
 
-static PLATFORM_READ_WHOLE_FILE_FN(os_read_whole_file)
+static OS_READ_WHOLE_FILE_FN(os_read_whole_file)
 {
 	s8 result = {0};
 
@@ -201,14 +201,14 @@ static PLATFORM_READ_WHOLE_FILE_FN(os_read_whole_file)
 	return result;
 }
 
-static PLATFORM_READ_FILE_FN(os_read_file)
+static OS_READ_FILE_FN(os_read_file)
 {
 	i32 total_read = 0;
 	ReadFile(file, buf, len, &total_read, 0);
 	return total_read;
 }
 
-static PLATFORM_WRITE_NEW_FILE_FN(os_write_new_file)
+static OS_WRITE_NEW_FILE_FN(os_write_new_file)
 {
 	if (raw.len > (size)U32_MAX) {
 		os_write_file(GetStdHandle(STD_ERROR_HANDLE),
@@ -295,14 +295,14 @@ os_unload_library(void *h)
 	FreeLibrary(h);
 }
 
-static PLATFORM_ADD_FILE_WATCH_FN(os_add_file_watch)
+static OS_ADD_FILE_WATCH_FN(os_add_file_watch)
 {
 	s8 directory  = path;
 	directory.len = s8_scan_backwards(path, '\\');
 	ASSERT(directory.len > 0);
 
 	u64 hash = s8_hash(directory);
-	FileWatchContext *fwctx = &platform->file_watch_context;
+	FileWatchContext *fwctx = &os->file_watch_context;
 	FileWatchDirectory *dir = lookup_file_watch_directory(fwctx, hash);
 	if (!dir) {
 		ASSERT(path.data[directory.len] == '\\');
@@ -314,7 +314,7 @@ static PLATFORM_ADD_FILE_WATCH_FN(os_add_file_watch)
 		                          OPEN_EXISTING,
 		                          FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OVERLAPPED, 0);
 
-		w32_context *ctx = (w32_context *)platform->os_context;
+		w32_context *ctx = (w32_context *)os->context;
 		w32_io_completion_event *event = push_struct(a, typeof(*event));
 		event->tag     = W32_IO_FILE_WATCH;
 		event->context = (iptr)dir;
@@ -332,7 +332,7 @@ static PLATFORM_ADD_FILE_WATCH_FN(os_add_file_watch)
 }
 
 static iptr
-os_create_thread(Arena arena, iptr user_context, s8 name, platform_thread_entry_point_fn *fn)
+os_create_thread(Arena arena, iptr user_context, s8 name, os_thread_entry_point_fn *fn)
 {
 	iptr result = CreateThread(0, 0, (iptr)fn, user_context, 0, 0);
 	SetThreadDescription(result, s8_to_s16(&arena, name).data);
@@ -352,7 +352,7 @@ os_sleep_thread(iptr sync_handle)
 	WaitForSingleObjectEx(sync_handle, 0xFFFFFFFF, 0);
 }
 
-static PLATFORM_WAKE_THREAD_FN(os_wake_thread)
+static OS_WAKE_THREAD_FN(os_wake_thread)
 {
 	ReleaseSemaphore(sync_handle, 1, 0);
 }

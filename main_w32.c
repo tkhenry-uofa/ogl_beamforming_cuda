@@ -37,7 +37,7 @@ typedef struct {
 #include "static.c"
 
 static void
-dispatch_file_watch(Platform *platform, FileWatchDirectory *fw_dir, u8 *buf, Arena arena)
+dispatch_file_watch(OS *os, FileWatchDirectory *fw_dir, u8 *buf, Arena arena)
 {
 	i64 offset = 0;
 	TempArena save_point = {0};
@@ -52,7 +52,7 @@ dispatch_file_watch(Platform *platform, FileWatchDirectory *fw_dir, u8 *buf, Are
 			stream_append_s8(&path, s8("unknown file watch event: "));
 			stream_append_u64(&path, fni->action);
 			stream_append_byte(&path, '\n');
-			platform->write_file(platform->error_file_handle, stream_to_s8(&path));
+			os->write_file(os->stderr, stream_to_s8(&path));
 			stream_reset(&path, 0);
 		}
 
@@ -69,7 +69,7 @@ dispatch_file_watch(Platform *platform, FileWatchDirectory *fw_dir, u8 *buf, Are
 		for (u32 i = 0; i < fw_dir->file_watch_count; i++) {
 			FileWatch *fw = fw_dir->file_watches + i;
 			if (fw->hash == hash) {
-				fw->callback(platform, stream_to_s8(&path), fw->user_data, arena);
+				fw->callback(os, stream_to_s8(&path), fw->user_data, arena);
 				break;
 			}
 		}
@@ -80,9 +80,9 @@ dispatch_file_watch(Platform *platform, FileWatchDirectory *fw_dir, u8 *buf, Are
 }
 
 static void
-clear_io_queue(Platform *platform, BeamformerInput *input, Arena arena)
+clear_io_queue(OS *os, BeamformerInput *input, Arena arena)
 {
-	w32_context *ctx = (w32_context *)platform->os_context;
+	w32_context *ctx = (w32_context *)os->context;
 
 	iptr handle = ctx->io_completion_handle;
 	w32_overlapped *overlapped;
@@ -93,7 +93,7 @@ clear_io_queue(Platform *platform, BeamformerInput *input, Arena arena)
 		switch (event->tag) {
 		case W32_IO_FILE_WATCH: {
 			FileWatchDirectory *dir = (FileWatchDirectory *)event->context;
-			dispatch_file_watch(platform, dir, dir->buffer.beg, arena);
+			dispatch_file_watch(os, dir, dir->buffer.beg, arena);
 			zero_struct(overlapped);
 			ReadDirectoryChangesW(dir->handle, dir->buffer.beg, 4096, 0,
 			                      FILE_NOTIFY_CHANGE_LAST_WRITE, 0, overlapped, 0);
@@ -104,7 +104,7 @@ clear_io_queue(Platform *platform, BeamformerInput *input, Arena arena)
 }
 
 static b32
-poll_pipe(Pipe *p, Stream *e, Platform *platform)
+poll_pipe(Pipe *p, Stream *e, OS *os)
 {
 	u8  data;
 	i32 total_read = 0;
@@ -125,7 +125,7 @@ poll_pipe(Pipe *p, Stream *e, Platform *platform)
 				stream_append_s8(e, s8("poll_pipe: failed to reopen pipe: error: "));
 				stream_append_i64(e, GetLastError());
 				stream_append_byte(e, '\n');
-				platform->write_file(platform->error_file_handle, stream_to_s8(e));
+				os->write_file(os->stderr, stream_to_s8(e));
 				stream_reset(e, 0);
 			}
 		}
@@ -141,35 +141,35 @@ main(void)
 	Arena temp_memory = os_alloc_arena((Arena){0}, MB(16));
 	ctx.error_stream  = stream_alloc(&temp_memory, MB(1));
 
-	ctx.ui_backing_store              = sub_arena(&temp_memory, MB(2), KB(4));
-	ctx.platform.compute_worker.arena = sub_arena(&temp_memory, MB(2), KB(4));
+	ctx.ui_backing_store        = sub_arena(&temp_memory, MB(2), KB(4));
+	ctx.os.compute_worker.arena = sub_arena(&temp_memory, MB(2), KB(4));
 
 	Pipe data_pipe    = os_open_named_pipe(OS_PIPE_NAME);
 	input.pipe_handle = data_pipe.file;
 	ASSERT(data_pipe.file != INVALID_FILE);
 
-	#define X(name) ctx.platform.name = os_ ## name;
-	PLATFORM_FNS
+	#define X(name) ctx.os.name = os_ ## name;
+	OS_FNS
 	#undef X
 
 	w32_context w32_ctx = {0};
 	w32_ctx.io_completion_handle = CreateIoCompletionPort(INVALID_FILE, 0, 0, 0);
 
-	ctx.platform.os_context            = (iptr)&w32_ctx;
-	ctx.platform.compute_worker.asleep = 1;
-	ctx.platform.error_file_handle     = GetStdHandle(STD_ERROR_HANDLE);
+	ctx.os.context               = (iptr)&w32_ctx;
+	ctx.os.compute_worker.asleep = 1;
+	ctx.os.stderr                = GetStdHandle(STD_ERROR_HANDLE);
 
-	debug_init(&ctx.platform, (iptr)&input, &temp_memory);
+	debug_init(&ctx.os, (iptr)&input, &temp_memory);
 	setup_beamformer(&ctx, &temp_memory);
-	os_wake_thread(ctx.platform.compute_worker.sync_handle);
+	os_wake_thread(ctx.os.compute_worker.sync_handle);
 
 	while (!ctx.should_exit) {
-		clear_io_queue(&ctx.platform, &input, temp_memory);
+		clear_io_queue(&ctx.os, &input, temp_memory);
 
 		input.last_mouse = input.mouse;
 		input.mouse.rl   = GetMousePosition();
 
-		input.pipe_data_available = poll_pipe(&data_pipe, &ctx.error_stream, &ctx.platform);
+		input.pipe_data_available = poll_pipe(&data_pipe, &ctx.error_stream, &ctx.os);
 
 		beamformer_frame_step(&ctx, &temp_memory, &input);
 

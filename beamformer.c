@@ -173,7 +173,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		cs->raw_data_arena.end = cs->raw_data_arena.beg + rf_raw_size;
 		break;
 	case GL_VENDOR_NVIDIA:
-		cs->raw_data_arena = ctx->platform.alloc_arena(cs->raw_data_arena, rf_raw_size);
+		cs->raw_data_arena = ctx->os.alloc_arena(cs->raw_data_arena, rf_raw_size);
 		ctx->cuda_lib.register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
 		                                    cs->raw_data_ssbo);
 		ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E,
@@ -265,12 +265,12 @@ export_frame(BeamformerCtx *ctx, iptr handle, BeamformFrame *frame)
 {
 	uv3 dim            = frame->dim;
 	size out_size      = dim.x * dim.y * dim.z * 2 * sizeof(f32);
-	ctx->export_buffer = ctx->platform.alloc_arena(ctx->export_buffer, out_size);
+	ctx->export_buffer = ctx->os.alloc_arena(ctx->export_buffer, out_size);
 	glGetTextureImage(frame->texture, 0, GL_RG, GL_FLOAT, out_size, ctx->export_buffer.beg);
 	s8 raw = {.len = out_size, .data = ctx->export_buffer.beg};
-	if (!ctx->platform.write_file(handle, raw))
-		ctx->platform.write_file(ctx->platform.error_file_handle, s8("failed to export frame\n"));
-	ctx->platform.close(handle);
+	if (!ctx->os.write_file(handle, raw))
+		ctx->os.write_file(ctx->os.stderr, s8("failed to export frame\n"));
+	ctx->os.close(handle);
 }
 
 static void
@@ -462,7 +462,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, Compute
 }
 
 static u32
-compile_shader(Platform *platform, Arena a, u32 type, s8 shader, s8 name)
+compile_shader(OS *os, Arena a, u32 type, s8 shader, s8 name)
 {
 	u32 sid = glCreateShader(type);
 	glShaderSource(sid, 1, (const char **)&shader.data, (int *)&shader.len);
@@ -481,7 +481,7 @@ compile_shader(Platform *platform, Arena a, u32 type, s8 shader, s8 name)
 		glGetShaderInfoLog(sid, len, &out_len, (char *)(buf.data + buf.widx));
 		stream_commit(&buf, out_len);
 		glDeleteShader(sid);
-		platform->write_file(platform->error_file_handle, stream_to_s8(&buf));
+		os->write_file(os->stderr, stream_to_s8(&buf));
 
 		sid = 0;
 	}
@@ -490,7 +490,7 @@ compile_shader(Platform *platform, Arena a, u32 type, s8 shader, s8 name)
 }
 
 static u32
-link_program(Platform *platform, Arena a, u32 shader_id)
+link_program(OS *os, Arena a, u32 shader_id)
 {
 	i32 success = 0;
 	u32 result  = glCreateProgram();
@@ -504,7 +504,7 @@ link_program(Platform *platform, Arena a, u32 shader_id)
 		glGetProgramInfoLog(result, buf.cap - buf.widx, &len, (c8 *)(buf.data + buf.widx));
 		stream_reset(&buf, len);
 		stream_append_byte(&buf, '\n');
-		platform->write_file(platform->error_file_handle, stream_to_s8(&buf));
+		os->write_file(os->stderr, stream_to_s8(&buf));
 		glDeleteProgram(result);
 		result = 0;
 	}
@@ -553,21 +553,20 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, ComputeShaderReloadContext *c
 	if (csr->needs_header)
 		header = push_compute_shader_header(&tmp, csr->shader);
 
-	s8 shader_text = ctx->platform.read_whole_file(&tmp, (c8 *)path.data);
+	s8 shader_text = ctx->os.read_whole_file(&tmp, (c8 *)path.data);
 	shader_text.data -= header.len;
 	shader_text.len  += header.len;
 
 	if (shader_text.data == header.data) {
-		u32 shader_id  = compile_shader(&ctx->platform, tmp, GL_COMPUTE_SHADER, shader_text, path);
+		u32 shader_id  = compile_shader(&ctx->os, tmp, GL_COMPUTE_SHADER, shader_text, path);
 		if (shader_id) {
-			u32 new_program = link_program(&ctx->platform, tmp, shader_id);
+			u32 new_program = link_program(&ctx->os, tmp, shader_id);
 			if (new_program) {
 				Stream buf = arena_stream(&tmp);
 				stream_append_s8(&buf, s8("loaded: "));
 				stream_append_s8(&buf, path);
 				stream_append_byte(&buf, '\n');
-				ctx->platform.write_file(ctx->platform.error_file_handle,
-				                         stream_to_s8(&buf));
+				ctx->os.write_file(ctx->os.stderr, stream_to_s8(&buf));
 				glDeleteProgram(cs->programs[csr->shader]);
 				cs->programs[csr->shader] = new_program;
 				glUseProgram(cs->programs[csr->shader]);
@@ -583,7 +582,7 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, ComputeShaderReloadContext *c
 		stream_append_s8(&buf, s8("failed to load: "));
 		stream_append_s8(&buf, path);
 		stream_append_byte(&buf, '\n');
-		ctx->platform.write_file(ctx->platform.error_file_handle, stream_to_s8(&buf));
+		ctx->os.write_file(ctx->os.stderr, stream_to_s8(&buf));
 	}
 
 	return result;
@@ -630,16 +629,14 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			}
 
 			void *rf_data_buf = cs->raw_data_arena.beg;
-			size rlen = ctx->platform.read_file(work->file_handle, rf_data_buf,
-			                                    cs->rf_raw_size);
+			size rlen = ctx->os.read_file(work->file_handle, rf_data_buf, cs->rf_raw_size);
 			if (rlen != cs->rf_raw_size) {
 				stream_append_s8(&ctx->error_stream, s8("Partial Read Occurred: "));
 				stream_append_i64(&ctx->error_stream, rlen);
 				stream_append_byte(&ctx->error_stream, '/');
 				stream_append_i64(&ctx->error_stream, cs->rf_raw_size);
 				stream_append_byte(&ctx->error_stream, '\n');
-				ctx->platform.write_file(ctx->platform.error_file_handle,
-				                         stream_to_s8(&ctx->error_stream));
+				ctx->os.write_file(ctx->os.stderr, stream_to_s8(&ctx->error_stream));
 				ctx->error_stream.widx = 0;
 			} else {
 				switch (ctx->gl.vendor_id) {
@@ -655,7 +652,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 		} break;
 		case BW_COMPUTE: {
 			atomic_store(&cs->processing_compute, 1);
-			start_renderdoc_capture(&ctx->platform, gl_context);
+			start_renderdoc_capture(&ctx->os, gl_context);
 
 			BeamformerWorkFrame *frame = &work->frame;
 			if (ctx->params->upload) {
@@ -713,7 +710,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			frame->store->ready_to_present = 1;
 			cs->processing_compute         = 0;
 
-			end_renderdoc_capture(&ctx->platform, gl_context);
+			end_renderdoc_capture(&ctx->os, gl_context);
 		} break;
 		case BW_SAVE_FRAME: {
 			BeamformFrame *frame = work->output_frame_ctx.frame.store;
@@ -749,7 +746,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 			BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
 			if (fill_frame_compute_work(ctx, work)) {
 				beamform_work_queue_push_commit(ctx->beamform_work_queue);
-				ctx->platform.wake_thread(ctx->platform.compute_worker.sync_handle);
+				ctx->os.wake_thread(ctx->os.compute_worker.sync_handle);
 				ctx->start_compute = 0;
 			}
 		}
@@ -774,7 +771,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 				BeamformWork *export = beamform_work_queue_push(ctx->beamform_work_queue);
 				if (export) {
 					/* TODO: we don't really want the beamformer opening/closing files */
-					iptr f = ctx->platform.open_for_write(ctx->params->export_pipe_name);
+					iptr f = ctx->os.open_for_write(ctx->params->export_pipe_name);
 					export->type = BW_SAVE_FRAME;
 					export->output_frame_ctx.file_handle = f;
 					if (ctx->params->raw.output_points.w > 1) {
@@ -809,7 +806,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 
 	if (ctx->start_compute) {
 		ctx->start_compute = 0;
-		ctx->platform.wake_thread(ctx->platform.compute_worker.sync_handle);
+		ctx->os.wake_thread(ctx->os.compute_worker.sync_handle);
 	}
 
 	/* NOTE: draw output image texture using render fragment shader */

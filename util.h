@@ -176,7 +176,7 @@ typedef struct {
 	b32   errors;
 } Stream;
 
-typedef struct Platform Platform;
+typedef struct OS OS;
 
 typedef struct {
 	Arena arena;
@@ -188,7 +188,7 @@ typedef struct {
 	b32   asleep;
 } GLWorkerThreadContext;
 
-#define FILE_WATCH_CALLBACK_FN(name) b32 name(Platform *platform, s8 path, iptr user_data, Arena tmp)
+#define FILE_WATCH_CALLBACK_FN(name) b32 name(OS *os, s8 path, iptr user_data, Arena tmp)
 typedef FILE_WATCH_CALLBACK_FN(file_watch_callback);
 
 typedef struct {
@@ -213,41 +213,41 @@ typedef struct {
 	u32                directory_watch_count;
 } FileWatchContext;
 
-#define PLATFORM_ALLOC_ARENA_FN(name) Arena name(Arena old, size capacity)
-typedef PLATFORM_ALLOC_ARENA_FN(platform_alloc_arena_fn);
+#define OS_ALLOC_ARENA_FN(name) Arena name(Arena old, size capacity)
+typedef OS_ALLOC_ARENA_FN(os_alloc_arena_fn);
 
-#define PLATFORM_ADD_FILE_WATCH_FN(name) void name(Platform *platform, Arena *a, s8 path, \
-                                                   file_watch_callback *callback, iptr user_data)
-typedef PLATFORM_ADD_FILE_WATCH_FN(platform_add_file_watch_fn);
+#define OS_ADD_FILE_WATCH_FN(name) void name(OS *os, Arena *a, s8 path, \
+                                             file_watch_callback *callback, iptr user_data)
+typedef OS_ADD_FILE_WATCH_FN(os_add_file_watch_fn);
 
-#define PLATFORM_WAKE_WORKER_FN(name) void name(GLWorkerThreadContext *ctx)
-typedef PLATFORM_WAKE_WORKER_FN(platform_wake_worker_fn);
+#define OS_WAKE_WORKER_FN(name) void name(GLWorkerThreadContext *ctx)
+typedef OS_WAKE_WORKER_FN(os_wake_worker_fn);
 
-#define PLATFORM_CLOSE_FN(name) void name(iptr file)
-typedef PLATFORM_CLOSE_FN(platform_close_fn);
+#define OS_CLOSE_FN(name) void name(iptr file)
+typedef OS_CLOSE_FN(os_close_fn);
 
-#define PLATFORM_OPEN_FOR_WRITE_FN(name) iptr name(c8 *fname)
-typedef PLATFORM_OPEN_FOR_WRITE_FN(platform_open_for_write_fn);
+#define OS_OPEN_FOR_WRITE_FN(name) iptr name(c8 *fname)
+typedef OS_OPEN_FOR_WRITE_FN(os_open_for_write_fn);
 
-#define PLATFORM_READ_WHOLE_FILE_FN(name) s8 name(Arena *arena, char *file)
-typedef PLATFORM_READ_WHOLE_FILE_FN(platform_read_whole_file_fn);
+#define OS_READ_WHOLE_FILE_FN(name) s8 name(Arena *arena, char *file)
+typedef OS_READ_WHOLE_FILE_FN(os_read_whole_file_fn);
 
-#define PLATFORM_READ_FILE_FN(name) size name(iptr file, void *buf, size len)
-typedef PLATFORM_READ_FILE_FN(platform_read_file_fn);
+#define OS_READ_FILE_FN(name) size name(iptr file, void *buf, size len)
+typedef OS_READ_FILE_FN(os_read_file_fn);
 
-#define PLATFORM_WAKE_THREAD_FN(name) void name(iptr sync_handle)
-typedef PLATFORM_WAKE_THREAD_FN(platform_wake_thread_fn);
+#define OS_WAKE_THREAD_FN(name) void name(iptr sync_handle)
+typedef OS_WAKE_THREAD_FN(os_wake_thread_fn);
 
-#define PLATFORM_WRITE_NEW_FILE_FN(name) b32 name(char *fname, s8 raw)
-typedef PLATFORM_WRITE_NEW_FILE_FN(platform_write_new_file_fn);
+#define OS_WRITE_NEW_FILE_FN(name) b32 name(char *fname, s8 raw)
+typedef OS_WRITE_NEW_FILE_FN(os_write_new_file_fn);
 
-#define PLATFORM_WRITE_FILE_FN(name) b32 name(iptr file, s8 raw)
-typedef PLATFORM_WRITE_FILE_FN(platform_write_file_fn);
+#define OS_WRITE_FILE_FN(name) b32 name(iptr file, s8 raw)
+typedef OS_WRITE_FILE_FN(os_write_file_fn);
 
-#define PLATFORM_THREAD_ENTRY_POINT_FN(name) iptr name(iptr _ctx)
-typedef PLATFORM_THREAD_ENTRY_POINT_FN(platform_thread_entry_point_fn);
+#define OS_THREAD_ENTRY_POINT_FN(name) iptr name(iptr _ctx)
+typedef OS_THREAD_ENTRY_POINT_FN(os_thread_entry_point_fn);
 
-#define PLATFORM_FNS       \
+#define OS_FNS \
 	X(add_file_watch)  \
 	X(alloc_arena)     \
 	X(close)           \
@@ -272,18 +272,18 @@ typedef __attribute__((aligned(16))) u8 RenderDocAPI[216];
 #define RENDERDOC_START_FRAME_CAPTURE(a) (renderdoc_start_frame_capture_fn *)RENDERDOC_API_FN_ADDR(a, 152)
 #define RENDERDOC_END_FRAME_CAPTURE(a)   (renderdoc_end_frame_capture_fn *)  RENDERDOC_API_FN_ADDR(a, 168)
 
-#define X(name) platform_ ## name ## _fn *name;
-struct Platform {
-	PLATFORM_FNS
+struct OS {
+#define X(name) os_ ## name ## _fn *name;
+	OS_FNS
+#undef X
 	FileWatchContext file_watch_context;
-	iptr             os_context;
-	iptr             error_file_handle;
+	iptr             context;
+	iptr             stderr;
 	GLWorkerThreadContext compute_worker;
 
 	DEBUG_DECL(renderdoc_start_frame_capture_fn *start_frame_capture);
 	DEBUG_DECL(renderdoc_end_frame_capture_fn   *end_frame_capture);
 };
-#undef X
 
 #include "util.c"
 

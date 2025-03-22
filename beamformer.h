@@ -238,9 +238,9 @@ typedef struct BeamformerCtx {
 
 	Arena export_buffer;
 
-	CudaLib  cuda_lib;
-	Platform platform;
-	Stream   error_stream;
+	CudaLib cuda_lib;
+	OS      os;
+	Stream  error_stream;
 
 	BeamformWorkQueue *beamform_work_queue;
 

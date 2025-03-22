@@ -24,7 +24,7 @@ static FILE_WATCH_CALLBACK_FN(debug_reload)
 
 	/* NOTE(rnp): spin until compute thread finishes its work (we will probably
 	 * never reload while compute is in progress but just incase). */
-	while (!atomic_load(&platform->compute_worker.asleep));
+	while (!atomic_load(&os->compute_worker.asleep));
 
 	os_unload_library(debug_lib);
 	debug_lib = os_load_library(OS_DEBUG_LIB_NAME, OS_DEBUG_LIB_TEMP_NAME, &err);
@@ -34,7 +34,7 @@ static FILE_WATCH_CALLBACK_FN(debug_reload)
 	#undef X
 
 	stream_append_s8(&err, s8("Reloaded Main Executable\n"));
-	platform->write_file(platform->error_file_handle, stream_to_s8(&err));
+	os->write_file(os->stderr, stream_to_s8(&err));
 
 	input->executable_reloaded = 1;
 
@@ -42,10 +42,10 @@ static FILE_WATCH_CALLBACK_FN(debug_reload)
 }
 
 static void
-debug_init(Platform *p, iptr input, Arena *arena)
+debug_init(OS *os, iptr input, Arena *arena)
 {
-	p->add_file_watch(p, arena, s8(OS_DEBUG_LIB_NAME), debug_reload, input);
-	debug_reload(p, (s8){0}, input, *arena);
+	os->add_file_watch(os, arena, s8(OS_DEBUG_LIB_NAME), debug_reload, input);
+	debug_reload(os, (s8){0}, input, *arena);
 
 	Arena  tmp = *arena;
 	Stream err = arena_stream(&tmp);
@@ -55,14 +55,14 @@ debug_init(Platform *p, iptr input, Arena *arena)
 		if (get_api) {
 			RenderDocAPI *api = 0;
 			if (get_api(10600, (void **)&api)) {
-				p->start_frame_capture = RENDERDOC_START_FRAME_CAPTURE(api);
-				p->end_frame_capture   = RENDERDOC_END_FRAME_CAPTURE(api);
+				os->start_frame_capture = RENDERDOC_START_FRAME_CAPTURE(api);
+				os->end_frame_capture   = RENDERDOC_END_FRAME_CAPTURE(api);
 				stream_append_s8(&err, s8("loaded: " OS_RENDERDOC_SONAME "\n"));
 			}
 		}
 	}
 
-	p->write_file(p->error_file_handle, stream_to_s8(&err));
+	os->write_file(os->stderr, stream_to_s8(&err));
 }
 
 #endif /* _DEBUG */
@@ -70,8 +70,8 @@ debug_init(Platform *p, iptr input, Arena *arena)
 #define static_path_join(a, b) (a OS_PATH_SEPERATOR b)
 
 struct gl_debug_ctx {
-	Stream    stream;
-	Platform *platform;
+	Stream  stream;
+	OS     *os;
 };
 
 static void
@@ -91,7 +91,7 @@ gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, co
 	}
 	stream_append(e, (char *)msg, len);
 	stream_append_byte(e, '\n');
-	ctx->platform->write_file(ctx->platform->error_file_handle, stream_to_s8(e));
+	ctx->os->write_file(ctx->os->stderr, stream_to_s8(e));
 	stream_reset(e, 0);
 }
 
@@ -153,7 +153,7 @@ validate_gl_requirements(GLParams *gl, Arena a)
 }
 
 static void
-dump_gl_params(GLParams *gl, Arena a, Platform *p)
+dump_gl_params(GLParams *gl, Arena a, OS *os)
 {
 	(void)gl; (void)a;
 #ifdef _DEBUG
@@ -180,7 +180,7 @@ dump_gl_params(GLParams *gl, Arena a, Platform *p)
 	stream_append_s8(&s, s8("\nMax Server Wait Time [ns]:   "));
 	stream_append_i64(&s, gl->max_server_wait_time);
 	stream_append_s8(&s, s8("\n-----------------------\n"));
-	p->write_file(p->error_file_handle, stream_to_s8(&s));
+	os->write_file(os->stderr, stream_to_s8(&s));
 #endif
 }
 
@@ -211,7 +211,7 @@ static FILE_WATCH_CALLBACK_FN(queue_compute_shader_reload)
 		work->type = BW_RELOAD_SHADER;
 		work->reload_shader_ctx = csr;
 		beamform_work_queue_push_commit(ctx->beamform_work_queue);
-		ctx->platform.wake_thread(ctx->platform.compute_worker.sync_handle);
+		ctx->os.wake_thread(ctx->os.compute_worker.sync_handle);
 	}
 	return 1;
 }
@@ -230,7 +230,7 @@ static FILE_WATCH_CALLBACK_FN(load_cuda_lib)
 		CUDA_LIB_FNS
 		#undef X
 
-		platform->write_file(platform->error_file_handle, stream_to_s8(&err));
+		os->write_file(os->stderr, stream_to_s8(&err));
 	}
 
 	#define X(name) if (!cl->name) cl->name = name ## _stub;
@@ -246,7 +246,7 @@ void glfwWindowHint(i32, i32);
 iptr glfwCreateWindow(i32, i32, char *, iptr, iptr);
 void glfwMakeContextCurrent(iptr);
 
-static PLATFORM_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
+static OS_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
 {
 	GLWorkerThreadContext *ctx = (GLWorkerThreadContext *)_ctx;
 
@@ -278,12 +278,12 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 
 	/* NOTE: Gather information about the GPU */
 	get_gl_params(&ctx->gl, &ctx->error_stream);
-	dump_gl_params(&ctx->gl, *memory, &ctx->platform);
+	dump_gl_params(&ctx->gl, *memory, &ctx->os);
 	validate_gl_requirements(&ctx->gl, *memory);
 
 	glfwWindowHint(GLFW_VISIBLE, 0);
 	iptr raylib_window_handle = (iptr)GetPlatformWindowHandle();
-	GLWorkerThreadContext *worker = &ctx->platform.compute_worker;
+	GLWorkerThreadContext *worker = &ctx->os.compute_worker;
 	worker->window_handle = glfwCreateWindow(320, 240, "", 0, raylib_window_handle);
 	worker->sync_handle   = os_create_sync_object(memory);
 	worker->handle        = os_create_thread(*memory, (iptr)worker, s8("[compute]"),
@@ -308,9 +308,9 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	ctx->params->compute_stages_count = 2;
 
 	if (ctx->gl.vendor_id == GL_VENDOR_NVIDIA
-	    && load_cuda_lib(&ctx->platform, s8(OS_CUDA_LIB_NAME), (iptr)&ctx->cuda_lib, *memory))
+	    && load_cuda_lib(&ctx->os, s8(OS_CUDA_LIB_NAME), (iptr)&ctx->cuda_lib, *memory))
 	{
-		os_add_file_watch(&ctx->platform, memory, s8(OS_CUDA_LIB_NAME), load_cuda_lib,
+		os_add_file_watch(&ctx->os, memory, s8(OS_CUDA_LIB_NAME), load_cuda_lib,
 		                  (iptr)&ctx->cuda_lib);
 	} else {
 		#define X(name) if (!ctx->cuda_lib.name) ctx->cuda_lib.name = name ## _stub;
@@ -320,8 +320,8 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 
 	/* NOTE: set up OpenGL debug logging */
 	struct gl_debug_ctx *gl_debug_ctx = push_struct(memory, typeof(*gl_debug_ctx));
-	gl_debug_ctx->stream   = stream_alloc(memory, 1024);
-	gl_debug_ctx->platform = &ctx->platform;
+	gl_debug_ctx->stream = stream_alloc(memory, 1024);
+	gl_debug_ctx->os     = &ctx->os;
 	glDebugMessageCallback(gl_debug_logger, gl_debug_ctx);
 #ifdef _DEBUG
 	glEnable(GL_DEBUG_OUTPUT);
@@ -339,16 +339,16 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 		csr->shader         = sn;                                            \
 		csr->needs_header   = nh;                                            \
 		csr->path           = s8(static_path_join("shaders", f ".glsl"));    \
-		os_add_file_watch(&ctx->platform, memory, csr->path, queue_compute_shader_reload, (iptr)csr); \
-		queue_compute_shader_reload(&ctx->platform, csr->path, (iptr)csr, *memory); \
+		os_add_file_watch(&ctx->os, memory, csr->path, queue_compute_shader_reload, (iptr)csr); \
+		queue_compute_shader_reload(&ctx->os, csr->path, (iptr)csr, *memory); \
 	} while (0);
 	COMPUTE_SHADERS
 	#undef X
 	os_wake_thread(worker->sync_handle);
 
 	s8 render = s8(static_path_join("shaders", "render.glsl"));
-	reload_render_shader(&ctx->platform, render, (iptr)&ctx->fsctx, *memory);
-	os_add_file_watch(&ctx->platform, memory, render, reload_render_shader, (iptr)&ctx->fsctx);
+	reload_render_shader(&ctx->os, render, (iptr)&ctx->fsctx, *memory);
+	os_add_file_watch(&ctx->os, memory, render, reload_render_shader, (iptr)&ctx->fsctx);
 	ctx->fsctx.gen_mipmaps = 0;
 
 	ctx->ready_for_rf = 1;
