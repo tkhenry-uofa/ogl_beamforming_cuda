@@ -16,15 +16,15 @@ static i32 hadamard_12_12_transpose[] = {
 
 #define zero_struct(s) mem_clear(s, 0, sizeof(*s));
 static void *
-mem_clear(void *p_, u8 c, size len)
+mem_clear(void *p_, u8 c, iz size)
 {
 	u8 *p = p_;
-	while (len) p[--len] = c;
+	while (size > 0) p[--size] = c;
 	return p;
 }
 
 static void
-mem_copy(void *restrict src, void *restrict dest, size n)
+mem_copy(void *restrict src, void *restrict dest, uz n)
 {
 	ASSERT(n >= 0);
 	u8 *s = src, *d = dest;
@@ -32,7 +32,7 @@ mem_copy(void *restrict src, void *restrict dest, size n)
 }
 
 static void
-mem_move(u8 *src, u8 *dest, size n)
+mem_move(u8 *src, u8 *dest, iz n)
 {
 	if (dest < src) mem_copy(src, dest, n);
 	else            while (n) { n--; dest[n] = src[n]; }
@@ -40,7 +40,7 @@ mem_move(u8 *src, u8 *dest, size n)
 
 
 static u8 *
-arena_commit(Arena *a, size size)
+arena_commit(Arena *a, iz size)
 {
 	ASSERT(a->end - a->beg >= size);
 	u8 *result = a->beg;
@@ -49,7 +49,7 @@ arena_commit(Arena *a, size size)
 }
 
 static void
-arena_pop(Arena *a, size length)
+arena_pop(Arena *a, iz length)
 {
 	a->beg -= length;
 }
@@ -57,14 +57,14 @@ arena_pop(Arena *a, size length)
 #define alloc(a, t, n)    (t *)alloc_(a, sizeof(t), _Alignof(t), n)
 #define push_struct(a, t) (t *)alloc_(a, sizeof(t), _Alignof(t), 1)
 static void *
-alloc_(Arena *a, size len, size align, size count)
+alloc_(Arena *a, iz len, iz align, iz count)
 {
 	/* NOTE: special case 0 arena */
 	if (a->beg == 0)
 		return 0;
 
-	size padding   = -(uintptr_t)a->beg & (align - 1);
-	size available = a->end - a->beg - padding;
+	iz padding   = -(uintptr_t)a->beg & (align - 1);
+	iz available = a->end - a->beg - padding;
 	if (available < 0 || count > available / len)
 		ASSERT(0 && "arena OOM\n");
 	void *p = a->beg + padding;
@@ -74,11 +74,11 @@ alloc_(Arena *a, size len, size align, size count)
 }
 
 static Arena
-sub_arena(Arena *a, size len, size align)
+sub_arena(Arena *a, iz len, iz align)
 {
 	Arena result = {0};
 
-	size padding = -(uintptr_t)a->beg & (align - 1);
+	iz padding = -(uintptr_t)a->beg & (align - 1);
 	result.beg   = a->beg + padding;
 	result.end   = result.beg + len;
 	arena_commit(a, len + padding);
@@ -131,7 +131,7 @@ utf8_encode(u8 *out, u32 cp)
 }
 
 static UnicodeDecode
-utf16_decode(u16 *data, size length)
+utf16_decode(u16 *data, iz length)
 {
 	UnicodeDecode result = {.cp = U32_MAX};
 	if (length) {
@@ -175,7 +175,7 @@ arena_stream(Arena *a)
 }
 
 static Stream
-stream_alloc(Arena *a, size cap)
+stream_alloc(Arena *a, iz cap)
 {
 	Stream result = {.cap = cap};
 	result.data = alloc(a, u8, cap);
@@ -190,7 +190,7 @@ stream_to_s8(Stream *s)
 }
 
 static void
-stream_reset(Stream *s, size index)
+stream_reset(Stream *s, iz index)
 {
 	s->errors = s->cap <= index;
 	if (!s->errors)
@@ -198,7 +198,7 @@ stream_reset(Stream *s, size index)
 }
 
 static void
-stream_commit(Stream *s, size count)
+stream_commit(Stream *s, iz count)
 {
 	s->errors |= !BETWEEN(s->widx + count, 0, s->cap);
 	if (!s->errors)
@@ -206,7 +206,7 @@ stream_commit(Stream *s, size count)
 }
 
 static void
-stream_append(Stream *s, void *data, size count)
+stream_append(Stream *s, void *data, iz count)
 {
 	s->errors |= (s->cap - s->widx) < count;
 	if (!s->errors) {
@@ -228,9 +228,9 @@ stream_append_s8(Stream *s, s8 str)
 }
 
 static void
-stream_append_s8_array(Stream *s, s8 *strs, size count)
+stream_append_s8_array(Stream *s, s8 *strs, iz count)
 {
-	for (size i = 0; i < count; i++)
+	for (iz i = 0; i < count; i++)
 		stream_append(s, strs[i].data, strs[i].len);
 }
 
@@ -347,17 +347,17 @@ c_str_to_s8(char *cstr)
 }
 
 /* NOTE(rnp): returns < 0 if byte is not found */
-static size
+static iz
 s8_scan_backwards(s8 s, u8 byte)
 {
-	size result = s.len;
+	iz result = s.len;
 	while (result && s.data[result - 1] != byte) result--;
 	result--;
 	return result;
 }
 
 static s8
-s8_cut_head(s8 s, size cut)
+s8_cut_head(s8 s, iz cut)
 {
 	s8 result = s;
 	if (cut > 0) {
@@ -368,7 +368,7 @@ s8_cut_head(s8 s, size cut)
 }
 
 static s8
-s8_alloc(Arena *a, size len)
+s8_alloc(Arena *a, iz len)
 {
 	return (s8){ .data = alloc(a, u8, len), .len = len };
 }
@@ -378,8 +378,8 @@ s16_to_s8(Arena *a, s16 in)
 {
 	s8 result = {0};
 	if (in.len) {
-		size commit = in.len * 4;
-		size length = 0;
+		iz commit = in.len * 4;
+		iz length = 0;
 		u8 *data = arena_commit(a, commit + 1);
 		u16 *beg = in.data;
 		u16 *end = in.data + in.len;
@@ -400,11 +400,11 @@ s8_to_s16(Arena *a, s8 in)
 {
 	s16 result = {0};
 	if (in.len) {
-		size required = 2 * in.len + 1;
-		u16 *data     = alloc(a, u16, required);
-		size length   = 0;
+		iz required = 2 * in.len + 1;
+		u16 *data   = alloc(a, u16, required);
+		iz length   = 0;
 		/* TODO(rnp): utf8_decode */
-		for (size i = 0; i < in.len; i++) {
+		for (iz i = 0; i < in.len; i++) {
 			u32 cp  = in.data[i];
 			length += utf16_encode(data + length, cp);
 		}

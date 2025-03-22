@@ -30,7 +30,7 @@ dispatch_file_watch_events(OS *os, Arena arena)
 	Stream path = stream_alloc(&arena, 256);
 	struct inotify_event *event;
 
-	size rlen;
+	iz rlen;
 	while ((rlen = read(fwctx->handle, mem, 4096)) > 0) {
 		for (u8 *data = mem; data < mem + rlen; data += sizeof(*event) + event->len) {
 			event = (struct inotify_event *)data;

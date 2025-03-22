@@ -12,11 +12,11 @@ static u32 cycle_t;
 #define end_renderdoc_capture(p, gl)   if ((p)->end_frame_capture)   (p)->end_frame_capture(gl, 0)
 #endif
 
-static size
+static iz
 decoded_data_size(ComputeShaderCtx *cs)
 {
-	uv4  dim    = cs->dec_data_dim;
-	size result = 2 * sizeof(f32) * dim.x * dim.y * dim.z;
+	uv4 dim    = cs->dec_data_dim;
+	iz  result = 2 * sizeof(f32) * dim.x * dim.y * dim.z;
 	return result;
 }
 
@@ -151,7 +151,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glNamedBufferStorage(cs->raw_data_ssbo, rf_raw_size, 0, storage_flags);
 	LABEL_GL_OBJECT(GL_BUFFER, cs->raw_data_ssbo, s8("Raw_RF_SSBO"));
 
-	size rf_decoded_size = decoded_data_size(cs);
+	iz rf_decoded_size = decoded_data_size(cs);
 	Stream label = stream_alloc(&a, 256);
 	stream_append_s8(&label, s8("Decoded_RF_SSBO_"));
 	u32 s_widx = label.widx;
@@ -182,7 +182,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	}
 
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
-	size hadamard_elements = dec_data_dim.z * dec_data_dim.z;
+	iz   hadamard_elements = dec_data_dim.z * dec_data_dim.z;
 	i32  *hadamard         = alloc(&a, i32, hadamard_elements);
 	i32  *tmp              = alloc(&a, i32, hadamard_elements);
 	fill_hadamard_transpose(hadamard, tmp, dec_data_dim.z);
@@ -264,7 +264,7 @@ static void
 export_frame(BeamformerCtx *ctx, iptr handle, BeamformFrame *frame)
 {
 	uv3 dim            = frame->dim;
-	size out_size      = dim.x * dim.y * dim.z * 2 * sizeof(f32);
+	iz  out_size       = dim.x * dim.y * dim.z * 2 * sizeof(f32);
 	ctx->export_buffer = ctx->os.alloc_arena(ctx->export_buffer, out_size);
 	glGetTextureImage(frame->texture, 0, GL_RG, GL_FLOAT, out_size, ctx->export_buffer.beg);
 	s8 raw = {.len = out_size, .data = ctx->export_buffer.beg};
@@ -629,7 +629,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			}
 
 			void *rf_data_buf = cs->raw_data_arena.beg;
-			size rlen = ctx->os.read_file(work->file_handle, rf_data_buf, cs->rf_raw_size);
+			iz rlen = ctx->os.read_file(work->file_handle, rf_data_buf, cs->rf_raw_size);
 			if (rlen != cs->rf_raw_size) {
 				stream_append_s8(&ctx->error_stream, s8("Partial Read Occurred: "));
 				stream_append_i64(&ctx->error_stream, rlen);
@@ -666,7 +666,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 
 			uv3 try_dim = ctx->params->raw.output_points.xyz;
 			if (!uv3_equal(try_dim, frame->store->dim)) {
-				size frame_index = frame->store - ctx->beamform_frames;
+				iz frame_index = frame->store - ctx->beamform_frames;
 				alloc_beamform_frame(&ctx->gl, frame->store, frame->stats, try_dim,
 				                     frame_index, s8("Beamformed_Data"));
 			}

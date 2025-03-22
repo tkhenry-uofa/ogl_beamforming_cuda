@@ -73,8 +73,8 @@ typedef uint64_t  u64;
 typedef uint32_t  b32;
 typedef float     f32;
 typedef double    f64;
-typedef ptrdiff_t size;
-typedef size_t    usize;
+typedef ptrdiff_t iz;
+typedef size_t    uz;
 typedef ptrdiff_t iptr;
 typedef size_t    uptr;
 
@@ -83,10 +83,10 @@ typedef size_t    uptr;
 typedef struct { u8 *beg, *end; } Arena;
 typedef struct { Arena *arena; u8 *old_beg; } TempArena;
 
-typedef struct { size len; u8 *data; } s8;
+typedef struct { iz len; u8 *data; } s8;
 #define s8(s) (s8){.len = ARRAY_COUNT(s) - 1, .data = (u8 *)s}
 
-typedef struct { size len; u16 *data; } s16;
+typedef struct { iz len; u16 *data; } s16;
 
 typedef struct { u32 cp, consumed; } UnicodeDecode;
 
@@ -213,7 +213,7 @@ typedef struct {
 	u32                directory_watch_count;
 } FileWatchContext;
 
-#define OS_ALLOC_ARENA_FN(name) Arena name(Arena old, size capacity)
+#define OS_ALLOC_ARENA_FN(name) Arena name(Arena old, iz capacity)
 typedef OS_ALLOC_ARENA_FN(os_alloc_arena_fn);
 
 #define OS_ADD_FILE_WATCH_FN(name) void name(OS *os, Arena *a, s8 path, \
@@ -232,7 +232,7 @@ typedef OS_OPEN_FOR_WRITE_FN(os_open_for_write_fn);
 #define OS_READ_WHOLE_FILE_FN(name) s8 name(Arena *arena, char *file)
 typedef OS_READ_WHOLE_FILE_FN(os_read_whole_file_fn);
 
-#define OS_READ_FILE_FN(name) size name(iptr file, void *buf, size len)
+#define OS_READ_FILE_FN(name) iz name(iptr file, void *buf, iz size)
 typedef OS_READ_FILE_FN(os_read_file_fn);
 
 #define OS_WAKE_THREAD_FN(name) void name(iptr sync_handle)

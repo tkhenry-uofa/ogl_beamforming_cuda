@@ -32,7 +32,7 @@ os_get_module(char *name, Stream *e)
 static OS_WRITE_FILE_FN(os_write_file)
 {
 	while (raw.len) {
-		size r = write(file, raw.data, raw.len);
+		iz r = write(file, raw.data, raw.len);
 		if (r < 0) return 0;
 		raw = s8_cut_head(raw, r);
 	}
@@ -50,11 +50,11 @@ os_fatal(s8 msg)
 static OS_ALLOC_ARENA_FN(os_alloc_arena)
 {
 	Arena result;
-	size pagesize = sysconf(_SC_PAGESIZE);
+	iz pagesize = sysconf(_SC_PAGESIZE);
 	if (capacity % pagesize != 0)
 		capacity += pagesize - capacity % pagesize;
 
-	size oldsize = old.end - old.beg;
+	iz oldsize = old.end - old.beg;
 	if (oldsize > capacity)
 		return old;
 
@@ -89,7 +89,7 @@ static OS_READ_WHOLE_FILE_FN(os_read_whole_file)
 	i32 fd = open(file, O_RDONLY);
 	if (fd >= 0 && fstat(fd, &sb) >= 0) {
 		result = s8_alloc(arena, sb.st_size);
-		size rlen = read(fd, result.data, result.len);
+		iz rlen = read(fd, result.data, result.len);
 		if (rlen != result.len)
 			result = (s8){0};
 	}
@@ -125,17 +125,17 @@ os_open_named_pipe(char *name)
 
 static OS_READ_FILE_FN(os_read_file)
 {
-	size r = 0, total_read = 0;
+	iz r = 0, total_read = 0;
 	do {
 		if (r != -1)
 			total_read += r;
-		r = read(file, buf + total_read, len - total_read);
+		r = read(file, buf + total_read, size - total_read);
 	} while (r);
 	return total_read;
 }
 
 static void *
-os_open_shared_memory_area(char *name, size cap)
+os_open_shared_memory_area(char *name, iz cap)
 {
 	i32 fd = shm_open(name, O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
 	if (fd == -1)
@@ -170,11 +170,11 @@ os_copy_file(char *name, char *new)
 	if (fd_old < 0 || fd_new < 0)
 		goto ret;
 	u8 buf[4096];
-	size copied = 0;
+	iz copied = 0;
 	while (copied != sb.st_size) {
-		size r = read(fd_old, buf, ARRAY_COUNT(buf));
+		iz r = read(fd_old, buf, ARRAY_COUNT(buf));
 		if (r < 0) goto ret;
-		size w = write(fd_new, buf, r);
+		iz w = write(fd_new, buf, r);
 		if (w < 0) goto ret;
 		copied += w;
 	}

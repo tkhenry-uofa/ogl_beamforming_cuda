@@ -40,8 +40,8 @@ typedef struct {
 	u16  wProcessorArchitecture;
 	u16  _pad1;
 	u32  dwPageSize;
-	size lpMinimumApplicationAddress;
-	size lpMaximumApplicationAddress;
+	iz   lpMinimumApplicationAddress;
+	iz   lpMaximumApplicationAddress;
 	u64  dwActiveProcessorMask;
 	u32  dwNumberOfProcessors;
 	u32  dwProcessorType;
@@ -91,7 +91,7 @@ W32(iptr)   CreateFileMappingA(iptr, void *, u32, u32, u32, c8 *);
 W32(iptr)   CreateIoCompletionPort(iptr, iptr, uptr, u32);
 W32(iptr)   CreateNamedPipeA(c8 *, u32, u32, u32, u32, u32, u32, void *);
 W32(iptr)   CreateSemaphoreA(iptr, i64, i64, c8 *);
-W32(iptr)   CreateThread(iptr, usize, iptr, iptr, u32, u32 *);
+W32(iptr)   CreateThread(iptr, uz, iptr, iptr, u32, u32 *);
 W32(b32)    DeleteFileA(c8 *);
 W32(b32)    DisconnectNamedPipe(iptr);
 W32(void)   ExitProcess(i32);
@@ -112,8 +112,8 @@ W32(b32)    ReleaseSemaphore(iptr, i64, i64 *);
 W32(i32)    SetThreadDescription(iptr, u16 *);
 W32(u32)    WaitForSingleObjectEx(iptr, u32, b32);
 W32(b32)    WriteFile(iptr, u8 *, i32, i32 *, void *);
-W32(void *) VirtualAlloc(u8 *, size, u32, u32);
-W32(b32)    VirtualFree(u8 *, size, u32);
+W32(void *) VirtualAlloc(u8 *, iz, u32, u32);
+W32(b32)    VirtualFree(u8 *, iz, u32);
 
 #ifdef _DEBUG
 static void *
@@ -154,7 +154,7 @@ static OS_ALLOC_ARENA_FN(os_alloc_arena)
 	if (capacity % Info.dwPageSize != 0)
 		capacity += (Info.dwPageSize - capacity % Info.dwPageSize);
 
-	size oldsize = old.end - old.beg;
+	iz oldsize = old.end - old.beg;
 	if (oldsize > capacity)
 		return old;
 
@@ -186,11 +186,11 @@ static OS_READ_WHOLE_FILE_FN(os_read_whole_file)
 	w32_file_info fileinfo;
 	iptr h = CreateFileA(file, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0);
 	if (h >= 0 && GetFileInformationByHandle(h, &fileinfo)) {
-		size filesize = (size)fileinfo.nFileSizeHigh << 32;
-		filesize     |= (size)fileinfo.nFileSizeLow;
-		result        = s8_alloc(arena, filesize);
+		iz filesize  = (iz)fileinfo.nFileSizeHigh << 32;
+		filesize    |= (iz)fileinfo.nFileSizeLow;
+		result       = s8_alloc(arena, filesize);
 
-		ASSERT(filesize <= (size)U32_MAX);
+		ASSERT(filesize <= (iz)U32_MAX);
 
 		i32 rlen;
 		if (!ReadFile(h, result.data, result.len, &rlen, 0) || rlen != result.len)
@@ -204,13 +204,13 @@ static OS_READ_WHOLE_FILE_FN(os_read_whole_file)
 static OS_READ_FILE_FN(os_read_file)
 {
 	i32 total_read = 0;
-	ReadFile(file, buf, len, &total_read, 0);
+	ReadFile(file, buf, size, &total_read, 0);
 	return total_read;
 }
 
 static OS_WRITE_NEW_FILE_FN(os_write_new_file)
 {
-	if (raw.len > (size)U32_MAX) {
+	if (raw.len > (iz)U32_MAX) {
 		os_write_file(GetStdHandle(STD_ERROR_HANDLE),
 		              s8("os_write_file: files >4GB are not yet handled on win32\n"));
 		return 0;
@@ -242,7 +242,7 @@ os_open_named_pipe(char *name)
 }
 
 static void *
-os_open_shared_memory_area(char *name, size cap)
+os_open_shared_memory_area(char *name, iz cap)
 {
 	iptr h = CreateFileMappingA(-1, 0, PAGE_READWRITE, 0, cap, name);
 	if (h == INVALID_FILE)

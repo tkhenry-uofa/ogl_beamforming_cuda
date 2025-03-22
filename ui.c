@@ -228,7 +228,7 @@ static v2
 measure_text(Font font, s8 text)
 {
 	v2 result = {.y = font.baseSize};
-	for (size i = 0; i < text.len; i++) {
+	for (iz i = 0; i < text.len; i++) {
 		/* NOTE: assumes font glyphs are ordered ASCII */
 		i32 idx   = (i32)text.data[i] - 0x20;
 		result.x += font.glyphs[idx].advanceX;
@@ -499,7 +499,7 @@ static v2
 draw_text(Font font, s8 text, v2 pos, Color colour)
 {
 	v2 off = pos;
-	for (size i = 0; i < text.len; i++) {
+	for (iz i = 0; i < text.len; i++) {
 		/* NOTE: assumes font glyphs are ordered ASCII */
 		i32 idx = text.data[i] - 0x20;
 		Rectangle dst = {
