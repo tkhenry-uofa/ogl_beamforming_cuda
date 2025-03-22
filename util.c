@@ -24,7 +24,7 @@ mem_clear(void *p_, u8 c, iz size)
 }
 
 static void
-mem_copy(void *restrict src, void *restrict dest, uz n)
+mem_copy(void *restrict dest, void *restrict src, uz n)
 {
 	ASSERT(n >= 0);
 	u8 *s = src, *d = dest;
@@ -32,9 +32,9 @@ mem_copy(void *restrict src, void *restrict dest, uz n)
 }
 
 static void
-mem_move(u8 *src, u8 *dest, iz n)
+mem_move(u8 *dest, u8 *src, iz n)
 {
-	if (dest < src) mem_copy(src, dest, n);
+	if (dest < src) mem_copy(dest, src, n);
 	else            while (n) { n--; dest[n] = src[n]; }
 }
 
@@ -210,7 +210,7 @@ stream_append(Stream *s, void *data, iz count)
 {
 	s->errors |= (s->cap - s->widx) < count;
 	if (!s->errors) {
-		mem_copy(data, s->data + s->widx, count);
+		mem_copy(s->data + s->widx, data, count);
 		s->widx += count;
 	}
 }
@@ -418,7 +418,7 @@ static s8
 push_s8(Arena *a, s8 str)
 {
 	s8 result = s8_alloc(a, str.len);
-	mem_copy(str.data, result.data, result.len);
+	mem_copy(result.data, str.data, result.len);
 	return result;
 }
 
@@ -427,7 +427,7 @@ push_s8_zero(Arena *a, s8 str)
 {
 	s8 result   = s8_alloc(a, str.len + 1);
 	result.len -= 1;
-	mem_copy(str.data, result.data, result.len);
+	mem_copy(result.data, str.data, result.len);
 	return result;
 }
 

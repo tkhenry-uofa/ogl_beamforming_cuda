@@ -1367,8 +1367,8 @@ update_text_input(InputState *is, Variable *var)
 		b32 allow_key = ((key >= '0' && key <= '9') || (key == '.') ||
 		                 (key == '-' && is->cursor == 0));
 		if (allow_key) {
-			mem_move(is->buf + is->cursor,
-			         is->buf + is->cursor + 1,
+			mem_move(is->buf + is->cursor + 1,
+			         is->buf + is->cursor,
 			         is->buf_len - is->cursor + 1);
 
 			is->buf[is->cursor++] = key;
@@ -1386,16 +1386,16 @@ update_text_input(InputState *is, Variable *var)
 	if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && is->cursor > 0) {
 		is->cursor--;
 		if (is->cursor < ARRAY_COUNT(is->buf) - 1) {
-			mem_move(is->buf + is->cursor + 1,
-			         is->buf + is->cursor,
+			mem_move(is->buf + is->cursor,
+			         is->buf + is->cursor + 1,
 			         is->buf_len - is->cursor);
 		}
 		is->buf_len--;
 	}
 
 	if ((IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) && is->cursor < is->buf_len) {
-		mem_move(is->buf + is->cursor + 1,
-		         is->buf + is->cursor,
+		mem_move(is->buf + is->cursor,
+			 is->buf + is->cursor + 1,
 		         is->buf_len - is->cursor);
 		is->buf_len--;
 	}
@@ -1727,7 +1727,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 
 	/* TODO(rnp): there should be a better way of detecting this */
 	if (ctx->ui_read_params) {
-		mem_copy(&ctx->params->raw.output_min_coordinate, &ui->params, sizeof(ui->params));
+		mem_copy(&ui->params, &ctx->params->raw.output_min_coordinate, sizeof(ui->params));
 		ui->flush_params    = 0;
 		ctx->ui_read_params = 0;
 	}
@@ -1739,7 +1739,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 	if (ui->flush_params) {
 		validate_ui_parameters(&ui->params);
 		if (!ctx->csctx.processing_compute) {
-			mem_copy(&ui->params, &ctx->params->raw.output_min_coordinate, sizeof(ui->params));
+			mem_copy(&ctx->params->raw.output_min_coordinate, &ui->params, sizeof(ui->params));
 			ui->flush_params    = 0;
 			ctx->params->upload = 1;
 			ctx->start_compute  = 1;

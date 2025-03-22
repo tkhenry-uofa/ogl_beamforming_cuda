@@ -704,7 +704,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			if (did_sum_shader) {
 				ctx->averaged_frame.ready_to_present = 1;
 				/* TODO(rnp): not really sure what to do here */
-				mem_copy(frame->stats->times, ctx->averaged_frame_compute_stats.times,
+				mem_copy(ctx->averaged_frame_compute_stats.times, frame->stats->times,
 				         sizeof(frame->stats->times));
 			}
 			frame->store->ready_to_present = 1;
