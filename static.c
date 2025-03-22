@@ -34,7 +34,7 @@ static FILE_WATCH_CALLBACK_FN(debug_reload)
 	#undef X
 
 	stream_append_s8(&err, s8("Reloaded Main Executable\n"));
-	os_write_err_msg(stream_to_s8(&err));
+	platform->write_file(platform->error_file_handle, stream_to_s8(&err));
 
 	input->executable_reloaded = 1;
 
@@ -62,19 +62,25 @@ debug_init(Platform *p, iptr input, Arena *arena)
 		}
 	}
 
-	os_write_err_msg(stream_to_s8(&err));
+	p->write_file(p->error_file_handle, stream_to_s8(&err));
 }
 
 #endif /* _DEBUG */
 
 #define static_path_join(a, b) (a OS_PATH_SEPERATOR b)
 
+struct gl_debug_ctx {
+	Stream    stream;
+	Platform *platform;
+};
+
 static void
 gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, const void *userctx)
 {
 	(void)src; (void)type; (void)id;
 
-	Stream *e = (Stream *)userctx;
+	struct gl_debug_ctx *ctx = (struct gl_debug_ctx *)userctx;
+	Stream *e = &ctx->stream;
 	stream_append_s8(e, s8("[GL DEBUG "));
 	switch (lvl) {
 	case GL_DEBUG_SEVERITY_HIGH:         stream_append_s8(e, s8("HIGH]: "));         break;
@@ -85,7 +91,7 @@ gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, co
 	}
 	stream_append(e, (char *)msg, len);
 	stream_append_byte(e, '\n');
-	os_write_err_msg(stream_to_s8(e));
+	ctx->platform->write_file(ctx->platform->error_file_handle, stream_to_s8(e));
 	stream_reset(e, 0);
 }
 
@@ -147,7 +153,7 @@ validate_gl_requirements(GLParams *gl, Arena a)
 }
 
 static void
-dump_gl_params(GLParams *gl, Arena a)
+dump_gl_params(GLParams *gl, Arena a, Platform *p)
 {
 	(void)gl; (void)a;
 #ifdef _DEBUG
@@ -174,7 +180,7 @@ dump_gl_params(GLParams *gl, Arena a)
 	stream_append_s8(&s, s8("\nMax Server Wait Time [ns]:   "));
 	stream_append_i64(&s, gl->max_server_wait_time);
 	stream_append_s8(&s, s8("\n-----------------------\n"));
-	os_write_err_msg(stream_to_s8(&s));
+	p->write_file(p->error_file_handle, stream_to_s8(&s));
 #endif
 }
 
@@ -224,7 +230,7 @@ static FILE_WATCH_CALLBACK_FN(load_cuda_lib)
 		CUDA_LIB_FNS
 		#undef X
 
-		os_write_err_msg(stream_to_s8(&err));
+		platform->write_file(platform->error_file_handle, stream_to_s8(&err));
 	}
 
 	#define X(name) if (!cl->name) cl->name = name ## _stub;
@@ -272,7 +278,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 
 	/* NOTE: Gather information about the GPU */
 	get_gl_params(&ctx->gl, &ctx->error_stream);
-	dump_gl_params(&ctx->gl, *memory);
+	dump_gl_params(&ctx->gl, *memory, &ctx->platform);
 	validate_gl_requirements(&ctx->gl, *memory);
 
 	glfwWindowHint(GLFW_VISIBLE, 0);
@@ -313,7 +319,10 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	}
 
 	/* NOTE: set up OpenGL debug logging */
-	glDebugMessageCallback(gl_debug_logger, &ctx->error_stream);
+	struct gl_debug_ctx *gl_debug_ctx = push_struct(memory, typeof(*gl_debug_ctx));
+	gl_debug_ctx->stream   = stream_alloc(memory, 1024);
+	gl_debug_ctx->platform = &ctx->platform;
+	glDebugMessageCallback(gl_debug_logger, gl_debug_ctx);
 #ifdef _DEBUG
 	glEnable(GL_DEBUG_OUTPUT);
 #endif

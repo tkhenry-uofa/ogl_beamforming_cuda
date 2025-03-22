@@ -49,11 +49,11 @@ dispatch_file_watch(Platform *platform, FileWatchDirectory *fw_dir, u8 *buf, Are
 		Stream path = {.data = arena_commit(&arena, KB(1)), .cap = KB(1)};
 
 		if (fni->action != FILE_ACTION_MODIFIED) {
-			stream_reset(&path, 0);
 			stream_append_s8(&path, s8("unknown file watch event: "));
 			stream_append_u64(&path, fni->action);
 			stream_append_byte(&path, '\n');
-			os_write_err_msg(stream_to_s8(&path));
+			platform->write_file(platform->error_file_handle, stream_to_s8(&path));
+			stream_reset(&path, 0);
 		}
 
 		stream_append_s8(&path, fw_dir->name);
@@ -104,7 +104,7 @@ clear_io_queue(Platform *platform, BeamformerInput *input, Arena arena)
 }
 
 static b32
-poll_pipe(Pipe *p, Stream *e)
+poll_pipe(Pipe *p, Stream *e, Platform *platform)
 {
 	u8  data;
 	i32 total_read = 0;
@@ -125,7 +125,7 @@ poll_pipe(Pipe *p, Stream *e)
 				stream_append_s8(e, s8("poll_pipe: failed to reopen pipe: error: "));
 				stream_append_i64(e, GetLastError());
 				stream_append_byte(e, '\n');
-				os_write_err_msg(stream_to_s8(e));
+				platform->write_file(platform->error_file_handle, stream_to_s8(e));
 				stream_reset(e, 0);
 			}
 		}
@@ -169,7 +169,7 @@ main(void)
 		input.last_mouse = input.mouse;
 		input.mouse.rl   = GetMousePosition();
 
-		input.pipe_data_available = poll_pipe(&data_pipe, &ctx.error_stream);
+		input.pipe_data_available = poll_pipe(&data_pipe, &ctx.error_stream, &ctx.platform);
 
 		beamformer_frame_step(&ctx, &temp_memory, &input);
 

@@ -39,16 +39,10 @@ static PLATFORM_WRITE_FILE_FN(os_write_file)
 	return 1;
 }
 
-static void
-os_write_err_msg(s8 msg)
-{
-	os_write_file(STDERR_FILENO, msg);
-}
-
 static void __attribute__((noreturn))
 os_fatal(s8 msg)
 {
-	os_write_err_msg(msg);
+	os_write_file(STDERR_FILENO, msg);
 	_exit(1);
 	unreachable();
 }

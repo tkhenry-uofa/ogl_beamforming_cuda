@@ -137,20 +137,10 @@ static PLATFORM_WRITE_FILE_FN(os_write_file)
 	return raw.len == wlen;
 }
 
-/* TODO(rnp): cleanup callers of this function they should route through error file handle instead */
-static iptr win32_stderr_handle;
-static void
-os_write_err_msg(s8 msg)
-{
-	if (!win32_stderr_handle)
-		win32_stderr_handle = GetStdHandle(STD_ERROR_HANDLE);
-	os_write_file(win32_stderr_handle, msg);
-}
-
 static void __attribute__((noreturn))
 os_fatal(s8 msg)
 {
-	os_write_err_msg(msg);
+	os_write_file(GetStdHandle(STD_ERROR_HANDLE), msg);
 	ExitProcess(1);
 	unreachable();
 }
@@ -221,7 +211,8 @@ static PLATFORM_READ_FILE_FN(os_read_file)
 static PLATFORM_WRITE_NEW_FILE_FN(os_write_new_file)
 {
 	if (raw.len > (size)U32_MAX) {
-		os_write_err_msg(s8("os_write_file: files >4GB are not yet handled on win32\n"));
+		os_write_file(GetStdHandle(STD_ERROR_HANDLE),
+		              s8("os_write_file: files >4GB are not yet handled on win32\n"));
 		return 0;
 	}
 
