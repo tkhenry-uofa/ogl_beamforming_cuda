@@ -23,14 +23,14 @@ typedef enum {
 	X(NONE,     0, "None")     \
 	X(HADAMARD, 1, "Hadamard")
 
-/* X(type, id, pretty name) */
+/* X(type, id, pretty name, fixed transmits) */
 #define DAS_TYPES \
-	X(FORCES,    0, "FORCES")    \
-	X(UFORCES,   1, "UFORCES")   \
-	X(HERCULES,  2, "HERCULES")  \
-	X(RCA_VLS,   3, "VLS")       \
-	X(RCA_TPW,   4, "TPW")       \
-	X(UHERCULES, 5, "UHERCULES")
+	X(FORCES,    0, "FORCES",    1) \
+	X(UFORCES,   1, "UFORCES",   0) \
+	X(HERCULES,  2, "HERCULES",  1) \
+	X(RCA_VLS,   3, "VLS",       0) \
+	X(RCA_TPW,   4, "TPW",       0) \
+	X(UHERCULES, 5, "UHERCULES", 0)
 
 #define DAS_LOCAL_SIZE_X 32
 #define DAS_LOCAL_SIZE_Y  1

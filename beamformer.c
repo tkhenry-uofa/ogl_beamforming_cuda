@@ -523,7 +523,7 @@ push_compute_shader_header(Arena *a, ComputeShaderID shader)
 		              "local_size_y = " str(DAS_LOCAL_SIZE_Y) ", "
 		              "local_size_z = " str(DAS_LOCAL_SIZE_Z) ") "
 		              "in;\n\n"));
-		#define X(type, id, pretty) push_s8(a, s8("#define DAS_ID_" #type " " #id "\n"));
+		#define X(type, id, pretty, fixed_tx) push_s8(a, s8("#define DAS_ID_" #type " " #id "\n"));
 		DAS_TYPES
 		#undef X
 	} break;

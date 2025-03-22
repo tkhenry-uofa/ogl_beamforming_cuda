@@ -115,9 +115,10 @@ typedef struct {
 } FragmentShaderCtx;
 
 typedef enum {
-#define X(type, id, pretty) DAS_ ##type = id,
+#define X(type, id, pretty, fixed_tx) DAS_ ##type = id,
 DAS_TYPES
 #undef X
+DAS_LAST
 } DASShaderID;
 
 typedef struct {

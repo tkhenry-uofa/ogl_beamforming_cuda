@@ -474,22 +474,19 @@ lerp_v4(v4 a, v4 b, f32 t)
 static s8
 push_das_shader_id(Stream *s, DASShaderID shader, u32 transmit_count)
 {
-	switch (shader) {
-	#define X(type, id, pretty) case id: stream_append_s8(s, s8(pretty)); break;
-	DAS_TYPES
+	#define X(type, id, pretty, fixed_tx) s8(pretty),
+	static s8 pretty_names[] = { DAS_TYPES };
 	#undef X
-	default: break;
-	}
+	#define X(type, id, pretty, fixed_tx) fixed_tx,
+	static u8 fixed_transmits[] = { DAS_TYPES };
+	#undef X
 
-	/* TODO(rnp): cleanup - generate with X macro */
-	switch (shader) {
-	case DAS_UFORCES:
-	case DAS_RCA_VLS:
-	case DAS_RCA_TPW:
-	case DAS_UHERCULES:
-		stream_append_byte(s, '-');
-		stream_append_u64(s, transmit_count);
-	default: break;
+	if ((u32)shader < (u32)DAS_LAST) {
+		stream_append_s8(s, pretty_names[shader]);
+		if (!fixed_transmits[shader]) {
+			stream_append_byte(s, '-');
+			stream_append_u64(s, transmit_count);
+		}
 	}
 
 	return stream_to_s8(s);
