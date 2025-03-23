@@ -14,7 +14,7 @@ static i32 hadamard_12_12_transpose[] = {
 	1, -1,  1, -1, -1, -1,  1,  1,  1, -1,  1, -1,
 };
 
-#define zero_struct(s) mem_clear(s, 0, sizeof(*s));
+#define zero_struct(s) mem_clear(s, 0, sizeof(*s))
 static void *
 mem_clear(void *p_, u8 c, iz size)
 {
@@ -497,11 +497,31 @@ clamp_v2_rect(v2 v, Rect r)
 }
 
 static v2
+add_v2(v2 a, v2 b)
+{
+	v2 result = {
+		.x = a.x + b.x,
+		.y = a.y + b.y,
+	};
+	return result;
+}
+
+static v2
 sub_v2(v2 a, v2 b)
 {
 	v2 result = {
 		.x = a.x - b.x,
 		.y = a.y - b.y,
+	};
+	return result;
+}
+
+static v2
+scale_v2(v2 a, f32 scale)
+{
+	v2 result = {
+		.x = a.x * scale,
+		.y = a.y * scale,
 	};
 	return result;
 }
@@ -578,6 +598,34 @@ split_rect_vertical(Rect rect, f32 fraction, Rect *top, Rect *bot)
 		bot->pos.y += rect.size.h * fraction;
 		bot->size.w = rect.size.w;
 		bot->size.h = rect.size.h * (1.0f - fraction);
+	}
+}
+
+static void
+cut_rect_horizontal(Rect rect, f32 at, Rect *left, Rect *right)
+{
+	if (left) {
+		*left = rect;
+		left->size.w = at;
+	}
+	if (right) {
+		*right = rect;
+		right->pos.x  += at;
+		right->size.w -= at;
+	}
+}
+
+static void
+cut_rect_vertical(Rect rect, f32 at, Rect *top, Rect *bot)
+{
+	if (top) {
+		*top = rect;
+		top->size.h = at;
+	}
+	if (bot) {
+		*bot = rect;
+		bot->pos.y  += at;
+		bot->size.h -= at;
 	}
 }
 

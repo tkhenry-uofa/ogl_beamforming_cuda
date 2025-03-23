@@ -55,6 +55,11 @@
 #define SIGN(x)          ((x) < 0? -1 : 1)
 #define SWAP(a, b)       {typeof(a) __tmp = (a); (a) = (b); (b) = __tmp;}
 
+/* NOTE(rnp): no guarantees about actually getting an element */
+#define SLLPop(list)     list; list = list ? list->next : 0
+/* NOTE(rnp): evaluates to the old value of v->next */
+#define SLLPush(v, list) (v)->next; (v)->next = (list), (list) = v
+
 #define KB(a)            ((a) << 10ULL)
 #define MB(a)            ((a) << 20ULL)
 #define GB(a)            ((a) << 30ULL)
