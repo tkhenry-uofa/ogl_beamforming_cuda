@@ -104,14 +104,10 @@ typedef struct {
 } ComputeShaderCtx;
 
 typedef struct {
-	Shader          shader;
-	RenderTexture2D output;
-	/* TODO: cleanup: X macro? */
-	i32             db_cutoff_id;
-	i32             threshold_id;
-	f32             db;
-	f32             threshold;
-	b32             gen_mipmaps;
+	Shader shader;
+	b32    updated;
+	i32    db_cutoff_id;
+	i32    threshold_id;
 } FragmentShaderCtx;
 
 typedef enum {

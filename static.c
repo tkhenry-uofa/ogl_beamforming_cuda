@@ -195,7 +195,7 @@ static FILE_WATCH_CALLBACK_FN(reload_render_shader)
 		ctx->shader       = updated_fs;
 		ctx->db_cutoff_id = GetShaderLocation(updated_fs, "u_db_cutoff");
 		ctx->threshold_id = GetShaderLocation(updated_fs, "u_threshold");
-		ctx->gen_mipmaps  = 1;
+		ctx->updated      = 1;
 	}
 
 	return 1;
@@ -295,9 +295,6 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 
 	ctx->beamform_work_queue = push_struct(memory, BeamformWorkQueue);
 
-	ctx->fsctx.db        = -50.0f;
-	ctx->fsctx.threshold =  40.0f;
-
 	ctx->params = os_open_shared_memory_area(OS_SMEM_NAME, sizeof(*ctx->params));
 	/* TODO: properly handle this? */
 	ASSERT(ctx->params);
@@ -349,7 +346,6 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	s8 render = s8(static_path_join("shaders", "render.glsl"));
 	reload_render_shader(&ctx->os, render, (iptr)&ctx->fsctx, *memory);
 	os_add_file_watch(&ctx->os, memory, render, reload_render_shader, (iptr)&ctx->fsctx);
-	ctx->fsctx.gen_mipmaps = 0;
 
 	ctx->ready_for_rf = 1;
 }

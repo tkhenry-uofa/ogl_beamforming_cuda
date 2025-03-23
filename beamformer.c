@@ -93,29 +93,6 @@ alloc_output_image(BeamformerCtx *ctx, uv3 output_dim)
 		alloc_beamform_frame(&ctx->gl, &ctx->averaged_frame,
 		                     &ctx->averaged_frame_compute_stats, try_dim, 0,
 		                     s8("Beamformed_Averaged_Data"));
-		uv3 odim = ctx->averaged_frame.dim;
-
-		UnloadRenderTexture(ctx->fsctx.output);
-		/* TODO(rnp): sometimes when accepting data on w32 something happens
-		 * and the program will stall in vprintf in TraceLog(...) here.
-		 * for now do this to avoid the problem */
-		SetTraceLogLevel(LOG_NONE);
-		/* TODO: select odim.x vs odim.y */
-		ctx->fsctx.output = LoadRenderTexture(odim.x, odim.z);
-		SetTraceLogLevel(LOG_INFO);
-		LABEL_GL_OBJECT(GL_FRAMEBUFFER, ctx->fsctx.output.id, s8("Rendered_View"));
-		GenTextureMipmaps(&ctx->fsctx.output.texture);
-		//SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_ANISOTROPIC_8X);
-		//SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_TRILINEAR);
-		SetTextureFilter(ctx->fsctx.output.texture, TEXTURE_FILTER_BILINEAR);
-
-		/* NOTE(rnp): work around raylib's janky texture sampling */
-		i32 id = ctx->fsctx.output.texture.id;
-		glTextureParameteri(id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-		glTextureParameteri(id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-
-		f32 border_color[] = {0, 0, 0, 1};
-		glTextureParameterfv(id, GL_TEXTURE_BORDER_COLOR, border_color);
 	}
 }
 
@@ -574,9 +551,8 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, ComputeShaderReloadContext *c
 				LABEL_GL_OBJECT(GL_PROGRAM, cs->programs[csr->shader], csr->label);
 				result = 1;
 			}
+			glDeleteShader(shader_id);
 		}
-
-		glDeleteShader(shader_id);
 	} else {
 		Stream buf = arena_stream(&tmp);
 		stream_append_s8(&buf, s8("failed to load: "));
@@ -800,7 +776,6 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		if (frame->in_flight && frame->ready_to_present) {
 			frame->in_flight         = 0;
 			ctx->display_frame_index = frame - bfi.frames;
-			ctx->fsctx.gen_mipmaps   = 1;
 		}
 	}
 
@@ -809,42 +784,19 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		ctx->os.wake_thread(ctx->os.compute_worker.sync_handle);
 	}
 
-	/* NOTE: draw output image texture using render fragment shader */
-	/* TODO(rnp): each beamform frame should have its own rendered view */
-	BeamformFrame      *frame_to_draw = 0;
-	ComputeShaderStats *frame_compute_stats = 0;
-	BeginTextureMode(ctx->fsctx.output);
-		ClearBackground(PINK);
-		BeginShaderMode(ctx->fsctx.shader);
-			FragmentShaderCtx *fs = &ctx->fsctx;
-			glUseProgram(fs->shader.id);
-			u32 out_texture = 0;
-			if (bp->output_points.w > 1) {
-				frame_to_draw       = &ctx->averaged_frame;
-				frame_compute_stats = &ctx->averaged_frame_compute_stats;
-				out_texture         = ctx->averaged_frame.texture;
-			} else {
-				frame_to_draw       = ctx->beamform_frames + ctx->display_frame_index;
-				frame_compute_stats = ctx->beamform_frame_compute_stats + ctx->display_frame_index;
-				out_texture = frame_to_draw->ready_to_present ? frame_to_draw->texture : 0;
-			}
-			glBindTextureUnit(0, out_texture);
-			glUniform1f(fs->db_cutoff_id, fs->db);
-			glUniform1f(fs->threshold_id, fs->threshold);
-			DrawTexture(fs->output.texture, 0, 0, WHITE);
-		EndShaderMode();
-	EndTextureMode();
-
-	/* NOTE: regenerate mipmaps only when the output has actually changed */
-	if (ctx->fsctx.gen_mipmaps) {
-		/* NOTE: shut up raylib's reporting on mipmap gen */
-		SetTraceLogLevel(LOG_NONE);
-		GenTextureMipmaps(&ctx->fsctx.output.texture);
-		SetTraceLogLevel(LOG_INFO);
-		ctx->fsctx.gen_mipmaps = 0;
+	BeamformFrame      *frame_to_draw;
+	ComputeShaderStats *frame_compute_stats;
+	if (bp->output_points.w > 1) {
+		frame_to_draw       = &ctx->averaged_frame;
+		frame_compute_stats = &ctx->averaged_frame_compute_stats;
+	} else {
+		frame_to_draw       = ctx->beamform_frames + ctx->display_frame_index;
+		frame_compute_stats = ctx->beamform_frame_compute_stats + ctx->display_frame_index;
 	}
 
 	draw_ui(ctx, input, frame_to_draw, frame_compute_stats);
+
+	ctx->fsctx.updated = 0;
 
 	if (WindowShouldClose())
 		ctx->should_exit = 1;

@@ -43,6 +43,7 @@ typedef enum {
 typedef struct {
 	v4  output_min_coordinate;  /* [m] Back-Top-Left corner of output region (w ignored) */
 	v4  output_max_coordinate;  /* [m] Front-Bottom-Right corner of output region (w ignored)*/
+	uv4 output_points;          /* Width * Height * Depth * (Frame Average Count) */
 	f32 sampling_frequency;     /* [Hz]  */
 	f32 center_frequency;       /* [Hz]  */
 	f32 speed_of_sound;         /* [m/s] */
@@ -58,7 +59,6 @@ typedef struct {
 	f32 transmit_angles[256];   /* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/
 	f32 xdc_transform[16];      /* IMPORTANT: column major order */
 	uv4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */
-	uv4 output_points;          /* Width * Height * Depth * (Frame Average Count) */
 	f32 xdc_element_pitch[2];   /* [m] Transducer Element Pitch {row, col} */
 	uv2 rf_raw_dim;             /* Raw Data Dimensions */
 	i32 transmit_mode;          /* Method/Orientation of Transmit */
@@ -70,6 +70,7 @@ typedef struct {
 	/* UI Parameters */
 	v4  output_min_coordinate;  /* [m] Back-Top-Left corner of output region (w ignored) */
 	v4  output_max_coordinate;  /* [m] Front-Bottom-Right corner of output region (w ignored)*/
+	uv4 output_points;          /* Width * Height * Depth * (Frame Average Count) */
 	f32 sampling_frequency;     /* [Hz]  */
 	f32 center_frequency;       /* [Hz]  */
 	f32 speed_of_sound;         /* [m/s] */
@@ -96,7 +97,6 @@ layout(std140, binding = 0) uniform parameters {\n\
 	vec4  transmit_angles[64];    /* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/\n\
 	mat4  xdc_transform;          /* IMPORTANT: column major order */\n\
 	uvec4 dec_data_dim;           /* Samples * Channels * Acquisitions; last element ignored */\n\
-	uvec4 output_points;          /* Width * Height * Depth * (Frame Average Count) */\n\
 	vec2  xdc_element_pitch;      /* [m] Transducer Element Pitch {row, col} */\n\
 	uvec2 rf_raw_dim;             /* Raw Data Dimensions */\n\
 	int   transmit_mode;          /* Method/Orientation of Transmit */\n\
@@ -105,6 +105,7 @@ layout(std140, binding = 0) uniform parameters {\n\
 	float time_offset;            /* pulse length correction time [s]   */\n\
 	vec4  output_min_coord;       /* [m] Top left corner of output region */\n\
 	vec4  output_max_coord;       /* [m] Bottom right corner of output region */\n\
+	uvec4 output_points;          /* Width * Height * Depth * (Frame Average Count) */\n\
 	float sampling_frequency;     /* [Hz]  */\n\
 	float center_frequency;       /* [Hz]  */\n\
 	float speed_of_sound;         /* [m/s] */\n\
