@@ -604,6 +604,7 @@ split_rect_vertical(Rect rect, f32 fraction, Rect *top, Rect *bot)
 static void
 cut_rect_horizontal(Rect rect, f32 at, Rect *left, Rect *right)
 {
+	at = MIN(at, rect.size.w);
 	if (left) {
 		*left = rect;
 		left->size.w = at;
@@ -618,6 +619,7 @@ cut_rect_horizontal(Rect rect, f32 at, Rect *left, Rect *right)
 static void
 cut_rect_vertical(Rect rect, f32 at, Rect *top, Rect *bot)
 {
+	at = MIN(at, rect.size.h);
 	if (top) {
 		*top = rect;
 		top->size.h = at;

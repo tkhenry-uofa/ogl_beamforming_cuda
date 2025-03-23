@@ -2,8 +2,10 @@
 /* TODO(rnp):
  * [ ]: split frame views
  * [ ]: scroll bar for views don't have enough space
- * [ ]: split compute progress bar to seperate element
  * [ ]: compute times through same path as parameter list ?
+ * [ ]: global menu
+ * [ ]: allow views to collapse to just their title bar
+ * [ ]: enforce a mininum region size or allow regions themselves to scroll
  */
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -83,6 +85,13 @@ typedef struct {
 	void          *stats;
 } ComputeStatsView;
 
+typedef struct {
+	b32 *processing;
+	f32 *progress;
+	f32 display_t;
+	f32 display_t_velocity;
+} ComputeProgressBar;
+
 typedef enum {
 	VT_NULL,
 	VT_B32,
@@ -93,6 +102,7 @@ typedef enum {
 	VT_BEAMFORMER_FRAME_VIEW,
 	VT_COMPUTE_STATS_VIEW,
 	VT_COMPUTE_LATEST_STATS_VIEW,
+	VT_COMPUTE_PROGRESS_BAR,
 	VT_SCALE_BAR,
 	VT_UI_VIEW,
 	VT_UI_REGION_SPLIT,
@@ -158,6 +168,7 @@ struct Variable {
 	union {
 		void               *generic;
 		BeamformerVariable  beamformer_variable;
+		ComputeProgressBar  compute_progress_bar;
 		ComputeStatsView    compute_stats_view;
 		RegionSplit         region_split;
 		UIView              view;
@@ -220,14 +231,13 @@ typedef struct {
 	Font font;
 	Font small_font;
 
+	Variable *regions;
+	Variable *variable_freelist;
 	Variable *scratch_variable;
 	Variable  scratch_variables[2];
 
 	InteractionState interaction;
 	InputState       text_input_state;
-
-	Variable *regions;
-	Variable *variable_freelist;
 
 	v2_sll *scale_bar_savepoint_freelist;
 
@@ -237,9 +247,6 @@ typedef struct {
 	v2  ruler_start_p;
 	v2  ruler_stop_p;
 	u32 ruler_state;
-
-	f32 progress_display_t;
-	f32 progress_display_t_velocity;
 
 	BeamformerUIParameters params;
 	b32                    flush_params;
@@ -510,6 +517,20 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena, Beam
 }
 
 static Variable *
+add_compute_progress_bar(Variable *parent, BeamformerCtx *ctx)
+{
+	BeamformerUI *ui = ctx->ui;
+	/* TODO(rnp): this can be closable once we have a way of opening new views */
+	Variable *result = add_ui_view(ui, parent, &ui->arena, s8(""), UI_VIEW_CUSTOM_TEXT, 0);
+	add_variable(ui, result, &ui->arena, s8(""), 0, VT_COMPUTE_PROGRESS_BAR, ui->small_font);
+	ComputeProgressBar *bar = &result->u.group.first->u.compute_progress_bar;
+	bar->progress   = &ctx->csctx.processing_progress;
+	bar->processing = &ctx->csctx.processing_compute;
+
+	return result;
+}
+
+static Variable *
 add_compute_stats_view(BeamformerUI *ui, Variable *parent, Arena *arena, VariableType type)
 {
 	/* TODO(rnp): this can be closable once we have a way of opening new views */
@@ -584,6 +605,11 @@ push_custom_view_title(Stream *s, Variable *var)
 		stream_append_s8(s, s8("Compute Stats"));
 		if (var->type == VT_COMPUTE_LATEST_STATS_VIEW)
 			stream_append_s8(s, s8(": Live"));
+	} break;
+	case VT_COMPUTE_PROGRESS_BAR: {
+		stream_append_s8(s, s8("Compute Progress: "));
+		stream_append_f64(s, 100 * *var->u.compute_progress_bar.progress, 100);
+		stream_append_byte(s, '%');
 	} break;
 	case VT_BEAMFORMER_FRAME_VIEW: {
 		stream_append_s8(s, s8("Frame View"));
@@ -1044,8 +1070,34 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, BeamformerFrameView *view,
 	}
 }
 
-static Rect
-draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *stats, Rect r, v2 mouse)
+static v2
+draw_compute_progress_bar(BeamformerUI *ui, Arena arena, ComputeProgressBar *state, Rect r)
+{
+	if (*state->processing) state->display_t_velocity += 65 * dt_for_frame;
+	else                    state->display_t_velocity -= 45 * dt_for_frame;
+
+	state->display_t_velocity = CLAMP(state->display_t_velocity, -10, 10);
+	state->display_t += state->display_t_velocity * dt_for_frame;
+	state->display_t  = CLAMP01(state->display_t);
+
+	if (state->display_t > (1.0 / 255.0)) {
+		Rect prect = {.pos = r.pos, .size = {.w = r.size.w, .h = ui->font.baseSize}};
+		prect = scale_rect_centered(prect, (v2){.x = 1, .y = 0.7});
+		Rect fprect = prect;
+		fprect.size.w *= *state->progress;
+		DrawRectangleRounded(fprect.rl, 2, 0, fade(colour_from_normalized(HOVERED_COLOUR),
+		                                           state->display_t));
+		DrawRectangleRoundedLinesEx(prect.rl, 2, 0, 4.0, colour_from_normalized(BG_COLOUR));
+		prect = scale_rect_centered(prect, (v2){.x = 0.99, .y = 1});
+		DrawRectangleRoundedLinesEx(prect.rl, 2, 0, 2.5, fade(BLACK, state->display_t));
+	}
+
+	v2 result = {.x = r.size.w, .y = ui->font.baseSize};
+	return result;
+}
+
+static v2
+draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *stats, Rect r)
 {
 	static s8 labels[CS_LAST] = {
 		#define X(e, n, s, h, pn) [CS_##e] = s8(pn ":"),
@@ -1094,36 +1146,8 @@ draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *sta
 	                  r.size.w - LISTING_ITEM_PAD - max_label_width, txt_fs.w);
 	at.y += ui->font.baseSize;
 
-	if (ctx->csctx.processing_compute) ui->progress_display_t_velocity += 65 * dt_for_frame;
-	else                               ui->progress_display_t_velocity -= 45 * dt_for_frame;
-
-	ui->progress_display_t_velocity = CLAMP(ui->progress_display_t_velocity, -10, 10);
-	ui->progress_display_t += ui->progress_display_t_velocity * dt_for_frame;
-	ui->progress_display_t  = CLAMP01(ui->progress_display_t);
-
-	if (ui->progress_display_t > (1.0 / 255.0)) {
-		s8 progress_text = s8("Compute Progress:");
-		v2 txt_s         = measure_text(ui->font, progress_text);
-		draw_text(ui->font, progress_text, at, fade(NORMALIZED_FG_COLOUR, ui->progress_display_t));
-		Rect prect = {
-			.pos  = {.x = r.pos.x  + txt_s.w + LISTING_ITEM_PAD, .y = at.y},
-			.size = {.w = r.size.w - txt_s.w - LISTING_ITEM_PAD, .h = txt_s.h}
-		};
-		prect = scale_rect_centered(prect, (v2){.x = 1, .y = 0.7});
-		Rect fprect = prect;
-		fprect.size.w *= ctx->csctx.processing_progress;
-		DrawRectangleRounded(fprect.rl, 2, 0, fade(colour_from_normalized(HOVERED_COLOUR),
-		                     ui->progress_display_t));
-		DrawRectangleRoundedLinesEx(prect.rl, 2, 0, 4.0, colour_from_normalized(BG_COLOUR));
-		prect = scale_rect_centered(prect, (v2){.x = 0.99, .y = 1});
-		DrawRectangleRoundedLinesEx(prect.rl, 2, 0, 2.5, fade(BLACK, ui->progress_display_t));
-	}
-	at.y += ui->font.baseSize;
-
-	r.size.h -= at.y - r.pos.y;
-	r.pos.y   = at.y;
-
-	return r;
+	v2 result = {.x = r.size.w, .y = at.y - r.pos.y};
+	return result;
 }
 
 static v2
@@ -1207,10 +1231,9 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 			                                    r.size.w + r.pos.x - at.x).y;
 			at.x    += x_off + LISTING_ITEM_PAD;
 			if (g->expanded) {
-				r.pos.x  += LISTING_INDENT;
-				r.size.x -= LISTING_INDENT;
-				x_off    -= LISTING_INDENT;
-				var       = g->first;
+				cut_rect_horizontal(r, LISTING_INDENT, 0, &r);
+				x_off -= LISTING_INDENT;
+				var   = g->first;
 			} else {
 				Variable *v = g->first;
 
@@ -1251,13 +1274,17 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 				draw_beamformer_frame_view(ui, ui->arena, bv, r, mouse);
 			var = var->next;
 		} break;
+		case VT_COMPUTE_PROGRESS_BAR: {
+			ComputeProgressBar *bar = &var->u.compute_progress_bar;
+			advance = draw_compute_progress_bar(ui, ui->arena, bar, r).y;
+			var = var->next;
+		} break;
 		case VT_COMPUTE_LATEST_STATS_VIEW:
 		case VT_COMPUTE_STATS_VIEW: {
 			ComputeShaderStats *stats = var->u.compute_stats_view.stats;
 			if (var->type == VT_COMPUTE_LATEST_STATS_VIEW)
 				stats = *(ComputeShaderStats **)stats;
-			r = draw_compute_stats_view(var->u.compute_stats_view.ctx, ui->arena,
-			                            stats, r, mouse);
+			advance = draw_compute_stats_view(var->u.compute_stats_view.ctx, ui->arena, stats, r).y;
 			var = var->next;
 		} break;
 		default: INVALID_CODE_PATH;
@@ -1271,6 +1298,7 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 			}
 		}
 
+		/* NOTE(rnp): we want to let this overflow to the desired size */
 		r.pos.y  += advance + LISTING_LINE_PAD;
 		r.size.y -= advance + LISTING_LINE_PAD;
 	}
@@ -1316,7 +1344,9 @@ draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 	if (var->type != VT_UI_REGION_SPLIT) {
 		v2 shrink = {.x = UI_REGION_PAD, .y = UI_REGION_PAD};
 		draw_rect = shrink_rect_centered(draw_rect, shrink);
+		BeginScissorMode(draw_rect.pos.x, draw_rect.pos.y, draw_rect.size.w, draw_rect.size.h);
 		draw_rect = draw_title_bar(ui, ui->arena, var, draw_rect, mouse);
+		EndScissorMode();
 	}
 
 	BeginScissorMode(draw_rect.pos.x, draw_rect.pos.y, draw_rect.size.w, draw_rect.size.h);
@@ -1835,6 +1865,7 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	ui->arena = store;
 
 	/* TODO: build these into the binary */
+	/* TODO(rnp): better font, this one is jank at small sizes */
 	ui->font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
 	ui->small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 20, 0, 0);
 
@@ -1867,6 +1898,11 @@ ui_init(BeamformerCtx *ctx, Arena store)
 
 	split = split->u.region_split.left;
 	split->u.region_split.left  = add_beamformer_parameters_view(split, ctx);
+	split->u.region_split.right = add_ui_split(ui, split, &ui->arena, s8(""), 0.22,
+	                                           RSD_VERTICAL, ui->font);
+	split = split->u.region_split.right;
+
+	split->u.region_split.left  = add_compute_progress_bar(split, ctx);
 	split->u.region_split.right = add_compute_stats_view(ui, split, &ui->arena,
 	                                                     VT_COMPUTE_LATEST_STATS_VIEW);
 
