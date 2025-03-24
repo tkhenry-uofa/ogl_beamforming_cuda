@@ -227,8 +227,9 @@ typedef struct BeamformerCtx {
 	u32 display_frame_index;
 
 	/* NOTE: this will only be used when we are averaging */
-	BeamformFrame      averaged_frame;
-	ComputeShaderStats averaged_frame_compute_stats;
+	u32                averaged_frame_index;
+	BeamformFrame      averaged_frames[2];
+	ComputeShaderStats averaged_frame_compute_stats[2];
 
 	ComputeShaderCtx  csctx;
 	FragmentShaderCtx fsctx;
