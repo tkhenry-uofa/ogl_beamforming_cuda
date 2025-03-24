@@ -8,8 +8,10 @@ static u32 cycle_t;
 #define start_renderdoc_capture(...)
 #define end_renderdoc_capture(...)
 #else
-#define start_renderdoc_capture(p, gl) if ((p)->start_frame_capture) (p)->start_frame_capture(gl, 0)
-#define end_renderdoc_capture(p, gl)   if ((p)->end_frame_capture)   (p)->end_frame_capture(gl, 0)
+static renderdoc_start_frame_capture_fn *start_frame_capture;
+static renderdoc_end_frame_capture_fn   *end_frame_capture;
+#define start_renderdoc_capture(gl) if (start_frame_capture) start_frame_capture(gl, 0)
+#define end_renderdoc_capture(gl)   if (end_frame_capture)   end_frame_capture(gl, 0)
 #endif
 
 static iz
@@ -628,7 +630,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 		} break;
 		case BW_COMPUTE: {
 			atomic_store(&cs->processing_compute, 1);
-			start_renderdoc_capture(&ctx->os, gl_context);
+			start_renderdoc_capture(gl_context);
 
 			BeamformerWorkFrame *frame = &work->frame;
 			if (ctx->params->upload) {
@@ -686,7 +688,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			frame->store->ready_to_present = 1;
 			cs->processing_compute         = 0;
 
-			end_renderdoc_capture(&ctx->os, gl_context);
+			end_renderdoc_capture(gl_context);
 		} break;
 		case BW_SAVE_FRAME: {
 			BeamformFrame *frame = work->output_frame_ctx.frame.store;
@@ -715,6 +717,8 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 
 	if (input->executable_reloaded) {
 		ui_init(ctx, ctx->ui_backing_store);
+		DEBUG_DECL(start_frame_capture = ctx->os.start_frame_capture);
+		DEBUG_DECL(end_frame_capture   = ctx->os.end_frame_capture);
 	}
 
 	if (ctx->start_compute && !input->pipe_data_available) {
