@@ -156,7 +156,7 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 {
 	uint uhercules = uint(das_shader_id == DAS_ID_UHERCULES);
-	uint ridx      = 0;
+	uint ridx      = dec_data_dim.y * dec_data_dim.x * uhercules;
 	int  direction = beamform_plane;
 	if (direction != TX_ROWS) image_point = image_point.yxz;
 
