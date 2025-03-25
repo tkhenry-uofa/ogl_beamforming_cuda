@@ -348,6 +348,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, Compute
 	switch (shader) {
 	case CS_DECODE:
 	case CS_DECODE_FLOAT:
+	case CS_DECODE_FLOAT_COMPLEX:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
 		glBindImageTexture(0, csctx->hadamard_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8I);
@@ -514,8 +515,10 @@ push_compute_shader_header(Arena *a, ComputeShaderID shader)
 		DAS_TYPES
 		#undef X
 	} break;
-	case CS_DECODE_FLOAT: {
-		push_s8(a, s8("#define INPUT_DATA_TYPE_FLOAT\n\n"));
+	case CS_DECODE_FLOAT:
+	case CS_DECODE_FLOAT_COMPLEX: {
+		if (shader == CS_DECODE_FLOAT) push_s8(a, s8("#define INPUT_DATA_TYPE_FLOAT\n\n"));
+		else                           push_s8(a, s8("#define INPUT_DATA_TYPE_FLOAT_COMPLEX\n\n"));
 	} /* FALLTHROUGH */
 	case CS_DECODE: {
 		#define X(type, id, pretty) push_s8(a, s8("#define DECODE_MODE_" #type " " #id "\n"));
@@ -530,7 +533,7 @@ push_compute_shader_header(Arena *a, ComputeShaderID shader)
 }
 
 static b32
-reload_compute_shader(BeamformerCtx *ctx, s8 path, ComputeShaderReloadContext *csr, Arena tmp)
+reload_compute_shader(BeamformerCtx *ctx, s8 path, s8 extra, ComputeShaderReloadContext *csr, Arena tmp)
 {
 	ComputeShaderCtx *cs = &ctx->csctx;
 	b32 result = 0;
@@ -552,6 +555,7 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, ComputeShaderReloadContext *c
 				Stream buf = arena_stream(&tmp);
 				stream_append_s8(&buf, s8("loaded: "));
 				stream_append_s8(&buf, path);
+				stream_append_s8(&buf, extra);
 				stream_append_byte(&buf, '\n');
 				ctx->os.write_file(ctx->os.stderr, stream_to_s8(&buf));
 				glDeleteProgram(cs->programs[csr->shader]);
@@ -567,6 +571,7 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, ComputeShaderReloadContext *c
 		Stream buf = arena_stream(&tmp);
 		stream_append_s8(&buf, s8("failed to load: "));
 		stream_append_s8(&buf, path);
+		stream_append_s8(&buf, extra);
 		stream_append_byte(&buf, '\n');
 		ctx->os.write_file(ctx->os.stderr, stream_to_s8(&buf));
 	}
@@ -588,10 +593,13 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 		switch (work->type) {
 		case BW_RELOAD_SHADER: {
 			ComputeShaderReloadContext *csr = work->reload_shader_ctx;
-			b32 success = reload_compute_shader(ctx, csr->path, csr, arena);
+			b32 success = reload_compute_shader(ctx, csr->path, s8(""), csr, arena);
 			if (csr->shader == CS_DECODE) {
+				/* TODO(rnp): think of a better way of doing this */
+				csr->shader = CS_DECODE_FLOAT_COMPLEX;
+				success &= reload_compute_shader(ctx, csr->path, s8(" (F32C)"), csr, arena);
 				csr->shader = CS_DECODE_FLOAT;
-				success &= reload_compute_shader(ctx, csr->path, csr, arena);
+				success &= reload_compute_shader(ctx, csr->path, s8(" (F32)"),  csr, arena);
 				csr->shader = CS_DECODE;
 			}
 

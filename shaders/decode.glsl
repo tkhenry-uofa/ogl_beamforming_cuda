@@ -1,12 +1,18 @@
 /* See LICENSE for license details. */
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 
-#ifdef INPUT_DATA_TYPE_FLOAT
-#define INPUT_DATA_TYPE    float
-#define RF_DATA_STEP_SCALE 1
+#if   defined(INPUT_DATA_TYPE_FLOAT)
+	#define INPUT_DATA_TYPE      float
+	#define RF_SAMPLES_PER_INDEX 1
+	#define RESULT_TYPE_CAST(x)  vec2(x, 0)
+#elif defined(INPUT_DATA_TYPE_FLOAT_COMPLEX)
+	#define INPUT_DATA_TYPE      vec2
+	#define RF_SAMPLES_PER_INDEX 1
+	#define RESULT_TYPE_CAST(x)  vec2(x)
 #else
-#define INPUT_DATA_TYPE    int
-#define RF_DATA_STEP_SCALE 2
+	#define INPUT_DATA_TYPE      int
+	#define RF_SAMPLES_PER_INDEX 2
+	#define RESULT_TYPE_CAST(x)  vec2(x, 0)
 #endif
 
 layout(std430, binding = 1) readonly restrict buffer buffer_1 {
@@ -22,11 +28,13 @@ layout(r8i, binding = 0) readonly restrict uniform iimage2D hadamard;
 INPUT_DATA_TYPE sample_rf_data(uint index, uint lfs)
 {
 	INPUT_DATA_TYPE result;
-	#ifdef INPUT_DATA_TYPE_FLOAT
+#if   defined(INPUT_DATA_TYPE_FLOAT)
 	result = rf_data[index];
-	#else
+#elif defined(INPUT_DATA_TYPE_FLOAT_COMPLEX)
+	result = rf_data[index];
+#else
 	result = (rf_data[index] << lfs) >> 16;
-	#endif
+#endif
 	return result;
 }
 
@@ -56,8 +64,8 @@ void main()
 	uint rf_off    = rf_raw_dim.x * rf_channel + time_sample;
 
 	/* NOTE: rf_data index and stride considering the data is i16 not i32 */
-	uint ridx       = rf_off    / RF_DATA_STEP_SCALE;
-	uint ridx_delta = rf_stride / RF_DATA_STEP_SCALE;
+	uint ridx       = rf_off    / RF_SAMPLES_PER_INDEX;
+	uint ridx_delta = rf_stride / RF_SAMPLES_PER_INDEX;
 
 	/* NOTE: rf_data is i16 so each access grabs two time samples at time.
 	 * We need to shift arithmetically (maintaining the sign) to get the
@@ -66,19 +74,19 @@ void main()
 	uint lfs = ((~time_sample) & 1u) * 16;
 
 	/* NOTE: Compute N-D dot product */
-	float result = 0;
+	vec2 result = vec2(0);
 	switch (decode) {
 	case DECODE_MODE_NONE: {
-		result = sample_rf_data(ridx + ridx_delta * acq, lfs);
+		result = RESULT_TYPE_CAST(sample_rf_data(ridx + ridx_delta * acq, lfs));
 	} break;
 	case DECODE_MODE_HADAMARD: {
-		INPUT_DATA_TYPE sum = 0;
+		INPUT_DATA_TYPE sum = INPUT_DATA_TYPE(0);
 		for (int i = 0; i < dec_data_dim.z; i++) {
 			sum  += imageLoad(hadamard, ivec2(i, acq)).x * sample_rf_data(ridx, lfs);
 			ridx += ridx_delta;
 		}
-		result = float(sum) / float(dec_data_dim.z);
+		result = RESULT_TYPE_CAST(sum) / float(dec_data_dim.z);
 	} break;
 	}
-	out_data[out_off] = vec2(result, 0);
+	out_data[out_off] = result;
 }

@@ -281,21 +281,17 @@ set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 		return 0;
 
 	for (i32 i = 0; i < stages_count; i++) {
-		switch (stages[i]) {
-		case CS_CUDA_DECODE:
-		case CS_CUDA_HILBERT:
-		case CS_DAS:
-		case CS_DEMOD:
-		case CS_DECODE:
-		case CS_DECODE_FLOAT:
-		case CS_MIN_MAX:
-		case CS_SUM:
-			g_bp->compute_stages[i] = stages[i];
-			break;
-		default:
+		b32 valid = 0;
+		#define X(en, number, sfn, nh, pn) if (number == stages[i]) valid = 1;
+		COMPUTE_SHADERS
+		#undef X
+
+		if (!valid) {
 			error_msg("invalid shader stage: %d", stages[i]);
 			return 0;
 		}
+
+		g_bp->compute_stages[i] = stages[i];
 	}
 	g_bp->compute_stages_count = stages_count;
 
@@ -415,30 +411,25 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, uv2 data
 	return result;
 }
 
-b32
-beamform_data_synchronized_i16(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim,
-                               uv4 output_points, f32 *out_data, i32 timeout_ms)
-{
-	b32 result    = 0;
-	u64 data_size = data_dim.x * data_dim.y * sizeof(i16);
-	if (data_size <= U32_MAX) {
-		g_bp->raw.rf_raw_dim = data_dim;
-		result = beamform_data_synchronized(pipe_name, shm_name, data, data_dim, data_size,
-		                                    output_points, out_data, timeout_ms);
-	}
-	return result;
+#define SYNCHRONIZED_FUNCTIONS \
+	X(i16,         i16, 1) \
+	X(f32,         f32, 1) \
+	X(f32_complex, f32, 2)
+
+#define X(name, type, scale) \
+b32 beamformer_data_synchronized_ ##name(char *pipe_name, char *shm_name, type *data,       \
+                                         uv2 data_dim, uv4 output_points, f32 *out_data,    \
+                                         i32 timeout_ms)                                    \
+{                                                                                           \
+    b32 result    = 0;                                                                      \
+    u64 data_size = data_dim.x * data_dim.y * sizeof(type) * scale;                         \
+    if (data_size <= U32_MAX) {                                                             \
+        g_bp->raw.rf_raw_dim = data_dim;                                                    \
+        result = beamform_data_synchronized(pipe_name, shm_name, data, data_dim, data_size, \
+                                            output_points, out_data, timeout_ms);           \
+    }                                                                                       \
+    return result;                                                                          \
 }
 
-b32
-beamform_data_synchronized_f32(char *pipe_name, char *shm_name, f32 *data, uv2 data_dim,
-                               uv4 output_points, f32 *out_data, i32 timeout_ms)
-{
-	b32 result    = 0;
-	u64 data_size = data_dim.x * data_dim.y * sizeof(f32);
-	if (data_size <= U32_MAX) {
-		g_bp->raw.rf_raw_dim = data_dim;
-		result = beamform_data_synchronized(pipe_name, shm_name, data, data_dim, data_size,
-		                                    output_points, out_data, timeout_ms);
-	}
-	return result;
-}
+SYNCHRONIZED_FUNCTIONS
+#undef X

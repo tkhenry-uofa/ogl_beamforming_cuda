@@ -40,3 +40,7 @@ LIB_FN b32 beamform_data_synchronized_i16(char *pipe_name, char *shm_name, i16 *
 
 LIB_FN b32 beamform_data_synchronized_f32(char *pipe_name, char *shm_name, f32 *data, uv2 data_dim,
                                           uv4 output_points, f32 *out_data, i32 timeout_ms);
+
+LIB_FN b32 beamform_data_synchronized_f32_complex(char *pipe_name, char *shm_name, f32 *data,
+                                                  uv2 data_dim, uv4 output_points, f32 *out_data,
+                                                  i32 timeout_ms);
