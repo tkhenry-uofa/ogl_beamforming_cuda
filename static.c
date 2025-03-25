@@ -270,7 +270,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 {
 	ctx->window_size  = (uv2){.w = 1280, .h = 840};
 
-	SetConfigFlags(FLAG_VSYNC_HINT);
+	SetConfigFlags(FLAG_VSYNC_HINT|FLAG_WINDOW_ALWAYS_RUN);
 	InitWindow(ctx->window_size.w, ctx->window_size.h, "OGL Beamformer");
 	/* NOTE: do this after initing so that the window starts out floating in tiling wm */
 	SetWindowState(FLAG_WINDOW_RESIZABLE);
