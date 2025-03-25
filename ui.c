@@ -18,6 +18,7 @@
  * [ ]: refactor: remove scale bar limits (limits should only prevent invalid program state)
  * [ ]: ui leaks split beamform views on hot-reload
  * [ ]: add tag based selection to frame views
+ * [ ]: draw the ui with a post-order traversal instead of pre-order traversal
  */
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -1675,6 +1676,10 @@ draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 		EndScissorMode();
 	}
 
+	/* TODO(rnp): post order traversal of the ui tree will remove the need for this */
+	if (!CheckCollisionPointRec(mouse.rl, draw_rect.rl))
+		mouse = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
+
 	BeginScissorMode(draw_rect.pos.x, draw_rect.pos.y, draw_rect.size.w, draw_rect.size.h);
 	switch (var->type) {
 	case VT_UI_VIEW: {
@@ -1691,7 +1696,7 @@ draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 			split.pos.y  -= UI_SPLIT_HANDLE_THICK / 2;
 			split.size.h  = UI_SPLIT_HANDLE_THICK;
 			split.size.w -= 2 * UI_REGION_PAD;
-			hover = extend_rect_centered(split, (v2){.y = UI_REGION_PAD});
+			hover = extend_rect_centered(split, (v2){.y = 0.75 * UI_REGION_PAD});
 		} break;
 		case RSD_HORIZONTAL: {
 			split_rect_horizontal(draw_rect, rs->fraction, 0, &split);
@@ -1699,7 +1704,7 @@ draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 			split.pos.y  += UI_REGION_PAD;
 			split.size.w  = UI_SPLIT_HANDLE_THICK;
 			split.size.h -= 2 * UI_REGION_PAD;
-			hover = extend_rect_centered(split, (v2){.x = UI_REGION_PAD});
+			hover = extend_rect_centered(split, (v2){.x = 0.75 * UI_REGION_PAD});
 		} break;
 		}
 
