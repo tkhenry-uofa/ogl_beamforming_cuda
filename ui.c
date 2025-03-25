@@ -1386,15 +1386,13 @@ draw_compute_progress_bar(BeamformerUI *ui, Arena arena, ComputeProgressBar *sta
 	state->display_t  = CLAMP01(state->display_t);
 
 	if (state->display_t > (1.0 / 255.0)) {
-		Rect prect = {.pos = r.pos, .size = {.w = r.size.w, .h = ui->font.baseSize}};
-		prect = scale_rect_centered(prect, (v2){.x = 1, .y = 0.7});
-		Rect fprect = prect;
-		fprect.size.w *= *state->progress;
-		DrawRectangleRounded(fprect.rl, 2, 0, fade(colour_from_normalized(HOVERED_COLOUR),
+		Rect outline = {.pos = r.pos, .size = {.w = r.size.w, .h = ui->font.baseSize}};
+		outline      = scale_rect_centered(outline, (v2){.x = 0.96, .y = 0.7});
+		Rect filled  = outline;
+		filled.size.w *= *state->progress;
+		DrawRectangleRounded(filled.rl, 2, 0, fade(colour_from_normalized(HOVERED_COLOUR),
 		                                           state->display_t));
-		DrawRectangleRoundedLinesEx(prect.rl, 2, 0, 4.0, colour_from_normalized(BG_COLOUR));
-		prect = scale_rect_centered(prect, (v2){.x = 0.99, .y = 1});
-		DrawRectangleRoundedLinesEx(prect.rl, 2, 0, 2.5, fade(BLACK, state->display_t));
+		DrawRectangleRoundedLinesEx(outline.rl, 2, 0, 3, fade(BLACK, state->display_t));
 	}
 
 	v2 result = {.x = r.size.w, .y = ui->font.baseSize};
