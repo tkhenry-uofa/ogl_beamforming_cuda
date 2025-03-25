@@ -163,6 +163,17 @@ typedef struct {
 	u32      flags;
 } UIView;
 
+/* X(id, text) */
+#define FRAME_VIEW_BUTTONS \
+	X(FV_COPY_HORIZONTAL, "Copy Horizontal") \
+	X(FV_COPY_VERTICAL,   "Copy Vertical")
+
+#define X(id, text) UI_BID_ ##id,
+typedef enum {
+	FRAME_VIEW_BUTTONS
+} UIButtonID;
+#undef X
+
 typedef struct {
 	s8       suffix;
 	/* TODO(rnp): think of something better than this */
@@ -177,9 +188,6 @@ typedef struct {
 	void         *store;
 	VariableType  store_type;
 } BeamformerVariable;
-
-#define UI_BUTTON_FN(name) void name(BeamformerUI *ui, Variable *var)
-typedef UI_BUTTON_FN(ui_button_fn);
 
 enum variable_flags {
 	V_INPUT          = 1 << 0,
@@ -198,9 +206,9 @@ struct Variable {
 		ComputeProgressBar  compute_progress_bar;
 		ComputeStatsView    compute_stats_view;
 		RegionSplit         region_split;
+		UIButtonID          button;
 		UIView              view;
 		VariableGroup       group;
-		ui_button_fn       *button;
 		b32                 b32;
 		i32                 i32;
 		f32                 f32;
@@ -478,10 +486,10 @@ end_variable_group(Variable *group)
 }
 
 static Variable *
-add_button(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, ui_button_fn *function, Font font)
+add_button(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, UIButtonID id, Font font)
 {
 	Variable *result = add_variable(ui, group, arena, name, V_INPUT, VT_UI_BUTTON, font);
-	result->u.button = function;
+	result->u.button = id;
 	return result;
 }
 
@@ -598,10 +606,6 @@ add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 	return result;
 }
 
-static UI_BUTTON_FN(ui_export_frame);
-static UI_BUTTON_FN(ui_copy_frame_horizontal);
-static UI_BUTTON_FN(ui_copy_frame_vertical);
-
 static Variable *
 add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
                           BeamformerFrameViewType type, b32 closable)
@@ -612,8 +616,9 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	                                                            VG_LIST, ui->small_font);
 	menu->flags  = V_MENU;
 	menu->parent = result;
-	add_button(ui, menu, &ui->arena, s8("Copy Horizontal"), ui_copy_frame_horizontal, ui->small_font);
-	add_button(ui, menu, &ui->arena, s8("Copy Vertical"),   ui_copy_frame_vertical,   ui->small_font);
+	#define X(id, text) add_button(ui, menu, &ui->arena, s8(text), UI_BID_ ##id, ui->small_font);
+	FRAME_VIEW_BUTTONS
+	#undef X
 
 	Variable *var = add_variable(ui, result, &ui->arena, s8(""), 0, VT_BEAMFORMER_FRAME_VIEW,
 	                             ui->small_font);
@@ -668,7 +673,7 @@ add_compute_stats_view(BeamformerUI *ui, Variable *parent, Arena *arena, Variabl
 }
 
 static void
-ui_copy_frame_base(BeamformerUI *ui, Variable *button, RegionSplitDirection direction)
+ui_copy_frame(BeamformerUI *ui, Variable *button, RegionSplitDirection direction)
 {
 	Variable *menu   = button->parent;
 	Variable *view   = menu->parent;
@@ -722,9 +727,6 @@ ui_copy_frame_base(BeamformerUI *ui, Variable *button, RegionSplitDirection dire
 	/* TODO(rnp): x vs y here */
 	resize_frame_view(bv, (uv2){.x = bv->frame->dim.x, .y = bv->frame->dim.z});
 }
-
-static UI_BUTTON_FN(ui_copy_frame_horizontal) { ui_copy_frame_base(ui, var, RSD_HORIZONTAL); }
-static UI_BUTTON_FN(ui_copy_frame_vertical)   { ui_copy_frame_base(ui, var, RSD_VERTICAL);   }
 
 static b32
 view_update(BeamformerUI *ui, BeamformerFrameView *view)
@@ -2026,6 +2028,16 @@ scale_bar_interaction(BeamformerCtx *ctx, v2 mouse)
 }
 
 static void
+ui_button_interaction(BeamformerUI *ui, Variable *button)
+{
+	ASSERT(button->type == VT_UI_BUTTON);
+	switch (button->u.button) {
+	case UI_BID_FV_COPY_HORIZONTAL: ui_copy_frame(ui, button, RSD_HORIZONTAL); break;
+	case UI_BID_FV_COPY_VERTICAL:   ui_copy_frame(ui, button, RSD_VERTICAL);   break;
+	}
+}
+
+static void
 ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mouse_left_pressed)
 {
 	InteractionState *is = &ui->interaction;
@@ -2069,7 +2081,7 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mous
 			SLLPush(region, ui->variable_freelist);
 		} break;
 		case VT_UI_BUTTON: {
-			is->hot->u.button(ui, is->hot);
+			ui_button_interaction(ui, is->hot);
 		} break;
 		case VT_BEAMFORMER_VARIABLE: {
 			if (is->hot->u.beamformer_variable.store_type == VT_B32) {
