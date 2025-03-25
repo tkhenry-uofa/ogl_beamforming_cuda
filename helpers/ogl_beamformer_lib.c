@@ -417,18 +417,17 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, uv2 data
 	X(f32_complex, f32, 2)
 
 #define X(name, type, scale) \
-b32 beamformer_data_synchronized_ ##name(char *pipe_name, char *shm_name, type *data,       \
-                                         uv2 data_dim, uv4 output_points, f32 *out_data,    \
-                                         i32 timeout_ms)                                    \
-{                                                                                           \
-    b32 result    = 0;                                                                      \
-    u64 data_size = data_dim.x * data_dim.y * sizeof(type) * scale;                         \
-    if (data_size <= U32_MAX) {                                                             \
-        g_bp->raw.rf_raw_dim = data_dim;                                                    \
-        result = beamform_data_synchronized(pipe_name, shm_name, data, data_dim, data_size, \
-                                            output_points, out_data, timeout_ms);           \
-    }                                                                                       \
-    return result;                                                                          \
+b32 beamform_data_synchronized_ ##name(char *pipe_name, char *shm_name, type *data, uv2 data_dim, \
+                                       uv4 output_points, f32 *out_data, i32 timeout_ms)          \
+{                                                                                                 \
+    b32 result    = 0;                                                                            \
+    u64 data_size = data_dim.x * data_dim.y * sizeof(type) * scale;                               \
+    if (data_size <= U32_MAX) {                                                                   \
+        g_bp->raw.rf_raw_dim = data_dim;                                                          \
+        result = beamform_data_synchronized(pipe_name, shm_name, data, data_dim, data_size,       \
+                                            output_points, out_data, timeout_ms);                 \
+    }                                                                                             \
+    return result;                                                                                \
 }
 
 SYNCHRONIZED_FUNCTIONS
