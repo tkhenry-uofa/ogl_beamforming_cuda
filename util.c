@@ -245,6 +245,24 @@ stream_append_u64(Stream *s, u64 n)
 }
 
 static void
+stream_append_hex_u64(Stream *s, u64 n)
+{
+	if (!s->errors) {
+		static u8 hex[16] = {"0123456789abcdef"};
+		u8  buf[16];
+		u8 *end = buf + sizeof(buf);
+		u8 *beg = end;
+		while (n) {
+			*--beg = hex[n & 0x0F];
+			n >>= 4;
+		}
+		while (end - beg < 2)
+			*--beg = '0';
+		stream_append(s, beg, end - beg);
+	}
+}
+
+static void
 stream_append_i64(Stream *s, i64 n)
 {
 	if (n < 0) {

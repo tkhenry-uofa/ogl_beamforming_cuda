@@ -126,7 +126,7 @@ typedef struct {
 	b32 timer_active[CS_LAST];
 } ComputeShaderStats;
 
-typedef struct {
+typedef struct BeamformFrame {
 	uv3 dim;
 	u32 texture;
 
@@ -140,6 +140,9 @@ typedef struct {
 	b32 ready_to_present;
 	DASShaderID das_shader_id;
 	u32 compound_count;
+	u32 id;
+
+	struct BeamformFrame *next;
 } BeamformFrame;
 
 typedef struct {

@@ -60,6 +60,17 @@
 /* NOTE(rnp): evaluates to the old value of v->next */
 #define SLLPush(v, list) (v)->next; (v)->next = (list), (list) = v
 
+#define DLLPushDown(v, list) do { \
+	(v)->next = (list);                   \
+	if ((v)->next) (v)->next->prev = (v); \
+	(list) = (v);                         \
+} while (0)
+
+#define DLLRemove(v) do { \
+	if ((v)->next) (v)->next->prev = (v)->prev; \
+	if ((v)->prev) (v)->prev->next = (v)->next; \
+} while (0)
+
 #define KB(a)            ((a) << 10ULL)
 #define MB(a)            ((a) << 20ULL)
 #define GB(a)            ((a) << 30ULL)

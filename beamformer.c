@@ -59,34 +59,40 @@ frame_next(BeamformFrameIterator *bfi)
 
 static void
 alloc_beamform_frame(GLParams *gp, BeamformFrame *out, ComputeShaderStats *out_stats,
-                     uv3 out_dim, u32 frame_index, s8 name)
+                     uv3 out_dim, s8 name, Arena arena)
 {
 	out->ready_to_present = 0;
 
-	out->dim.x = CLAMP(round_down_power_of_2(ORONE(out_dim.x)), 1, gp->max_3d_texture_dim);
-	out->dim.y = CLAMP(round_down_power_of_2(ORONE(out_dim.y)), 1, gp->max_3d_texture_dim);
-	out->dim.z = CLAMP(round_down_power_of_2(ORONE(out_dim.z)), 1, gp->max_3d_texture_dim);
+	out->dim.x = MAX(1, round_down_power_of_2(ORONE(out_dim.x)));
+	out->dim.y = MAX(1, round_down_power_of_2(ORONE(out_dim.y)));
+	out->dim.z = MAX(1, round_down_power_of_2(ORONE(out_dim.z)));
+
+	if (gp) {
+		out->dim.x = MIN(out->dim.x, gp->max_3d_texture_dim);
+		out->dim.y = MIN(out->dim.y, gp->max_3d_texture_dim);
+		out->dim.z = MIN(out->dim.z, gp->max_3d_texture_dim);
+	}
 
 	/* NOTE: allocate storage for beamformed output data;
 	 * this is shared between compute and fragment shaders */
 	u32 max_dim = MAX(out->dim.x, MAX(out->dim.y, out->dim.z));
 	out->mips   = ctz_u32(max_dim) + 1;
 
-	/* TODO(rnp): arena?? */
-	u8 buf[256];
-	Stream label = {.data = buf, .cap = ARRAY_COUNT(buf)};
+	Stream label = arena_stream(&arena);
 	stream_append_s8(&label, name);
 	stream_append_byte(&label, '[');
-	stream_append_u64(&label, frame_index);
-	stream_append_s8(&label, s8("]"));
+	stream_append_hex_u64(&label, out->id);
+	stream_append_byte(&label, ']');
 
 	glDeleteTextures(1, &out->texture);
 	glCreateTextures(GL_TEXTURE_3D, 1, &out->texture);
 	glTextureStorage3D(out->texture, out->mips, GL_RG32F, out->dim.x, out->dim.y, out->dim.z);
 	LABEL_GL_OBJECT(GL_TEXTURE, out->texture, stream_to_s8(&label));
 
-	glDeleteQueries(ARRAY_COUNT(out_stats->timer_ids), out_stats->timer_ids);
-	glCreateQueries(GL_TIME_ELAPSED, ARRAY_COUNT(out_stats->timer_ids), out_stats->timer_ids);
+	if (out_stats) {
+		glDeleteQueries(ARRAY_COUNT(out_stats->timer_ids), out_stats->timer_ids);
+		glCreateQueries(GL_TIME_ELAPSED, ARRAY_COUNT(out_stats->timer_ids), out_stats->timer_ids);
+	}
 }
 
 static void
@@ -220,12 +226,13 @@ fill_frame_compute_work(BeamformerCtx *ctx, BeamformWork *work)
 	b32 result = 0;
 	if (work) {
 		result = 1;
-		u32 frame_index   = atomic_inc(&ctx->next_render_frame_index, 1);
-		frame_index      %= ARRAY_COUNT(ctx->beamform_frames);
+		u32 frame_id      = atomic_inc(&ctx->next_render_frame_index, 1);
+		u32 frame_index   = frame_id % ARRAY_COUNT(ctx->beamform_frames);
 		work->type        = BW_COMPUTE;
 		work->frame.store = ctx->beamform_frames + frame_index;
 		work->frame.stats = ctx->beamform_frame_compute_stats + frame_index;
 		work->frame.store->ready_to_present = 0;
+		work->frame.store->id = frame_id;
 	}
 	return result;
 }
@@ -638,22 +645,18 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 				glProgramUniform1ui(cs->programs[CS_DAS], cs->cycle_t_id, cycle_t++);
 
 			uv3 try_dim = make_valid_test_dim(ctx->params->raw.output_points.xyz);
-			if (!uv3_equal(try_dim, frame->store->dim)) {
-				iz frame_index = frame->store - ctx->beamform_frames;
+			if (!uv3_equal(try_dim, frame->store->dim))
 				alloc_beamform_frame(&ctx->gl, frame->store, frame->stats, try_dim,
-				                     frame_index, s8("Beamformed_Data"));
-			}
+				                     s8("Beamformed_Data"), arena);
 
 			if (ctx->params->raw.output_points.w > 1) {
 				if (!uv3_equal(try_dim, ctx->averaged_frames[0].dim)) {
 					alloc_beamform_frame(&ctx->gl, ctx->averaged_frames + 0,
 					                     ctx->averaged_frame_compute_stats + 0,
-					                     try_dim, 0,
-					                     s8("Beamformed_Averaged_Data"));
+					                     try_dim, s8("Averaged Frame"), arena);
 					alloc_beamform_frame(&ctx->gl, ctx->averaged_frames + 1,
 					                     ctx->averaged_frame_compute_stats + 1,
-					                     try_dim, 1,
-					                     s8("Beamformed_Averaged_Data"));
+					                     try_dim, s8("Averaged Frame"), arena);
 				}
 			}
 
