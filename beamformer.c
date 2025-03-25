@@ -256,6 +256,7 @@ do_sum_shader(ComputeShaderCtx *cs, u32 *in_textures, u32 in_texture_count, f32 
 {
 	/* NOTE: zero output before summing */
 	glClearTexImage(out_texture, 0, GL_RED, GL_FLOAT, 0);
+	glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
 
 	glBindImageTexture(0, out_texture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RG32F);
 	glUniform1f(cs->sum_prescale_id, in_scale);
@@ -415,15 +416,17 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, Compute
 		                  ORONE(frame->dim.y),
 		                  ORONE(frame->dim.z / 32));
 		#endif
+		glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT|GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	} break;
 	case CS_SUM: {
-		u32 aframe_index  = atomic_inc(&ctx->averaged_frame_index, 1);
-		aframe_index     %= ARRAY_COUNT(ctx->averaged_frames);
+		u32 aframe_index = ctx->averaged_frame_index % ARRAY_COUNT(ctx->averaged_frames);
 		BeamformFrame *aframe    = ctx->averaged_frames + aframe_index;
 		aframe->ready_to_present = 0;
 		/* TODO(rnp): hack we need a better way of specifying which frames to sum;
 		 * this is fine for rolling averaging but what if we want to do something else */
-		u32 base_index   = CLAMP(frame - ctx->beamform_frames, 0, ARRAY_COUNT(ctx->beamform_frames));
+		ASSERT(frame >= ctx->beamform_frames);
+		ASSERT(frame < ctx->beamform_frames + ARRAY_COUNT(ctx->beamform_frames));
+		u32 base_index   = (u32)(frame - ctx->beamform_frames);
 		u32 to_average   = ctx->params->raw.output_points.w;
 		u32 frame_count  = 0;
 		u32 *in_textures = alloc(&arena, u32, MAX_BEAMFORMED_SAVED_FRAMES);
@@ -431,6 +434,9 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, Compute
 		                                                    to_average);
 		for (BeamformFrame *it = frame_next(&bfi); it; it = frame_next(&bfi))
 			in_textures[frame_count++] = it->texture;
+
+		ASSERT(to_average == frame_count);
+
 		do_sum_shader(csctx, in_textures, frame_count, 1 / (f32)frame_count,
 		              aframe->texture, aframe->dim);
 		aframe->min_coordinate = frame->min_coordinate;
@@ -691,12 +697,13 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			}
 
 			if (did_sum_shader) {
-				u32 aframe_index = !(ctx->averaged_frame_index %
-				                     ARRAY_COUNT(ctx->averaged_frames));
+				u32 aframe_index = (ctx->averaged_frame_index %
+				                    ARRAY_COUNT(ctx->averaged_frames));
 				ctx->averaged_frames[aframe_index].ready_to_present = 1;
 				/* TODO(rnp): not really sure what to do here */
 				mem_copy(ctx->averaged_frame_compute_stats[aframe_index].times,
 				         frame->stats->times, sizeof(frame->stats->times));
+				atomic_inc(&ctx->averaged_frame_index, 1);
 			}
 			frame->store->ready_to_present = 1;
 			cs->processing_compute         = 0;
@@ -806,7 +813,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 	BeamformFrame      *frame_to_draw;
 	ComputeShaderStats *frame_compute_stats;
 	if (bp->output_points.w > 1) {
-		u32 a_index = ctx->averaged_frame_index % ARRAY_COUNT(ctx->averaged_frames);
+		u32 a_index = !(ctx->averaged_frame_index % ARRAY_COUNT(ctx->averaged_frames));
 		frame_to_draw       = ctx->averaged_frames + a_index;
 		frame_compute_stats = ctx->averaged_frame_compute_stats + a_index;
 	} else {
