@@ -51,6 +51,7 @@ typedef struct {
 	f32 off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */
 	i32 beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 	f32 f_number;               /* F# (set to 0 to disable) */
+	b32 interpolate;            /* Perform Cubic Interpolation of RF Samples */
 } BeamformerUIParameters;
 
 typedef struct {
@@ -78,9 +79,11 @@ typedef struct {
 	f32 off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */
 	i32 beamform_plane;         /* Plane to Beamform in 2D HERCULES */
 	f32 f_number;               /* F# (set to 0 to disable) */
+	b32 interpolate;            /* Perform Cubic Interpolation of RF Samples */
 
 	u32 readi_group_id;         /* Which readi group this data is from */
 	u32 readi_group_size;       /* Size of readi transmit group */
+	f32 _pad[3];
 } BeamformerParameters;
 
 _Static_assert((offsetof(BeamformerParameters, output_min_coordinate) & 15) == 0,
@@ -113,6 +116,7 @@ layout(std140, binding = 0) uniform parameters {\n\
 	float off_axis_pos;           /* [m] Position on screen normal to beamform in 2D HERCULES */\n\
 	int   beamform_plane;         /* Plane to Beamform in 2D HERCULES */\n\
 	float f_number;               /* F# (set to 0 to disable) */\n\
+	bool  interpolate;            /* Perform Cubic Interpolation of RF Samples */\n\
 	uint  readi_group_id;         /* Which readi group this data is from */\n\
 	uint  readi_group_size;       /* Size of readi transmit group */\n\
 };\n\n"

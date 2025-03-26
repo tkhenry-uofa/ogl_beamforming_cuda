@@ -603,6 +603,9 @@ add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 	add_beamformer_variable_f32(ui, result, &ui->arena, s8("F#:"), s8(""), &bp->f_number,
 	                            (v2){.y = 1e3}, 1, 0.1, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
+	add_beamformer_variable_b32(ui, result, &ui->arena, s8("Interpolate:"), s8("False"), s8("True"),
+	                            &bp->interpolate, V_INPUT|V_CAUSES_COMPUTE, ui->font);
+
 	return result;
 }
 

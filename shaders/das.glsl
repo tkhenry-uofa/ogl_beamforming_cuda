@@ -16,13 +16,6 @@ layout(location = 3) uniform uint  u_cycle_t;
 #define TX_MODE_TX_COLS(a) (((a) & 2) != 0)
 #define TX_MODE_RX_COLS(a) (((a) & 1) != 0)
 
-#if 1
-/* NOTE: interpolation is unnecessary if the data has been demodulated and not decimated */
-vec2 cubic(uint ridx, float t)
-{
-	return rf_data[ridx + uint(floor(t))];
-}
-#else
 /* NOTE: See: https://cubic.org/docs/hermite.htm */
 vec2 cubic(uint ridx, float x)
 {
@@ -46,7 +39,14 @@ vec2 cubic(uint ridx, float x)
 	vec4 C2 = vec4(P1.y, P2.y, T1.y, T2.y);
 	return vec2(dot(S, h * C1), dot(S, h * C2));
 }
-#endif
+
+vec2 sample_rf(uint ridx, float t)
+{
+	vec2 result;
+	if (interpolate) result = cubic(ridx, t);
+	else             result = rf_data[ridx + uint(floor(t))];
+	return result;
+}
 
 vec3 calc_image_point(vec3 voxel)
 {
@@ -145,7 +145,7 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float sidx  = sample_index(transmit_distance + length(receive_distance));
 			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
-			sum        += apodize(cubic(ridx, sidx), apodization_arg, length(receive_distance.xy)) * valid;
+			sum        += apodize(sample_rf(ridx, sidx), apodization_arg, length(receive_distance.xy)) * valid;
 			receive_distance   -= delta;
 			ridx       += dec_data_dim.x;
 		}
@@ -197,7 +197,7 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 			/* NOTE: tribal knowledge */
 			if (i == 0) valid *= inversesqrt(dec_data_dim.z);
 
-			sum  += apodize(cubic(ridx, sidx), apodization_arg,
+			sum  += apodize(sample_rf(ridx, sidx), apodization_arg,
 			                length(receive_distance.xy)) * valid;
 			ridx += dec_data_dim.x;
 		}
@@ -230,7 +230,7 @@ vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float sidx  = sample_index(transmit_dist + length(rdist));
 			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
-			sum        += apodize(cubic(ridx, sidx), apodization_arg, rdist.x) * valid;
+			sum        += apodize(sample_rf(ridx, sidx), apodization_arg, rdist.x) * valid;
 			rdist.x    -= delta.x;
 			ridx       += dec_data_dim.x;
 		}
