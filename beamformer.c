@@ -783,8 +783,8 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 					export->type = BW_SAVE_FRAME;
 					export->output_frame_ctx.file_handle = f;
 					if (ctx->params->raw.output_points.w > 1) {
-						u32 a_index = ctx->averaged_frame_index %
-						              ARRAY_COUNT(ctx->averaged_frames);
+						u32 a_index = !(ctx->averaged_frame_index %
+						                ARRAY_COUNT(ctx->averaged_frames));
 						BeamformFrame      *aframe = ctx->averaged_frames + a_index;
 						ComputeShaderStats *astats = ctx->averaged_frame_compute_stats + a_index;
 						export->output_frame_ctx.frame.store = aframe;
