@@ -129,7 +129,6 @@ typedef enum {
 	VT_UI_BUTTON,
 	VT_UI_VIEW,
 	VT_UI_REGION_SPLIT,
-	VT_UI_REGION_CLOSE,
 } VariableType;
 
 typedef enum {
@@ -170,6 +169,7 @@ typedef struct {
 
 #define X(id, text) UI_BID_ ##id,
 typedef enum {
+	UI_BID_CLOSE_VIEW,
 	FRAME_VIEW_BUTTONS
 } UIButtonID;
 #undef X
@@ -511,7 +511,7 @@ add_ui_view(BeamformerUI *ui, Variable *parent, Arena *arena, s8 name, u32 view_
 	view->group.type = VG_LIST;
 	view->flags      = view_flags;
 	if (closable) {
-		view->close = add_variable(ui, 0, arena, s8(""), 0, VT_UI_REGION_CLOSE, ui->small_font);
+		view->close = add_button(ui, 0, arena, s8(""), UI_BID_CLOSE_VIEW, ui->small_font);
 		/* NOTE(rnp): we do this explicitly so that close doesn't end up in the view group */
 		view->close->parent = result;
 	}
@@ -2035,8 +2035,29 @@ ui_button_interaction(BeamformerUI *ui, Variable *button)
 {
 	ASSERT(button->type == VT_UI_BUTTON);
 	switch (button->u.button) {
-	case UI_BID_FV_COPY_HORIZONTAL: ui_copy_frame(ui, button, RSD_HORIZONTAL); break;
-	case UI_BID_FV_COPY_VERTICAL:   ui_copy_frame(ui, button, RSD_VERTICAL);   break;
+	case UI_BID_FV_COPY_HORIZONTAL: ui_copy_frame(ui, button, RSD_HORIZONTAL);  break;
+	case UI_BID_FV_COPY_VERTICAL:   ui_copy_frame(ui, button, RSD_VERTICAL);    break;
+	case UI_BID_CLOSE_VIEW: {
+		Variable *view   = button->parent;
+		Variable *region = view->parent;
+		ASSERT(view->type == VT_UI_VIEW && region->type == VT_UI_REGION_SPLIT);
+
+		Variable *parent    = region->parent;
+		Variable *remaining = region->u.region_split.left;
+		if (remaining == view) remaining = region->u.region_split.right;
+
+		ui_view_free(ui, view);
+
+		ASSERT(parent->type == VT_UI_REGION_SPLIT);
+		if (parent->u.region_split.left == region) {
+			parent->u.region_split.left  = remaining;
+		} else {
+			parent->u.region_split.right = remaining;
+		}
+		remaining->parent = parent;
+
+		SLLPush(region, ui->variable_freelist);
+	} break;
 	}
 }
 
@@ -2048,8 +2069,11 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mous
 		is->type = is->hot_type;
 	} else if (is->hot) {
 		switch (is->hot->type) {
-		case VT_NULL:  is->type = IT_NOP; break;
-		case VT_B32:   is->type = IT_SET; break;
+		case VT_NULL: is->type = IT_NOP; break;
+		case VT_B32:  is->type = IT_SET; break;
+		case VT_UI_REGION_SPLIT: { is->type = IT_DRAG; }                 break;
+		case VT_UI_VIEW:         { if (scroll) is->type = IT_SCROLL; }   break;
+		case VT_UI_BUTTON:       { ui_button_interaction(ui, is->hot); } break;
 		case VT_GROUP: {
 			if (mouse_left_pressed && is->hot->flags & V_MENU) {
 				is->type = IT_MENU;
@@ -2057,34 +2081,6 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mous
 			} else {
 				is->type = IT_SET;
 			}
-		} break;
-		case VT_UI_REGION_SPLIT: is->type = IT_DRAG; break;
-		case VT_UI_VIEW: {
-			if (scroll) is->type = IT_SCROLL;
-		} break;
-		case VT_UI_REGION_CLOSE: {
-			Variable *view   = is->hot->parent;
-			Variable *region = view->parent;
-			ASSERT(view->type == VT_UI_VIEW && region->type == VT_UI_REGION_SPLIT);
-
-			Variable *parent    = region->parent;
-			Variable *remaining = region->u.region_split.left;
-			if (remaining == view) remaining = region->u.region_split.right;
-
-			ui_view_free(ui, view);
-
-			ASSERT(parent->type == VT_UI_REGION_SPLIT);
-			if (parent->u.region_split.left == region) {
-				parent->u.region_split.left  = remaining;
-			} else {
-				parent->u.region_split.right = remaining;
-			}
-			remaining->parent = parent;
-
-			SLLPush(region, ui->variable_freelist);
-		} break;
-		case VT_UI_BUTTON: {
-			ui_button_interaction(ui, is->hot);
 		} break;
 		case VT_BEAMFORMER_VARIABLE: {
 			if (is->hot->u.beamformer_variable.store_type == VT_B32) {
