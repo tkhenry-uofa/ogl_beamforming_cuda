@@ -31,16 +31,10 @@ typedef struct { u32 x, y, z, w; } uv4;
 
 LIB_FN b32 set_beamformer_parameters(char *shm_name, BeamformerParameters *);
 LIB_FN b32 set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count);
-LIB_FN b32 send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim);
+
+LIB_FN b32 send_data(char *pipe_name, char *shm_name, void *data, u32 data_size);
 
 /* NOTE: sends data and waits for (complex) beamformed data to be returned.
  * out_data: must be allocated by the caller as 2 f32s per output point. */
-LIB_FN b32 beamform_data_synchronized_i16(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim,
-                                          uv4 output_points, f32 *out_data, i32 timeout_ms);
-
-LIB_FN b32 beamform_data_synchronized_f32(char *pipe_name, char *shm_name, f32 *data, uv2 data_dim,
-                                          uv4 output_points, f32 *out_data, i32 timeout_ms);
-
-LIB_FN b32 beamform_data_synchronized_f32_complex(char *pipe_name, char *shm_name, f32 *data,
-                                                  uv2 data_dim, uv4 output_points, f32 *out_data,
-                                                  i32 timeout_ms);
+LIB_FN b32 beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, u32 data_size,
+                                      uv4 output_points, f32 *out_data, i32 timeout_ms);

@@ -298,8 +298,22 @@ set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 	return 1;
 }
 
-static b32
-send_raw_data(char *pipe_name, char *shm_name, void *data, u32 data_size)
+b32
+set_beamformer_parameters(char *shm_name, BeamformerParameters *new_bp)
+{
+	if (!check_shared_memory(shm_name))
+		return 0;
+
+	u8 *src = (u8 *)new_bp, *dest = (u8 *)&g_bp->raw;
+	for (size i = 0; i < sizeof(BeamformerParameters); i++)
+		dest[i] = src[i];
+	g_bp->upload = 1;
+
+	return 1;
+}
+
+b32
+send_data(char *pipe_name, char *shm_name, void *data, u32 data_size)
 {
 	b32 result = g_pipe.file != INVALID_FILE;
 	if (!result) {
@@ -336,36 +350,8 @@ send_raw_data(char *pipe_name, char *shm_name, void *data, u32 data_size)
 }
 
 b32
-send_data(char *pipe_name, char *shm_name, i16 *data, uv2 data_dim)
-{
-	b32 result = 0;
-	if (check_shared_memory(shm_name)) {
-		u64 data_size = data_dim.x * data_dim.y * sizeof(i16);
-		if (data_size <= U32_MAX) {
-			g_bp->raw.rf_raw_dim = data_dim;
-			result = send_raw_data(pipe_name, shm_name, data, data_size);
-		}
-	}
-	return result;
-}
-
-b32
-set_beamformer_parameters(char *shm_name, BeamformerParameters *new_bp)
-{
-	if (!check_shared_memory(shm_name))
-		return 0;
-
-	u8 *src = (u8 *)new_bp, *dest = (u8 *)&g_bp->raw;
-	for (size i = 0; i < sizeof(BeamformerParameters); i++)
-		dest[i] = src[i];
-	g_bp->upload = 1;
-
-	return 1;
-}
-
-static b32
-beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, uv2 data_dim,
-                           u32 data_size, uv4 output_points, f32 *out_data, i32 timeout_ms)
+beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, u32 data_size,
+                           uv4 output_points, f32 *out_data, i32 timeout_ms)
 {
 	if (!check_shared_memory(shm_name))
 		return 0;
@@ -375,7 +361,6 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, uv2 data
 	if (output_points.z == 0) output_points.z = 1;
 	output_points.w = 1;
 
-	g_bp->raw.rf_raw_dim      = data_dim;
 	g_bp->raw.output_points.x = output_points.x;
 	g_bp->raw.output_points.y = output_points.y;
 	g_bp->raw.output_points.z = output_points.z;
@@ -396,7 +381,7 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, uv2 data
 	for (u32 i = 0; i < export_name.len; i++)
 		g_bp->export_pipe_name[i] = export_name.data[i];
 
-	b32 result = send_raw_data(pipe_name, shm_name, data, data_size);
+	b32 result = send_data(pipe_name, shm_name, data, data_size);
 	if (result) {
 		size output_size = output_points.x * output_points.y * output_points.z * sizeof(f32) * 2;
 		result = os_wait_read_pipe(export_pipe, out_data, output_size, timeout_ms);
@@ -410,25 +395,3 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, uv2 data
 
 	return result;
 }
-
-#define SYNCHRONIZED_FUNCTIONS \
-	X(i16,         i16, 1) \
-	X(f32,         f32, 1) \
-	X(f32_complex, f32, 2)
-
-#define X(name, type, scale) \
-b32 beamform_data_synchronized_ ##name(char *pipe_name, char *shm_name, type *data, uv2 data_dim, \
-                                       uv4 output_points, f32 *out_data, i32 timeout_ms)          \
-{                                                                                                 \
-    b32 result    = 0;                                                                            \
-    u64 data_size = data_dim.x * data_dim.y * sizeof(type) * scale;                               \
-    if (data_size <= U32_MAX) {                                                                   \
-        g_bp->raw.rf_raw_dim = data_dim;                                                          \
-        result = beamform_data_synchronized(pipe_name, shm_name, data, data_dim, data_size,       \
-                                            output_points, out_data, timeout_ms);                 \
-    }                                                                                             \
-    return result;                                                                                \
-}
-
-SYNCHRONIZED_FUNCTIONS
-#undef X
