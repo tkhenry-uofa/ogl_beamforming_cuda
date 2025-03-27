@@ -1000,6 +1000,17 @@ hover_rect(v2 mouse, Rect rect, f32 *hover_t)
 	return hovering;
 }
 
+static b32
+hover_var(BeamformerUI *ui, v2 mouse, Rect rect, Variable *var)
+{
+	b32 result = hover_rect(mouse, rect, &var->hover_t);
+	if (result) {
+		ui->interaction.hot_type = IT_NONE;
+		ui->interaction.hot      = var;
+	}
+	return result;
+}
+
 static Rect
 draw_title_bar(BeamformerUI *ui, Arena arena, Variable *ui_view, Rect r, v2 mouse)
 {
@@ -1025,8 +1036,7 @@ draw_title_bar(BeamformerUI *ui, Arena arena, Variable *ui_view, Rect r, v2 mous
 	if (view->close) {
 		Rect close;
 		cut_rect_horizontal(title_rect, title_rect.size.w - title_rect.size.h, &title_rect, &close);
-		if (hover_rect(mouse, close, &view->close->hover_t))
-			ui->interaction.hot = view->close;
+		hover_var(ui, mouse, close, view->close);
 
 		Color colour = colour_from_normalized(lerp_v4(MENU_CLOSE_COLOUR, FG_COLOUR, view->close->hover_t));
 		close = shrink_rect_centered(close, (v2){.x = 16, .y = 16});
@@ -1038,10 +1048,8 @@ draw_title_bar(BeamformerUI *ui, Arena arena, Variable *ui_view, Rect r, v2 mous
 	if (view->menu) {
 		Rect menu;
 		cut_rect_horizontal(title_rect, title_rect.size.w - title_rect.size.h, &title_rect, &menu);
-		if (hover_rect(mouse, menu, &view->menu->hover_t)) {
-			ui->interaction.hot     = view->menu;
+		if (hover_var(ui, mouse, menu, view->menu))
 			ui->menu_state.hot_font = &ui->small_font;
-		}
 
 		Color colour = colour_from_normalized(lerp_v4(MENU_PLUS_COLOUR, FG_COLOUR, view->menu->hover_t));
 		menu = shrink_rect_centered(menu, (v2){.x = 14, .y = 14});
@@ -1161,8 +1169,8 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, ScaleBar *sb, ScaleBarDirection dire
 }
 
 static v2
-draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse,
-                         f32 *hover_t, f32 space, b32 outlined, v4 base_colour, Font *font)
+draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, f32 space,
+                         b32 outlined, v4 base_colour, Font *font)
 {
 	Stream buf = arena_stream(&arena);
 	stream_append_variable(&buf, var);
@@ -1173,17 +1181,13 @@ draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2
 		Rect text_rect = {.pos = at, .size = text_size};
 		text_rect = extend_rect_centered(text_rect, (v2){.x = 8});
 
-		if (hover_rect(mouse, text_rect, hover_t)) {
-			if (var->flags & V_TEXT) {
-				InputState *is  = &ui->text_input_state;
-				is->hot_rect    = text_rect;
-				is->hot_font    = font;
-			}
-			ui->interaction.hot      = var;
-			ui->interaction.hot_type = IT_NONE;
+		if (hover_var(ui, mouse, text_rect, var) && (var->flags & V_TEXT)) {
+			InputState *is = &ui->text_input_state;
+			is->hot_rect   = text_rect;
+			is->hot_font   = font;
 		}
 
-		colour = colour_from_normalized(lerp_v4(base_colour, HOVERED_COLOUR, *hover_t));
+		colour = colour_from_normalized(lerp_v4(base_colour, HOVERED_COLOUR, var->hover_t));
 	}
 	return draw_text_limited(*font, stream_to_s8(&buf), at, colour, space, text_size.x, outlined);
 }
@@ -1362,18 +1366,17 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		at.x += max_prefix_width + 8;
 
 		v2 size = draw_beamformer_variable(ui, a, &view->dynamic_range, at, mouse,
-		                                   &view->dynamic_range.hover_t, end.x - at.x, 1,
-		                                   RULER_COLOUR, &ui->small_font);
+		                                   end.x - at.x, 1, RULER_COLOUR, &ui->small_font);
 
 		f32 max_center_width = size.w;
 		at.y += size.h;
 
 		if (at.y < end.y) {
 			size = draw_beamformer_variable(ui, a, &view->threshold, at, mouse,
-			                                &view->threshold.hover_t, end.x - at.x, 1,
-			                                RULER_COLOUR, &ui->small_font);
+			                                end.x - at.x, 1, RULER_COLOUR, &ui->small_font);
 			max_center_width = MAX(size.w, max_center_width);
 		}
+
 		at.y  = start_y;
 		at.x += max_center_width + 8;
 		f32 width = measure_text(ui->small_font, s8(" [dB]")).w;
@@ -1467,8 +1470,7 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 	UIView *view = &ui_view->u.view;
 
 	/* TODO(rnp): this should get moved up to draw_variable */
-	if (hover_rect(mouse, r, &ui_view->hover_t))
-		ui->interaction.hot = ui_view;
+	hover_var(ui, mouse, r, ui_view);
 
 	if (view->needed_height - r.size.h < view->offset)
 		view->offset = view->needed_height - r.size.h;
@@ -1494,8 +1496,8 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 			                             r.size.w + r.pos.x - at.x, var->name_width, 0).y;
 			at.x    += x_off + LISTING_ITEM_PAD;
 			at.x    += draw_beamformer_variable(ui, ui->arena, var, at, mouse,
-			                                    &var->hover_t, r.size.w + r.pos.x - at.x,
-			                                    0, FG_COLOUR, &ui->font).x;
+			                                    r.size.w + r.pos.x - at.x, 0, FG_COLOUR,
+			                                    &ui->font).x;
 
 			while (var) {
 				if (var->next) {
@@ -1511,7 +1513,7 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 		case VT_GROUP: {
 			VariableGroup *g = &var->u.group;
 
-			advance  = draw_beamformer_variable(ui, ui->arena, var, at, mouse, &var->hover_t,
+			advance  = draw_beamformer_variable(ui, ui->arena, var, at, mouse,
 			                                    r.size.w + r.pos.x - at.x, 0, FG_COLOUR,
 			                                    &ui->font).y;
 			at.x    += x_off + LISTING_ITEM_PAD;
@@ -1535,9 +1537,8 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 					                          measure_text(ui->font, s8("{")).x, 0).x;
 					while (v) {
 						at.x += draw_beamformer_variable(ui, ui->arena, v,
-						             at, mouse, &v->hover_t,
-						             r.size.w + r.pos.x - at.x, 0, FG_COLOUR,
-						             &ui->font).x;
+						             at, mouse, r.size.w + r.pos.x - at.x,
+						             0, FG_COLOUR, &ui->font).x;
 
 						v = v->next;
 						if (v) at.x += draw_text_limited(ui->font, s8(", "),
@@ -1659,8 +1660,8 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 	/* TODO(rnp): last element has too much vertical space */
 	item = menu->u.group.first;
 	while (item) {
-		at.y += draw_beamformer_variable(ui, arena, item, at, mouse, &item->hover_t,
-		                                 menu_width, 0, FG_COLOUR, &ui->small_font).y;
+		at.y += draw_beamformer_variable(ui, arena, item, at, mouse, menu_width, 0,
+		                                 FG_COLOUR, &ui->small_font).y;
 		item = item->next;
 		if (item) {
 			DrawLineEx((v2){.x = at.x - 3, .y = at.y}.rl,
@@ -1713,8 +1714,7 @@ draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 		} break;
 		}
 
-		if (hover_rect(mouse, hover, &var->hover_t))
-			ui->interaction.hot = var;
+		hover_var(ui, mouse, hover, var);
 
 		v4 colour = HOVERED_COLOUR;
 		colour.a  = var->hover_t;
