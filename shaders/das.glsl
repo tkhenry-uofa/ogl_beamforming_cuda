@@ -51,8 +51,8 @@ vec2 sample_rf(uint ridx, float t)
 vec3 calc_image_point(vec3 voxel)
 {
 	ivec3 out_data_dim = imageSize(u_out_data_tex);
-	vec4 output_size   = abs(output_max_coord - output_min_coord);
-	vec3 image_point   = output_min_coord.xyz + voxel * output_size.xyz / out_data_dim;
+	vec4 output_size   = abs(output_max_coordinate - output_min_coordinate);
+	vec3 image_point   = output_min_coordinate.xyz + voxel * output_size.xyz / out_data_dim;
 
 	switch (das_shader_id) {
 	case DAS_ID_FORCES:

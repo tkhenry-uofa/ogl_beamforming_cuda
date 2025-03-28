@@ -503,7 +503,16 @@ static s8
 push_compute_shader_header(Arena *a, ComputeShaderID shader)
 {
 	s8 result = {.data = a->beg};
-	push_s8(a, s8(COMPUTE_SHADER_HEADER));
+
+	#define X(name, type, size, gltype, glsize, comment) "\t" #gltype " " #name #glsize "; " comment "\n"
+	push_s8(a, s8("#version 460 core\n\n"
+	              "layout(std140, binding = 0) uniform parameters {\n"
+	              BEAMFORMER_PARAMS_HEAD
+	              BEAMFORMER_UI_PARAMS
+	              BEAMFORMER_PARAMS_TAIL
+	              "};\n\n"));
+	#undef X
+
 	switch (shader) {
 	case CS_DAS: {
 		push_s8(a, s8("layout("
