@@ -10,7 +10,6 @@
  * [ ]: refactor: draw_left_aligned_list()
  * [ ]: refactor: draw_variable_table()
  * [ ]: refactor: add_variable_no_link()
- * [ ]: refactor: draw_text with flags (OUTLINED|ROTATED|LIMITED|etc..)
  * [ ]: refactor: draw_text_limited should clamp to rect and measure text itself
  * [ ]: refactor: draw_active_menu should just use draw_variable_list
  * [ ]: refactor: draw_beamformer_variable -> draw_variable; draw_variable -> draw_layout_variable
@@ -147,19 +146,18 @@ typedef struct {
 	VariableGroupType type;
 } VariableGroup;
 
-enum ui_view_flags {
-	UI_VIEW_CLOSABLE    = 1 << 0,
-	UI_VIEW_CUSTOM_TEXT = 1 << 1,
-};
+typedef enum {
+	UI_VIEW_CUSTOM_TEXT = 1 << 0,
+} UIViewFlags;
 
 typedef struct {
 	/* NOTE(rnp): superset of group, group must come first */
 	VariableGroup  group;
-	Variable *close;
-	Variable *menu;
-	f32      needed_height;
-	f32      offset;
-	u32      flags;
+	Variable      *close;
+	Variable      *menu;
+	f32            needed_height;
+	f32            offset;
+	UIViewFlags    flags;
 } UIView;
 
 /* X(id, text) */
@@ -189,14 +187,14 @@ typedef struct {
 	VariableType  store_type;
 } BeamformerVariable;
 
-enum variable_flags {
+typedef enum {
 	V_INPUT          = 1 << 0,
 	V_TEXT           = 1 << 1,
 	V_BUTTON         = 1 << 2,
 	V_MENU           = 1 << 3,
 	V_CAUSES_COMPUTE = 1 << 29,
 	V_UPDATE_VIEW    = 1 << 30,
-};
+} VariableFlags;
 
 struct Variable {
 	s8 name;
@@ -215,8 +213,8 @@ struct Variable {
 	} u;
 	Variable *next;
 	Variable *parent;
-	u32       flags;
-	VariableType type;
+	VariableFlags flags;
+	VariableType  type;
 
 	f32 hover_t;
 	f32 name_width;
@@ -308,6 +306,23 @@ struct BeamformerUI {
 
 	OS *os;
 };
+
+typedef enum {
+	TF_NONE     = 0,
+	TF_ROTATED  = 1 << 0,
+	TF_LIMITED  = 1 << 1,
+	TF_OUTLINED = 1 << 2,
+} TextFlags;
+
+typedef struct {
+	Font  *font;
+	Rect  limits;
+	Color colour;
+	Color outline_colour;
+	f32   outline_thick;
+	f32   rotation;
+	TextFlags flags;
+} TextSpec;
 
 static v2
 measure_text(Font font, s8 text)
@@ -869,7 +884,7 @@ push_custom_view_title(Stream *s, Variable *var)
 }
 
 static v2
-draw_text(Font font, s8 text, v2 pos, Color colour)
+draw_text_base(Font font, s8 text, v2 pos, Color colour)
 {
 	v2 off = pos;
 	for (iz i = 0; i < text.len; i++) {
@@ -899,61 +914,60 @@ draw_text(Font font, s8 text, v2 pos, Color colour)
 
 /* NOTE(rnp): expensive but of the available options in raylib this gives the best results */
 static v2
-draw_outlined_text(Font font, s8 text, v2 pos, f32 outline_width, Color colour, Color outline)
+draw_outlined_text(s8 text, v2 pos, TextSpec *ts)
 {
-	draw_text(font, text, sub_v2(pos, (v2){.x =  outline_width, .y =  outline_width}), outline);
-	draw_text(font, text, sub_v2(pos, (v2){.x =  outline_width, .y = -outline_width}), outline);
-	draw_text(font, text, sub_v2(pos, (v2){.x = -outline_width, .y =  outline_width}), outline);
-	draw_text(font, text, sub_v2(pos, (v2){.x = -outline_width, .y = -outline_width}), outline);
+	f32 ow = ts->outline_thick;
+	draw_text_base(*ts->font, text, sub_v2(pos, (v2){.x =  ow, .y =  ow}), ts->outline_colour);
+	draw_text_base(*ts->font, text, sub_v2(pos, (v2){.x =  ow, .y = -ow}), ts->outline_colour);
+	draw_text_base(*ts->font, text, sub_v2(pos, (v2){.x = -ow, .y =  ow}), ts->outline_colour);
+	draw_text_base(*ts->font, text, sub_v2(pos, (v2){.x = -ow, .y = -ow}), ts->outline_colour);
 
-	v2 result = draw_text(font, text, pos, colour);
+	v2 result = draw_text_base(*ts->font, text, pos, ts->colour);
 
 	return result;
 }
 
 static v2
-draw_text_r(Font font, s8 text, v2 pos, f32 rotation, Color colour)
+draw_text(s8 text, v2 pos, TextSpec *ts)
 {
-	rlPushMatrix();
+	if (ts->flags & TF_ROTATED) {
+		rlPushMatrix();
+		rlTranslatef(pos.x, pos.y, 0);
+		rlRotatef(ts->rotation, 0, 0, 1);
+		pos = (v2){0};
+	}
 
-	rlTranslatef(pos.x, pos.y, 0);
-	rlRotatef(rotation, 0, 0, 1);
-
-	v2 result = draw_text(font, text, (v2){0}, colour);
-
-	rlPopMatrix();
-	return result;
-}
-
-static v2
-draw_text_limited(Font font, s8 text, v2 pos, Color colour, f32 space, f32 text_width, b32 outlined)
-{
-	v2 result = {.y = font.baseSize};
-	if (text_width < space) {
-		if (outlined) result = draw_outlined_text(font, text, pos, 1, colour, BLACK);
-		else          result = draw_text(font, text, pos, colour);
-	} else {
-		f32 elipsis_width = measure_text(font, s8("...")).x;
-		if (elipsis_width < space) {
+	v2 result   = measure_text(*ts->font, text);
+	s8 ellipsis = s8("...");
+	b32 clamped = ts->flags & TF_LIMITED && result.w > ts->limits.size.w;
+	if (clamped) {
+		f32 elipsis_width = measure_text(*ts->font, ellipsis).x;
+		if (elipsis_width < ts->limits.size.w) {
 			/* TODO(rnp): there must be a better way */
 			while (text.len) {
 				text.len--;
-				f32 width = measure_text(font, text).x;
-				if (width + elipsis_width < space)
+				f32 width = measure_text(*ts->font, text).x;
+				if (width + elipsis_width < ts->limits.size.w)
 					break;
-
 			}
-			if (outlined) {
-				result.x += draw_outlined_text(font, text, pos, 1, colour, BLACK).x;
-				pos.x    += result.x;
-				result.x += draw_outlined_text(font, s8("..."), pos, 1, colour, BLACK).x;
-			} else {
-				result.x += draw_text(font, text, pos, colour).x;
-				pos.x    += result.x;
-				result.x += draw_text(font, s8("..."), pos, colour).x;
-			}
+		} else {
+			text.len     = 0;
+			ellipsis.len = 0;
 		}
 	}
+
+	if (ts->flags & TF_OUTLINED) result.x = draw_outlined_text(text, pos, ts).x;
+	else                         result.x = draw_text_base(*ts->font, text, pos, ts->colour).x;
+
+	if (clamped) {
+		pos.x += result.x;
+		if (ts->flags & TF_OUTLINED) result.x += draw_outlined_text(ellipsis, pos, ts).x;
+		else                         result.x += draw_text_base(*ts->font, ellipsis, pos,
+		                                                        ts->colour).x;
+	}
+
+	if (ts->flags & TF_ROTATED) rlPopMatrix();
+
 	return result;
 }
 
@@ -1062,8 +1076,9 @@ draw_title_bar(BeamformerUI *ui, Arena arena, Variable *ui_view, Rect r, v2 mous
 	/* TODO(rnp): hover the title text rect and use it to access the global menu */
 	v2 title_pos = title_rect.pos;
 	title_pos.y += 0.5 * TITLE_BAR_PAD;
-	draw_text_limited(ui->small_font, title, title_pos, NORMALIZED_FG_COLOUR,
-	                  title_rect.size.w, measure_text(ui->small_font, title).w, 0);
+	TextSpec text_spec = {.font = &ui->small_font, .flags = TF_LIMITED,
+	                      .colour = NORMALIZED_FG_COLOUR, .limits.size = title_rect.size};
+	draw_text(title, title_pos, &text_spec);
 
 	return result;
 }
@@ -1090,6 +1105,7 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 
 	v2 sp = {0}, ep = {.y = RULER_TICK_LENGTH};
 	v2 tp = {.x = ui->small_font.baseSize / 2, .y = ep.y + RULER_TEXT_PAD};
+	TextSpec text_spec = {.font = &ui->small_font, .rotation = 90, .colour = txt_colour, .flags = TF_ROTATED};
 	for (u32 j = 0; j <= segments; j++) {
 		DrawLineEx(sp.rl, ep.rl, 3, ruler_colour);
 
@@ -1097,7 +1113,7 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 		if (draw_plus && value > 0) stream_append_byte(buf, '+');
 		stream_append_f64(buf, value, 10);
 		stream_append_s8(buf, suffix);
-		draw_text_r(ui->small_font, stream_to_s8(buf), tp, 90, txt_colour);
+		draw_text(stream_to_s8(buf), tp, &text_spec);
 
 		value += value_inc;
 		sp.x  += inc;
@@ -1169,14 +1185,13 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, ScaleBar *sb, ScaleBarDirection dire
 }
 
 static v2
-draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, f32 space,
-                         b32 outlined, v4 base_colour, Font *font)
+draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse,
+                         v4 base_colour, TextSpec text_spec)
 {
 	Stream buf = arena_stream(&arena);
 	stream_append_variable(&buf, var);
 
-	Color colour = colour_from_normalized(base_colour);
-	v2 text_size = measure_text(*font, stream_to_s8(&buf));
+	v2 text_size = measure_text(*text_spec.font, stream_to_s8(&buf));
 	if (var->flags & V_INPUT) {
 		Rect text_rect = {.pos = at, .size = text_size};
 		text_rect = extend_rect_centered(text_rect, (v2){.x = 8});
@@ -1184,12 +1199,12 @@ draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2
 		if (hover_var(ui, mouse, text_rect, var) && (var->flags & V_TEXT)) {
 			InputState *is = &ui->text_input_state;
 			is->hot_rect   = text_rect;
-			is->hot_font   = font;
+			is->hot_font   = text_spec.font;
 		}
 
-		colour = colour_from_normalized(lerp_v4(base_colour, HOVERED_COLOUR, var->hover_t));
+		text_spec.colour = colour_from_normalized(lerp_v4(base_colour, HOVERED_COLOUR, var->hover_t));
 	}
-	return draw_text_limited(*font, stream_to_s8(&buf), at, colour, space, text_size.x, outlined);
+	return draw_text(stream_to_s8(&buf), at, &text_spec);
 }
 
 static void
@@ -1275,6 +1290,11 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	pixels_to_mm.x /= vr.size.x * 1e-3;
 	pixels_to_mm.y /= vr.size.y * 1e-3;
 
+	TextSpec text_spec = {.font = &ui->small_font, .flags = TF_LIMITED|TF_OUTLINED,
+	                      .colour = colour_from_normalized(RULER_COLOUR),
+	                      .outline_thick = 1, .outline_colour = BLACK,
+	                      .limits.size.x = vr.size.w};
+
 	b32 drew_coordinates = 0;
 	f32 remaining_width  = vr.size.w;
 	if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
@@ -1289,33 +1309,34 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		Arena  tmp = a;
 		Stream buf = arena_stream(&tmp);
 		stream_append_v2(&buf, mm);
-		v2 txt_s = measure_text(ui->small_font, stream_to_s8(&buf));
-		if (vr.size.w + vr.pos.x - txt_s.w - 4 > display_rect.pos.x && txt_s.h < display_rect.size.h - 4) {
-			v2 txt_p = {
-				.x = vr.pos.x + vr.size.w - txt_s.w - 4,
-				.y = vr.pos.y + vr.size.h - txt_s.h - 4,
-			};
-			f32 width = draw_outlined_text(ui->small_font, stream_to_s8(&buf), txt_p, 1,
-			                               colour_from_normalized(RULER_COLOUR), BLACK).w;
-			remaining_width -= width;
-			drew_coordinates = 1;
-		}
+
+		text_spec.limits.size.w -= 4;
+		v2 txt_s = measure_text(*text_spec.font, stream_to_s8(&buf));
+		v2 txt_p = {
+			.x = vr.pos.x + vr.size.w - txt_s.w - 4,
+			.y = vr.pos.y + vr.size.h - txt_s.h - 4,
+		};
+		txt_p.x = MAX(vr.pos.x, txt_p.x);
+		remaining_width -= draw_text(stream_to_s8(&buf), txt_p, &text_spec).w;
+		text_spec.limits.size.w += 4;
+		drew_coordinates = 1;
 	}
 
 	{
 		Arena  tmp = a;
 		Stream buf = arena_stream(&tmp);
-		s8 shader = push_das_shader_id(&buf, frame->das_shader_id, frame->compound_count);
-		v2 txt_s  = measure_text(ui->font, shader);
-		/* TODO(rnp): we want this 16 to be proportional to vr size */
-		if (vr.size.w + vr.pos.x - txt_s.w - 16 > display_rect.pos.x && txt_s.h < display_rect.size.h - 4) {
-			v2 txt_p  = {
-				.x = vr.pos.x + vr.size.w - txt_s.w - 16,
-				.y = vr.pos.y + 4,
-			};
-			draw_outlined_text(ui->font, shader, txt_p, 1,
-			                   colour_from_normalized(RULER_COLOUR), BLACK);
-		}
+		s8 shader  = push_das_shader_id(&buf, frame->das_shader_id, frame->compound_count);
+		text_spec.font = &ui->font;
+		text_spec.limits.size.w -= 16;
+		v2 txt_s   = measure_text(*text_spec.font, shader);
+		v2 txt_p  = {
+			.x = vr.pos.x + vr.size.w - txt_s.w - 16,
+			.y = vr.pos.y + 4,
+		};
+		txt_p.x = MAX(vr.pos.x, txt_p.x);
+		draw_text(stream_to_s8(&buf), txt_p, &text_spec);
+		text_spec.font = &ui->small_font;
+		text_spec.limits.size.w += 16;
 	}
 
 	/* TODO(rnp): store converted ruler points instead of screen points */
@@ -1324,15 +1345,13 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		if (ui->ruler_state == RS_START) end_p = mouse;
 		else                             end_p = ui->ruler_stop_p;
 
-		Color colour = colour_from_normalized(RULER_COLOUR);
-
 		end_p          = clamp_v2_rect(end_p, vr);
 		v2 pixel_delta = sub_v2(ui->ruler_start_p, end_p);
 		v2 mm_delta    = mul_v2(pixels_to_mm, pixel_delta);
 
-		DrawCircleV(ui->ruler_start_p.rl, 3, colour);
-		DrawLineEx(end_p.rl, ui->ruler_start_p.rl, 2, colour);
-		DrawCircleV(end_p.rl, 3, colour);
+		DrawCircleV(ui->ruler_start_p.rl, 3, text_spec.colour);
+		DrawLineEx(end_p.rl, ui->ruler_start_p.rl, 2, text_spec.colour);
+		DrawCircleV(end_p.rl, 3, text_spec.colour);
 
 		Arena  tmp = a;
 		Stream buf = arena_stream(&tmp);
@@ -1340,47 +1359,43 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		stream_append_s8(&buf, s8(" mm"));
 
 		v2 txt_p = ui->ruler_start_p;
-		v2 txt_s = measure_text(ui->small_font, stream_to_s8(&buf));
+		v2 txt_s = measure_text(*text_spec.font, stream_to_s8(&buf));
 		if (pixel_delta.y < 0) txt_p.y -= txt_s.y;
 		if (pixel_delta.x < 0) txt_p.x -= txt_s.x;
-		draw_outlined_text(ui->small_font, stream_to_s8(&buf), txt_p, 1, colour, BLACK);
+		draw_text(stream_to_s8(&buf), txt_p, &text_spec);
 	}
 
 	if (remaining_width > view->dynamic_range.name_width || !drew_coordinates) {
-		Color colour = colour_from_normalized(RULER_COLOUR);
 		f32 max_prefix_width = MAX(view->threshold.name_width, view->dynamic_range.name_width);
 
 		v2  end     = add_v2(vr.pos, vr.size);
-		f32 start_y = MAX(end.y - 4 - 2 * ui->small_font.baseSize, vr.pos.y);
-		end.y -= ui->small_font.baseSize;
+		f32 start_y = MAX(end.y - 4 - 2 * text_spec.font->baseSize, vr.pos.y);
+		end.y -= text_spec.font->baseSize;
 		v2 at = {.x = vr.pos.x + 4, .y = start_y};
 
-		at.y += draw_text_limited(ui->small_font, view->dynamic_range.name, at, colour,
-		                          end.x - at.x, view->dynamic_range.name_width, 1).y;
-		if (at.y < end.y) {
-			draw_text_limited(ui->small_font, view->threshold.name, at, colour,
-			                  end.x - at.x, view->threshold.name_width, 1);
-		}
+		at.y += draw_text(view->dynamic_range.name, at, &text_spec).y;
+		if (at.y < end.y) at.y += draw_text(view->threshold.name, at, &text_spec).y;
 
 		at.y  = start_y;
 		at.x += max_prefix_width + 8;
+		text_spec.limits.size.x = end.x - at.x;
 
 		v2 size = draw_beamformer_variable(ui, a, &view->dynamic_range, at, mouse,
-		                                   end.x - at.x, 1, RULER_COLOUR, &ui->small_font);
+		                                   RULER_COLOUR, text_spec);
 
 		f32 max_center_width = size.w;
 		at.y += size.h;
 
 		if (at.y < end.y) {
 			size = draw_beamformer_variable(ui, a, &view->threshold, at, mouse,
-			                                end.x - at.x, 1, RULER_COLOUR, &ui->small_font);
+			                                RULER_COLOUR, text_spec);
 			max_center_width = MAX(size.w, max_center_width);
 		}
 
 		at.y  = start_y;
 		at.x += max_center_width + 8;
-		f32 width = measure_text(ui->small_font, s8(" [dB]")).w;
-		draw_text_limited(ui->small_font, s8(" [dB]"), at, colour, end.x - at.x, width, 1);
+		text_spec.limits.size.x = end.x - at.x;
+		draw_text(s8(" [dB]"), at, &text_spec);
 	}
 }
 
@@ -1432,18 +1447,18 @@ draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *sta
 	Stream buf = stream_alloc(&arena, 64);
 	f32 compute_time_sum = 0;
 	u32 stages = ctx->params->compute_stages_count;
+	TextSpec text_spec = {.font = &ui->font, .colour = NORMALIZED_FG_COLOUR, .flags = TF_LIMITED};
 	for (u32 i = 0; i < stages; i++) {
 		u32 index  = ctx->params->compute_stages[i];
-		draw_text_limited(ui->font, labels[index], at, NORMALIZED_FG_COLOUR, r.size.w,
-		                  label_widths[index], 0);
+		text_spec.limits.size.x = r.size.w;
+		draw_text(labels[index], at, &text_spec);
+		text_spec.limits.size.x -= LISTING_ITEM_PAD + max_label_width;
 
 		stream_reset(&buf, 0);
 		stream_append_f64_e(&buf, stats->times[index]);
 		stream_append_s8(&buf, s8(" [s]"));
-		v2 txt_fs = measure_text(ui->font, stream_to_s8(&buf));
-		v2 rpos   = {.x = r.pos.x + max_label_width + LISTING_ITEM_PAD, .y = at.y};
-		at.y += draw_text_limited(ui->font, stream_to_s8(&buf), rpos, NORMALIZED_FG_COLOUR,
-		                          r.size.w - LISTING_ITEM_PAD - max_label_width, txt_fs.w, 0).h;
+		v2 rpos = {.x = r.pos.x + max_label_width + LISTING_ITEM_PAD, .y = at.y};
+		at.y += draw_text(stream_to_s8(&buf), rpos, &text_spec).h;
 
 		compute_time_sum += stats->times[index];
 	}
@@ -1451,13 +1466,11 @@ draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *sta
 	stream_reset(&buf, 0);
 	stream_append_f64_e(&buf, compute_time_sum);
 	stream_append_s8(&buf, s8(" [s]"));
-	v2 txt_fs = measure_text(ui->font, stream_to_s8(&buf));
-	v2 rpos   = {.x = at.x + max_label_width + LISTING_ITEM_PAD, .y = at.y};
-	draw_text_limited(ui->font, compute_total, at, NORMALIZED_FG_COLOUR, r.size.w,
-	                  compute_total_width, 0);
-	draw_text_limited(ui->font, stream_to_s8(&buf), rpos, NORMALIZED_FG_COLOUR,
-	                  r.size.w - LISTING_ITEM_PAD - max_label_width, txt_fs.w, 0);
-	at.y += ui->font.baseSize;
+	v2 rpos = {.x = at.x + max_label_width + LISTING_ITEM_PAD, .y = at.y};
+	text_spec.limits.size.w = r.size.w;
+	draw_text(compute_total, at, &text_spec);
+	text_spec.limits.size.w -= LISTING_ITEM_PAD - max_label_width;
+	at.y -= draw_text(stream_to_s8(&buf), rpos, &text_spec).h;
 
 	v2 result = {.x = r.size.w, .y = at.y - r.pos.y};
 	return result;
@@ -1483,6 +1496,7 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 	f32 start_height = r.size.h;
 	Variable *var    = view->group.first;
 	f32 x_off        = view->group.max_name_width;
+	TextSpec text_spec = {.font = &ui->font, .colour = NORMALIZED_FG_COLOUR, .flags = TF_LIMITED};
 	while (var) {
 		s8 suffix   = {0};
 		v2 at       = r.pos;
@@ -1492,12 +1506,12 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 			BeamformerVariable *bv = &var->u.beamformer_variable;
 
 			suffix   = bv->suffix;
-			advance  = draw_text_limited(ui->font, var->name, at, NORMALIZED_FG_COLOUR,
-			                             r.size.w + r.pos.x - at.x, var->name_width, 0).y;
+	                text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
+			advance  = draw_text(var->name, at, &text_spec).y;
 			at.x    += x_off + LISTING_ITEM_PAD;
+	                text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
 			at.x    += draw_beamformer_variable(ui, ui->arena, var, at, mouse,
-			                                    r.size.w + r.pos.x - at.x, 0, FG_COLOUR,
-			                                    &ui->font).x;
+			                                    FG_COLOUR, text_spec).x;
 
 			while (var) {
 				if (var->next) {
@@ -1513,9 +1527,9 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 		case VT_GROUP: {
 			VariableGroup *g = &var->u.group;
 
+	                text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
 			advance  = draw_beamformer_variable(ui, ui->arena, var, at, mouse,
-			                                    r.size.w + r.pos.x - at.x, 0, FG_COLOUR,
-			                                    &ui->font).y;
+			                                    FG_COLOUR, text_spec).y;
 			at.x    += x_off + LISTING_ITEM_PAD;
 			if (g->expanded) {
 				cut_rect_horizontal(r, LISTING_INDENT, 0, &r);
@@ -1532,23 +1546,21 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 				case VG_LIST: break;
 				case VG_V2:
 				case VG_V4: {
-					at.x += draw_text_limited(ui->font, s8("{"), at, NORMALIZED_FG_COLOUR,
-					                          r.size.w + r.pos.x - at.x,
-					                          measure_text(ui->font, s8("{")).x, 0).x;
+					text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
+					at.x += draw_text(s8("{"), at, &text_spec).x;
 					while (v) {
+						text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
 						at.x += draw_beamformer_variable(ui, ui->arena, v,
-						             at, mouse, r.size.w + r.pos.x - at.x,
-						             0, FG_COLOUR, &ui->font).x;
+						             at, mouse, FG_COLOUR, text_spec).x;
 
 						v = v->next;
-						if (v) at.x += draw_text_limited(ui->font, s8(", "),
-						                   at, NORMALIZED_FG_COLOUR,
-						                   r.size.w + r.pos.x - at.x,
-						                   measure_text(ui->font, s8(", ")).x, 0).x;
+						if (v) {
+							text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
+							at.x += draw_text(s8(", "), at, &text_spec).x;
+						}
 					}
-					at.x += draw_text_limited(ui->font, s8("}"), at, NORMALIZED_FG_COLOUR,
-					                          r.size.w + r.pos.x - at.x,
-					                          measure_text(ui->font, s8("}")).x, 0).x;
+					text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
+					at.x += draw_text(s8("}"), at, &text_spec).x;
 				} break;
 				}
 
@@ -1581,7 +1593,7 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 			v2 suffix_s = measure_text(ui->font, suffix);
 			if (r.size.w + r.pos.x - LISTING_ITEM_PAD - suffix_s.x > at.x) {
 				v2 suffix_p = {.x = r.pos.x + r.size.w - suffix_s.w, .y = r.pos.y};
-				draw_text(ui->font, suffix, suffix_p, NORMALIZED_FG_COLOUR);
+				draw_text(suffix, suffix_p, &text_spec);
 			}
 		}
 
@@ -1618,10 +1630,12 @@ draw_active_text_box(BeamformerUI *ui, Variable *var)
 	v4 cursor_colour = FOCUSED_COLOUR;
 	cursor_colour.a  = CLAMP01(is->cursor_blink_t);
 
+	Color c = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, var->hover_t));
+	TextSpec text_spec = {.font = is->font, .colour = c};
+
 	DrawRectangleRounded(background.rl, 0.2, 0, fade(BLACK, 0.8));
 	DrawRectangleRounded(box.rl, 0.2, 0, colour_from_normalized(BG_COLOUR));
-	draw_text(*is->font, text, text_position,
-	          colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, var->hover_t)));
+	draw_text(text, text_position, &text_spec);
 	DrawRectanglePro(cursor.rl, (Vector2){0}, 0, colour_from_normalized(cursor_colour));
 }
 
@@ -1659,9 +1673,10 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 
 	/* TODO(rnp): last element has too much vertical space */
 	item = menu->u.group.first;
+	TextSpec text_spec = {.font = &ui->small_font, .colour = NORMALIZED_FG_COLOUR,
+	                      .limits.size.w = menu_width};
 	while (item) {
-		at.y += draw_beamformer_variable(ui, arena, item, at, mouse, menu_width, 0,
-		                                 FG_COLOUR, &ui->small_font).y;
+		at.y += draw_beamformer_variable(ui, arena, item, at, mouse, FG_COLOUR, text_spec).y;
 		item = item->next;
 		if (item) {
 			DrawLineEx((v2){.x = at.x - 3, .y = at.y}.rl,
