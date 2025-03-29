@@ -12,7 +12,6 @@
  * [ ]: refactor: add_variable_no_link()
  * [ ]: refactor: draw_text_limited should clamp to rect and measure text itself
  * [ ]: refactor: draw_active_menu should just use draw_variable_list
- * [ ]: refactor: draw_beamformer_variable -> draw_variable; draw_variable -> draw_layout_variable
  * [ ]: refactor: scale bars should just be variables
  * [ ]: refactor: remove scale bar limits (limits should only prevent invalid program state)
  * [ ]: ui leaks split beamform views on hot-reload
@@ -1185,8 +1184,7 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, ScaleBar *sb, ScaleBarDirection dire
 }
 
 static v2
-draw_beamformer_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse,
-                         v4 base_colour, TextSpec text_spec)
+draw_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, v4 base_colour, TextSpec text_spec)
 {
 	Stream buf = arena_stream(&arena);
 	stream_append_variable(&buf, var);
@@ -1380,16 +1378,15 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		at.x += max_prefix_width + 8;
 		text_spec.limits.size.x = end.x - at.x;
 
-		v2 size = draw_beamformer_variable(ui, a, &view->dynamic_range, at, mouse,
-		                                   RULER_COLOUR, text_spec);
+		v2 size = draw_variable(ui, a, &view->dynamic_range, at, mouse, RULER_COLOUR, text_spec);
 
 		f32 max_center_width = size.w;
 		at.y += size.h;
 
 		if (at.y < end.y) {
-			size = draw_beamformer_variable(ui, a, &view->threshold, at, mouse,
-			                                RULER_COLOUR, text_spec);
+			size = draw_variable(ui, a, &view->threshold, at, mouse, RULER_COLOUR, text_spec);
 			max_center_width = MAX(size.w, max_center_width);
+			at.y += size.h;
 		}
 
 		at.y  = start_y;
@@ -1510,8 +1507,7 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 			advance  = draw_text(var->name, at, &text_spec).y;
 			at.x    += x_off + LISTING_ITEM_PAD;
 	                text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
-			at.x    += draw_beamformer_variable(ui, ui->arena, var, at, mouse,
-			                                    FG_COLOUR, text_spec).x;
+			at.x    += draw_variable(ui, ui->arena, var, at, mouse, FG_COLOUR, text_spec).x;
 
 			while (var) {
 				if (var->next) {
@@ -1528,8 +1524,7 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 			VariableGroup *g = &var->u.group;
 
 	                text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
-			advance  = draw_beamformer_variable(ui, ui->arena, var, at, mouse,
-			                                    FG_COLOUR, text_spec).y;
+			advance  = draw_variable(ui, ui->arena, var, at, mouse, FG_COLOUR, text_spec).y;
 			at.x    += x_off + LISTING_ITEM_PAD;
 			if (g->expanded) {
 				cut_rect_horizontal(r, LISTING_INDENT, 0, &r);
@@ -1550,8 +1545,8 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 					at.x += draw_text(s8("{"), at, &text_spec).x;
 					while (v) {
 						text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
-						at.x += draw_beamformer_variable(ui, ui->arena, v,
-						             at, mouse, FG_COLOUR, text_spec).x;
+						at.x += draw_variable(ui, ui->arena, v, at, mouse,
+						                      FG_COLOUR, text_spec).x;
 
 						v = v->next;
 						if (v) {
@@ -1676,7 +1671,7 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 	TextSpec text_spec = {.font = &ui->small_font, .colour = NORMALIZED_FG_COLOUR,
 	                      .limits.size.w = menu_width};
 	while (item) {
-		at.y += draw_beamformer_variable(ui, arena, item, at, mouse, FG_COLOUR, text_spec).y;
+		at.y += draw_variable(ui, arena, item, at, mouse, FG_COLOUR, text_spec).y;
 		item = item->next;
 		if (item) {
 			DrawLineEx((v2){.x = at.x - 3, .y = at.y}.rl,
@@ -1687,7 +1682,7 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 }
 
 static void
-draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
+draw_layout_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 {
 	if (var->type != VT_UI_REGION_SPLIT) {
 		v2 shrink = {.x = UI_REGION_PAD, .y = UI_REGION_PAD};
@@ -1735,7 +1730,7 @@ draw_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 		colour.a  = var->hover_t;
 		DrawRectangleRounded(split.rl, 0.6, 0, colour_from_normalized(colour));
 	} break;
-	default: break;
+	default: INVALID_CODE_PATH; break;
 	}
 	EndScissorMode();
 }
@@ -1758,7 +1753,7 @@ draw_ui_regions(BeamformerUI *ui, Rect window, v2 mouse)
 	while (stack_index != -1) {
 		struct region_stack_item *rsi = region_stack + stack_index--;
 		Rect rect = rsi->rect;
-		draw_variable(ui, rsi->var, rect, mouse);
+		draw_layout_variable(ui, rsi->var, rect, mouse);
 
 		if (rsi->var->type == VT_UI_REGION_SPLIT) {
 			Rect first, second;
