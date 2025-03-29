@@ -1474,7 +1474,7 @@ draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *sta
 }
 
 static void
-draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
+draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec text_spec)
 {
 	ASSERT(ui_view->type == VT_UI_VIEW);
 	UIView *view = &ui_view->u.view;
@@ -1493,7 +1493,6 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse)
 	f32 start_height = r.size.h;
 	Variable *var    = view->group.first;
 	f32 x_off        = view->group.max_name_width;
-	TextSpec text_spec = {.font = &ui->font, .colour = NORMALIZED_FG_COLOUR, .flags = TF_LIMITED};
 	while (var) {
 		s8 suffix   = {0};
 		v2 at       = r.pos;
@@ -1640,10 +1639,11 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 	ASSERT(menu->type == VT_GROUP);
 	MenuState *ms = &ui->menu_state;
 
+	f32 font_height     = ms->font->baseSize;
 	f32 max_label_width = 0;
 
 	Variable *item = menu->u.group.first;
-	u32 item_count = 0;
+	i32 item_count = 0;
 	while (item) {
 		max_label_width = MAX(max_label_width, item->name_width);
 		item = item->next;
@@ -1652,7 +1652,8 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 
 	v2  at          = ms->at;
 	f32 menu_width  = max_label_width + 8;
-	f32 menu_height = item_count * ms->font->baseSize + (item_count) * 2;
+	f32 menu_height = item_count * font_height + (item_count - 1) * 2;
+	menu_height = MAX(menu_height, 0);
 
 	if (at.x + menu_width > window.size.w)
 		at.x = window.size.w - menu_width  - 16;
@@ -1665,19 +1666,20 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 	menu_rect      = extend_rect_centered(menu_rect, (v2){.x = 6,  .y = 4});
 	DrawRectangleRounded(bg_rect.rl,   0.1, 0, fade(BLACK, 0.8));
 	DrawRectangleRounded(menu_rect.rl, 0.1, 0, colour_from_normalized(BG_COLOUR));
+	f32 start_y = at.y;
+	for (i32 i = 0; i < item_count - 1; i++) {
+		at.y += 2 + font_height;
+		DrawLineEx((v2){.x = at.x - 3, .y = at.y}.rl,
+		           add_v2(at, (v2){.w = menu_width + 3}).rl, 2, fade(BLACK, 0.8));
+	}
 
-	/* TODO(rnp): last element has too much vertical space */
 	item = menu->u.group.first;
-	TextSpec text_spec = {.font = &ui->small_font, .colour = NORMALIZED_FG_COLOUR,
+	TextSpec text_spec = {.font = ms->font, .colour = NORMALIZED_FG_COLOUR,
 	                      .limits.size.w = menu_width};
+	at.y = start_y;
 	while (item) {
-		at.y += draw_variable(ui, arena, item, at, mouse, FG_COLOUR, text_spec).y;
+		at.y += draw_variable(ui, arena, item, at, mouse, FG_COLOUR, text_spec).y + 2;
 		item = item->next;
-		if (item) {
-			DrawLineEx((v2){.x = at.x - 3, .y = at.y}.rl,
-			           add_v2(at, (v2){.w = menu_width + 3}).rl, 2, fade(BLACK, 0.8));
-			at.y += 2;
-		}
 	}
 }
 
@@ -1699,7 +1701,8 @@ draw_layout_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 	BeginScissorMode(draw_rect.pos.x, draw_rect.pos.y, draw_rect.size.w, draw_rect.size.h);
 	switch (var->type) {
 	case VT_UI_VIEW: {
-		draw_ui_view(ui, var, draw_rect, mouse);
+		TextSpec text_spec = {.font = &ui->font, .colour = NORMALIZED_FG_COLOUR, .flags = TF_LIMITED};
+		draw_ui_view(ui, var, draw_rect, mouse, text_spec);
 	} break;
 	case VT_UI_REGION_SPLIT: {
 		RegionSplit *rs = &var->u.region_split;
