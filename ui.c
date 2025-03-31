@@ -4,8 +4,9 @@
  * [ ]: compute times through same path as parameter list ?
  * [ ]: global menu
  * [ ]: allow views to collapse to just their title bar
+ *      - title bar struct with expanded. Check when pushing onto draw stack; if expanded
+ *        do normal behaviour else make size title bar size and ignore the splits fraction.
  * [ ]: enforce a minimum region size or allow regions themselves to scroll
- * [ ]: allow scale bars to collapse
  * [ ]: move remaining fragment shader stuff into ui
  * [ ]: refactor: draw_left_aligned_list()
  * [ ]: refactor: draw_variable_table()
@@ -17,6 +18,8 @@
  * [ ]: ui leaks split beamform views on hot-reload
  * [ ]: add tag based selection to frame views
  * [ ]: draw the ui with a post-order traversal instead of pre-order traversal
+ * [ ]: consider V_HOVER_GROUP and use that to implement submenus
+ * [ ]: bug: ruler needs to know which view is associated with it
  */
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -189,7 +192,7 @@ typedef struct {
 typedef enum {
 	V_INPUT          = 1 << 0,
 	V_TEXT           = 1 << 1,
-	V_BUTTON         = 1 << 2,
+	V_RADIO_BUTTON   = 1 << 2,
 	V_MENU           = 1 << 3,
 	V_CAUSES_COMPUTE = 1 << 29,
 	V_UPDATE_VIEW    = 1 << 30,
@@ -245,6 +248,8 @@ typedef enum {
 typedef struct BeamformerFrameView {
 	ScaleBar lateral_scale_bar;
 	ScaleBar axial_scale_bar;
+	Variable *lateral_scale_bar_active;
+	Variable *axial_scale_bar_active;
 
 	v4 min_coordinate;
 	v4 max_coordinate;
@@ -500,9 +505,12 @@ end_variable_group(Variable *group)
 }
 
 static Variable *
-add_button(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, UIButtonID id, Font font)
+add_button(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, UIButtonID id,
+           b32 radio, Font font)
 {
-	Variable *result = add_variable(ui, group, arena, name, V_INPUT, VT_UI_BUTTON, font);
+	u32 flags = V_INPUT;
+	if (radio) flags |= V_RADIO_BUTTON;
+	Variable *result = add_variable(ui, group, arena, name, flags, VT_UI_BUTTON, font);
 	result->u.button = id;
 	return result;
 }
@@ -525,7 +533,7 @@ add_ui_view(BeamformerUI *ui, Variable *parent, Arena *arena, s8 name, u32 view_
 	view->group.type = VG_LIST;
 	view->flags      = view_flags;
 	if (closable) {
-		view->close = add_button(ui, 0, arena, s8(""), UI_BID_CLOSE_VIEW, ui->small_font);
+		view->close = add_button(ui, 0, arena, s8(""), UI_BID_CLOSE_VIEW, 0, ui->small_font);
 		/* NOTE(rnp): we do this explicitly so that close doesn't end up in the view group */
 		view->close->parent = result;
 	}
@@ -629,15 +637,15 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 {
 	/* TODO(rnp): this can be always closable once we have a way of opening new views */
 	Variable *result = add_ui_view(ui, parent, arena, s8(""), UI_VIEW_CUSTOM_TEXT, closable);
-	Variable *menu   = result->u.view.menu = add_variable_group(ui, 0, &ui->arena, s8(""),
+	Variable *menu   = result->u.view.menu = add_variable_group(ui, 0, arena, s8(""),
 	                                                            VG_LIST, ui->small_font);
 	menu->flags  = V_MENU;
 	menu->parent = result;
-	#define X(id, text) add_button(ui, menu, &ui->arena, s8(text), UI_BID_ ##id, ui->small_font);
+	#define X(id, text) add_button(ui, menu, arena, s8(text), UI_BID_ ##id, 0, ui->small_font);
 	FRAME_VIEW_BUTTONS
 	#undef X
 
-	Variable *var = add_variable(ui, result, &ui->arena, s8(""), 0, VT_BEAMFORMER_FRAME_VIEW,
+	Variable *var = add_variable(ui, result, arena, s8(""), 0, VT_BEAMFORMER_FRAME_VIEW,
 	                             ui->small_font);
 
 	BeamformerFrameView *bv = SLLPop(ui->view_freelist);
@@ -655,6 +663,11 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	bv->type                = type;
 	bv->dynamic_range.u.f32 = -50.0f;
 	bv->threshold.u.f32     =  40.0f;
+
+	bv->axial_scale_bar_active   = add_variable(ui, menu, arena, s8("Axial Scale Bar"),
+	                                            V_INPUT|V_RADIO_BUTTON, VT_B32, ui->small_font);
+	bv->lateral_scale_bar_active = add_variable(ui, menu, arena, s8("Lateral Scale Bar"),
+	                                            V_INPUT|V_RADIO_BUTTON, VT_B32, ui->small_font);
 
 	bv->lateral_scale_bar.limits              = (v2){.x = -1, .y = 1};
 	bv->axial_scale_bar.limits                = (v2){.x =  0, .y = 1};
@@ -1184,25 +1197,57 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, ScaleBar *sb, ScaleBarDirection dire
 }
 
 static v2
+draw_radio_button(BeamformerUI *ui, Variable *var, v2 at, v2 mouse, v4 base_colour, f32 size)
+{
+	ASSERT(var->type == VT_B32 || var->type == VT_BEAMFORMER_VARIABLE);
+	b32 value;
+	if (var->type == VT_B32) {
+		value = var->u.b32;
+	} else {
+		ASSERT(var->u.beamformer_variable.store_type == VT_B32);
+		value = *(b32 *)var->u.beamformer_variable.store;
+	}
+
+	v2 result = (v2){.x = size, .y = size};
+	Rect hover_rect   = {.pos = at, .size = result};
+	hover_rect.pos.y += 1;
+	hover_var(ui, mouse, hover_rect, var);
+
+	hover_rect = shrink_rect_centered(hover_rect, (v2){.x = 8, .y = 8});
+	Rect inner = shrink_rect_centered(hover_rect, (v2){.x = 4, .y = 4});
+	v4 fill = lerp_v4(value? base_colour : (v4){0}, HOVERED_COLOUR, var->hover_t);
+	DrawRectangleRoundedLinesEx(hover_rect.rl, 0.2, 0, 2, colour_from_normalized(base_colour));
+	DrawRectangleRec(inner.rl, colour_from_normalized(fill));
+
+	return result;
+}
+
+static v2
 draw_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, v4 base_colour, TextSpec text_spec)
 {
-	Stream buf = arena_stream(&arena);
-	stream_append_variable(&buf, var);
+	v2 result;
+	if (var->flags & V_RADIO_BUTTON) {
+		result = draw_radio_button(ui, var, at, mouse, base_colour, text_spec.font->baseSize);
+	} else {
+		Stream buf = arena_stream(&arena);
+		stream_append_variable(&buf, var);
+		result = measure_text(*text_spec.font, stream_to_s8(&buf));
 
-	v2 text_size = measure_text(*text_spec.font, stream_to_s8(&buf));
-	if (var->flags & V_INPUT) {
-		Rect text_rect = {.pos = at, .size = text_size};
-		text_rect = extend_rect_centered(text_rect, (v2){.x = 8});
-
-		if (hover_var(ui, mouse, text_rect, var) && (var->flags & V_TEXT)) {
-			InputState *is = &ui->text_input_state;
-			is->hot_rect   = text_rect;
-			is->hot_font   = text_spec.font;
+		if (var->flags & V_INPUT) {
+			Rect text_rect = {.pos = at, .size = result};
+			text_rect = extend_rect_centered(text_rect, (v2){.x = 8});
+			if (hover_var(ui, mouse, text_rect, var) && (var->flags & V_TEXT)) {
+				InputState *is = &ui->text_input_state;
+				is->hot_rect   = text_rect;
+				is->hot_font   = text_spec.font;
+			}
+			text_spec.colour = colour_from_normalized(lerp_v4(base_colour, HOVERED_COLOUR,
+			                                                  var->hover_t));
 		}
 
-		text_spec.colour = colour_from_normalized(lerp_v4(base_colour, HOVERED_COLOUR, var->hover_t));
+		draw_text(stream_to_s8(&buf), at, &text_spec);
 	}
-	return draw_text(stream_to_s8(&buf), at, &text_spec);
+	return result;
 }
 
 static void
@@ -1216,12 +1261,23 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 
 	v2 txt_s = measure_text(ui->small_font, s8("-288.8 mm"));
 
-	f32 pad    = 1.2 * txt_s.x + RULER_TICK_LENGTH;
-	Rect vr    = display_rect;
-	vr.pos.x  += 0.5 * ui->small_font.baseSize;
-	vr.pos.y  += 0.5 * ui->small_font.baseSize;
-	vr.size.h  = MAX(0, display_rect.size.h - pad);
-	vr.size.w  = MAX(0, display_rect.size.w - pad);
+	f32  scale_bar_size = 1.2 * txt_s.x + RULER_TICK_LENGTH;
+	Rect vr             = display_rect;
+
+	v2 pad = {0};
+	if (view->axial_scale_bar_active->u.b32) {
+		vr.pos.x  += 0.5 * ui->small_font.baseSize;
+		vr.size.w  = MAX(0, display_rect.size.w - scale_bar_size);
+		vr.size.h -= ui->small_font.baseSize;
+		pad.x      = scale_bar_size;
+	}
+
+	if (view->lateral_scale_bar_active->u.b32) {
+		vr.pos.y  += 0.5 * ui->small_font.baseSize;
+		vr.size.h  = MAX(0, display_rect.size.h - scale_bar_size);
+		vr.size.w -= ui->small_font.baseSize;
+		pad.y      = scale_bar_size;
+	}
 
 	/* TODO(rnp): ideally we hook up both versions to view->min/max */
 	v4 min = (view->type == FVT_LATEST)? bp->output_min_coordinate : view->min_coordinate;
@@ -1235,13 +1291,13 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	v2 requested_dim = {.x = max.x - min.x, .y = max.z - min.z};
 
 	f32 aspect = requested_dim.h / requested_dim.w;
-	if (display_rect.size.h < (vr.size.w * aspect) + pad) {
+	if (display_rect.size.h < (vr.size.w * aspect) + pad.y) {
 		vr.size.w = vr.size.h / aspect;
 	} else {
 		vr.size.h = vr.size.w * aspect;
 	}
-	vr.pos.x += (display_rect.size.w - (vr.size.w + pad)) / 2;
-	vr.pos.y += (display_rect.size.h - (vr.size.h + pad)) / 2;
+	vr.pos.x += (display_rect.size.w - (vr.size.w + pad.x)) / 2;
+	vr.pos.y += (display_rect.size.h - (vr.size.h + pad.y)) / 2;
 
 	Texture *output = &view->rendered_view.texture;
 	v2 pixels_per_meter = {
@@ -1263,7 +1319,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	v2 start_pos  = vr.pos;
 	start_pos.y  += vr.size.y;
 
-	if (vr.size.w > 0) {
+	if (vr.size.w > 0 && view->lateral_scale_bar_active->u.b32) {
 		Arena  tmp = a;
 		Stream buf = arena_stream(&tmp);
 		do_scale_bar(ui, &buf, &view->lateral_scale_bar, SB_LATERAL, mouse,
@@ -1275,7 +1331,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	start_pos    = vr.pos;
 	start_pos.x += vr.size.x;
 
-	if (vr.size.h > 0) {
+	if (vr.size.h > 0 && view->axial_scale_bar_active->u.b32) {
 		Arena  tmp = a;
 		Stream buf = arena_stream(&tmp);
 		do_scale_bar(ui, &buf, &view->axial_scale_bar, SB_AXIAL, mouse,
@@ -1284,9 +1340,9 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		             *view->axial_scale_bar.min_value * 1e3, s8(" mm"));
 	}
 
-	v2 pixels_to_mm = output_dim;
-	pixels_to_mm.x /= vr.size.x * 1e-3;
-	pixels_to_mm.y /= vr.size.y * 1e-3;
+	v2 pixels_to_mm;
+	pixels_to_mm.x = output_dim.x / (vr.size.x * 1e-3);
+	pixels_to_mm.y = output_dim.y / (vr.size.y * 1e-3);
 
 	TextSpec text_spec = {.font = &ui->small_font, .flags = TF_LIMITED|TF_OUTLINED,
 	                      .colour = colour_from_normalized(RULER_COLOUR),
@@ -1644,14 +1700,17 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 
 	Variable *item = menu->u.group.first;
 	i32 item_count = 0;
+	b32 radio = 0;
 	while (item) {
 		max_label_width = MAX(max_label_width, item->name_width);
-		item = item->next;
+		radio |= (item->flags & V_RADIO_BUTTON) != 0;
 		item_count++;
+		item = item->next;
 	}
 
+	f32 radio_button_width = radio? ms->font->baseSize : 0;
 	v2  at          = ms->at;
-	f32 menu_width  = max_label_width + 8;
+	f32 menu_width  = max_label_width + radio_button_width + 8;
 	f32 menu_height = item_count * font_height + (item_count - 1) * 2;
 	menu_height = MAX(menu_height, 0);
 
@@ -1666,7 +1725,7 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 	menu_rect      = extend_rect_centered(menu_rect, (v2){.x = 6,  .y = 4});
 	DrawRectangleRounded(bg_rect.rl,   0.1, 0, fade(BLACK, 0.8));
 	DrawRectangleRounded(menu_rect.rl, 0.1, 0, colour_from_normalized(BG_COLOUR));
-	f32 start_y = at.y;
+	v2 start = at;
 	for (i32 i = 0; i < item_count - 1; i++) {
 		at.y += 2 + font_height;
 		DrawLineEx((v2){.x = at.x - 3, .y = at.y}.rl,
@@ -1676,8 +1735,13 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 	item = menu->u.group.first;
 	TextSpec text_spec = {.font = ms->font, .colour = NORMALIZED_FG_COLOUR,
 	                      .limits.size.w = menu_width};
-	at.y = start_y;
+	at = start;
 	while (item) {
+		at.x = start.x;
+		if (item->flags & V_RADIO_BUTTON) {
+			draw_text(item->name, at, &text_spec);
+			at.x += max_label_width + 8;
+		}
 		at.y += draw_variable(ui, arena, item, at, mouse, FG_COLOUR, text_spec).y + 2;
 		item = item->next;
 	}
@@ -2153,6 +2217,10 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 	default: INVALID_CODE_PATH;
 	}
 
+	/* TODO(rnp): better way of clearing the state when the parent is a menu */
+	if (is->active->parent && is->active->parent->flags & V_MENU)
+		is->active->hover_t = 0;
+
 	if (is->active->flags & V_CAUSES_COMPUTE)
 		ui->flush_params = 1;
 	if (is->active->flags & V_UPDATE_VIEW) {
@@ -2276,6 +2344,8 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	bv->axial_scale_bar.max_value   = &ui->params.output_max_coordinate.z;
 	bv->axial_scale_bar.causes_compute   = 1;
 	bv->lateral_scale_bar.causes_compute = 1;
+	bv->axial_scale_bar_active->u.b32    = 1;
+	bv->lateral_scale_bar_active->u.b32  = 1;
 	bv->ctx = &ctx->fsctx;
 
 	split = split->u.region_split.left;
