@@ -1805,26 +1805,28 @@ draw_layout_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 static void
 draw_ui_regions(BeamformerUI *ui, Rect window, v2 mouse)
 {
-	struct region_stack_item {
+	struct region_frame {
 		Variable *var;
 		Rect      rect;
-	} *region_stack;
+	} init[16];
+
+	struct {
+		struct region_frame *data;
+		iz count;
+		iz capacity;
+	} stack = {init, 0, ARRAY_COUNT(init)};
 
 	TempArena arena_savepoint = begin_temp_arena(&ui->arena);
-	i32 stack_index = 0;
 
-	region_stack = alloc(&ui->arena, typeof(*region_stack), 256);
-	region_stack[0].var  = ui->regions;
-	region_stack[0].rect = window;
+	*da_push(&ui->arena, &stack) = (struct region_frame){ui->regions, window};
+	while (stack.count) {
+		struct region_frame *top = stack.data + --stack.count;
+		Rect rect = top->rect;
+		draw_layout_variable(ui, top->var, rect, mouse);
 
-	while (stack_index != -1) {
-		struct region_stack_item *rsi = region_stack + stack_index--;
-		Rect rect = rsi->rect;
-		draw_layout_variable(ui, rsi->var, rect, mouse);
-
-		if (rsi->var->type == VT_UI_REGION_SPLIT) {
+		if (top->var->type == VT_UI_REGION_SPLIT) {
 			Rect first, second;
-			RegionSplit *rs = &rsi->var->u.region_split;
+			RegionSplit *rs = &top->var->u.region_split;
 			switch (rs->direction) {
 			case RSD_VERTICAL: {
 				split_rect_vertical(rect, rs->fraction, &first, &second);
@@ -1834,15 +1836,9 @@ draw_ui_regions(BeamformerUI *ui, Rect window, v2 mouse)
 			} break;
 			}
 
-			stack_index++;
-			region_stack[stack_index].var  = rs->right;
-			region_stack[stack_index].rect = second;
-			stack_index++;
-			region_stack[stack_index].var  = rs->left;
-			region_stack[stack_index].rect = first;
+			*da_push(&ui->arena, &stack) = (struct region_frame){rs->right, second};
+			*da_push(&ui->arena, &stack) = (struct region_frame){rs->left,  first};
 		}
-
-		ASSERT(stack_index < 256);
 	}
 
 	end_temp_arena(arena_savepoint);

@@ -73,6 +73,31 @@ alloc_(Arena *a, iz len, iz align, iz count)
 	return mem_clear(p, 0, count * len);
 }
 
+enum { DA_INITIAL_CAP = 8 };
+
+#define da_push(a, s) \
+  ((s)->count == (s)->capacity                                                \
+    ? (s)->data = da_push_((a), (s)->data, &(s)->capacity,                    \
+                           _Alignof(typeof(*(s)->data)), sizeof(*(s)->data)), \
+      (s)->data + (s)->count++                                                \
+    : (s)->data + (s)->count++)
+
+static void *
+da_push_(Arena *a, void *data, iz *capacity, iz align, iz size)
+{
+	iz cap = *capacity;
+	if (!data || a->beg != (u8 *)data + cap * size) {
+		void *copy = alloc_(a, size, align, cap);
+		if (data) mem_copy(copy, data, cap * size);
+		data = copy;
+	}
+
+	iz extend = cap ? cap : DA_INITIAL_CAP;
+	alloc_(a, size, align, extend);
+	*capacity = cap + extend;
+	return data;
+}
+
 static Arena
 sub_arena(Arena *a, iz len, iz align)
 {
