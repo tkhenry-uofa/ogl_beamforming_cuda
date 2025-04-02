@@ -31,7 +31,7 @@ void main()
 	//float absmax    = max(abs(min_max.y), abs(min_max.x));
 	//smp = 20 * log(smp / absmax) / log(10);
 
-	float threshold_val = pow(10.0f, u_threshold / 10.0f);
+	float threshold_val = pow(10.0f, u_threshold / 20.0f);
 	smp = clamp(smp, 0.0f, threshold_val);
 	smp = 20 * log(smp / threshold_val) / log(10);
 
