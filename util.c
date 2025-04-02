@@ -74,27 +74,33 @@ alloc_(Arena *a, iz len, iz align, iz count)
 }
 
 enum { DA_INITIAL_CAP = 8 };
+#define da_reserve(a, s, n) \
+  (s)->data = da_reserve_((a), (s)->data, &(s)->capacity, (s)->count + n, \
+                          _Alignof(typeof(*(s)->data)), sizeof(*(s)->data))
 
 #define da_push(a, s) \
-  ((s)->count == (s)->capacity                                                \
-    ? (s)->data = da_push_((a), (s)->data, &(s)->capacity,                    \
-                           _Alignof(typeof(*(s)->data)), sizeof(*(s)->data)), \
-      (s)->data + (s)->count++                                                \
+  ((s)->count == (s)->capacity  \
+    ? da_reserve(a, s, 1),      \
+      (s)->data + (s)->count++  \
     : (s)->data + (s)->count++)
 
 static void *
-da_push_(Arena *a, void *data, iz *capacity, iz align, iz size)
+da_reserve_(Arena *a, void *data, iz *capacity, iz needed, iz align, iz size)
 {
 	iz cap = *capacity;
+
+	/* NOTE(rnp): handle both 0 initialized DAs and DAs that need to be moved (they started
+	 * on the stack or someone allocated something in the middle of the arena during usage) */
 	if (!data || a->beg != (u8 *)data + cap * size) {
 		void *copy = alloc_(a, size, align, cap);
 		if (data) mem_copy(copy, data, cap * size);
 		data = copy;
 	}
 
-	iz extend = cap ? cap : DA_INITIAL_CAP;
-	alloc_(a, size, align, extend);
-	*capacity = cap + extend;
+	if (!cap) cap = DA_INITIAL_CAP;
+	while (cap < needed) cap *= 2;
+	alloc_(a, size, align, cap - *capacity);
+	*capacity = cap;
 	return data;
 }
 
