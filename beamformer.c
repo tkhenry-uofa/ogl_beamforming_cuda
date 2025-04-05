@@ -14,6 +14,14 @@ static renderdoc_end_frame_capture_fn   *end_frame_capture;
 #define end_renderdoc_capture(gl)   if (end_frame_capture)   end_frame_capture(gl, 0)
 #endif
 
+typedef struct {
+	BeamformComputeFrame *frames;
+	u32 capacity;
+	u32 offset;
+	u32 cursor;
+	u32 needed_frames;
+} ComputeFrameIterator;
+
 static iz
 decoded_data_size(ComputeShaderCtx *cs)
 {
@@ -32,12 +40,12 @@ make_valid_test_dim(uv3 in)
 	return result;
 }
 
-static BeamformFrameIterator
-beamform_frame_iterator(BeamformerCtx *ctx, u32 start_index, u32 needed_frames)
+static ComputeFrameIterator
+compute_frame_iterator(BeamformerCtx *ctx, u32 start_index, u32 needed_frames)
 {
 	start_index = start_index % ARRAY_COUNT(ctx->beamform_frames);
 
-	BeamformFrameIterator result;
+	ComputeFrameIterator result;
 	result.frames        = ctx->beamform_frames;
 	result.offset        = start_index;
 	result.capacity      = ARRAY_COUNT(ctx->beamform_frames);
@@ -46,10 +54,10 @@ beamform_frame_iterator(BeamformerCtx *ctx, u32 start_index, u32 needed_frames)
 	return result;
 }
 
-static BeamformFrame *
-frame_next(BeamformFrameIterator *bfi)
+static BeamformComputeFrame *
+frame_next(ComputeFrameIterator *bfi)
 {
-	BeamformFrame *result = 0;
+	BeamformComputeFrame *result = 0;
 	if (bfi->cursor != bfi->needed_frames) {
 		u32 index = (bfi->offset + bfi->cursor++) % bfi->capacity;
 		result    = bfi->frames + index;
@@ -61,8 +69,6 @@ static void
 alloc_beamform_frame(GLParams *gp, BeamformFrame *out, ComputeShaderStats *out_stats,
                      uv3 out_dim, s8 name, Arena arena)
 {
-	out->ready_to_present = 0;
-
 	out->dim.x = MAX(1, round_down_power_of_2(ORONE(out_dim.x)));
 	out->dim.y = MAX(1, round_down_power_of_2(ORONE(out_dim.y)));
 	out->dim.z = MAX(1, round_down_power_of_2(ORONE(out_dim.z)));
@@ -226,13 +232,12 @@ fill_frame_compute_work(BeamformerCtx *ctx, BeamformWork *work)
 	b32 result = 0;
 	if (work) {
 		result = 1;
-		u32 frame_id      = atomic_inc(&ctx->next_render_frame_index, 1);
-		u32 frame_index   = frame_id % ARRAY_COUNT(ctx->beamform_frames);
-		work->type        = BW_COMPUTE;
-		work->frame.store = ctx->beamform_frames + frame_index;
-		work->frame.stats = ctx->beamform_frame_compute_stats + frame_index;
-		work->frame.store->ready_to_present = 0;
-		work->frame.store->id = frame_id;
+		u32 frame_id    = atomic_inc(&ctx->next_render_frame_index, 1);
+		u32 frame_index = frame_id % ARRAY_COUNT(ctx->beamform_frames);
+		work->type      = BW_COMPUTE;
+		work->frame     = ctx->beamform_frames + frame_index;
+		work->frame->ready_to_present = 0;
+		work->frame->frame.id = frame_id;
 	}
 	return result;
 }
@@ -336,7 +341,7 @@ compute_cursor_finished(struct compute_cursor *cursor)
 }
 
 static void
-do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, ComputeShaderID shader)
+do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, ComputeShaderID shader)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
 
@@ -374,28 +379,28 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, Compute
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_MIN_MAX: {
-		u32 texture = frame->texture;
-		for (u32 i = 1; i < frame->mips; i++) {
+		u32 texture = frame->frame.texture;
+		for (u32 i = 1; i < frame->frame.mips; i++) {
 			glBindImageTexture(0, texture, i - 1, GL_TRUE, 0, GL_READ_ONLY,  GL_RG32F);
 			glBindImageTexture(1, texture, i - 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
 			glUniform1i(csctx->mips_level_id, i);
 
-			u32 width  = frame->dim.x >> i;
-			u32 height = frame->dim.y >> i;
-			u32 depth  = frame->dim.z >> i;
+			u32 width  = frame->frame.dim.x >> i;
+			u32 height = frame->frame.dim.y >> i;
+			u32 depth  = frame->frame.dim.z >> i;
 			glDispatchCompute(ORONE(width / 32), ORONE(height), ORONE(depth / 32));
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
 	} break;
 	case CS_DAS: {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
-		glBindImageTexture(0, frame->texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glBindImageTexture(0, frame->frame.texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
 
 		#if 1
 		/* TODO(rnp): compute max_points_per_dispatch based on something like a
 		 * transmit_count * channel_count product */
 		u32 max_points_per_dispatch = KB(64);
-		struct compute_cursor cursor = start_compute_cursor(frame->dim, max_points_per_dispatch);
+		struct compute_cursor cursor = start_compute_cursor(frame->frame.dim, max_points_per_dispatch);
 		f32 percent_per_step = (f32)cursor.points_per_dispatch / (f32)cursor.total_points;
 		csctx->processing_progress = -percent_per_step;
 		for (iv3 offset = {0};
@@ -413,16 +418,17 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, Compute
 		 * should be the same as this path if everything is working correctly */
 		iv3 compute_dim_offset = {0};
 		glUniform3iv(csctx->voxel_offset_id, 1, compute_dim_offset.E);
-		glDispatchCompute(ORONE(frame->dim.x / 32),
-		                  ORONE(frame->dim.y),
-		                  ORONE(frame->dim.z / 32));
+		glDispatchCompute(ORONE(frame->frame.dim.x / 32),
+		                  ORONE(frame->frame.dim.y),
+		                  ORONE(frame->frame.dim.z / 32));
 		#endif
 		glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT|GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	} break;
 	case CS_SUM: {
 		u32 aframe_index = ctx->averaged_frame_index % ARRAY_COUNT(ctx->averaged_frames);
-		BeamformFrame *aframe    = ctx->averaged_frames + aframe_index;
-		aframe->ready_to_present = 0;
+		BeamformComputeFrame *aframe = ctx->averaged_frames + aframe_index;
+		aframe->ready_to_present     = 0;
+		aframe->frame.id             = ctx->averaged_frame_index;
 		/* TODO(rnp): hack we need a better way of specifying which frames to sum;
 		 * this is fine for rolling averaging but what if we want to do something else */
 		ASSERT(frame >= ctx->beamform_frames);
@@ -431,19 +437,19 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformFrame *frame, Compute
 		u32 to_average   = ctx->params->raw.output_points.w;
 		u32 frame_count  = 0;
 		u32 *in_textures = alloc(&arena, u32, MAX_BEAMFORMED_SAVED_FRAMES);
-		BeamformFrameIterator bfi = beamform_frame_iterator(ctx, 1 + base_index - to_average,
-		                                                    to_average);
-		for (BeamformFrame *it = frame_next(&bfi); it; it = frame_next(&bfi))
-			in_textures[frame_count++] = it->texture;
+		ComputeFrameIterator cfi = compute_frame_iterator(ctx, 1 + base_index - to_average,
+		                                                  to_average);
+		for (BeamformComputeFrame *it = frame_next(&cfi); it; it = frame_next(&cfi))
+			in_textures[frame_count++] = it->frame.texture;
 
 		ASSERT(to_average == frame_count);
 
 		do_sum_shader(csctx, in_textures, frame_count, 1 / (f32)frame_count,
-		              aframe->texture, aframe->dim);
-		aframe->min_coordinate = frame->min_coordinate;
-		aframe->max_coordinate = frame->max_coordinate;
-		aframe->compound_count = frame->compound_count;
-		aframe->das_shader_id  = frame->das_shader_id;
+		              aframe->frame.texture, aframe->frame.dim);
+		aframe->frame.min_coordinate = frame->frame.min_coordinate;
+		aframe->frame.max_coordinate = frame->frame.max_coordinate;
+		aframe->frame.compound_count = frame->frame.compound_count;
+		aframe->frame.das_shader_id  = frame->frame.das_shader_id;
 	} break;
 	default: ASSERT(0);
 	}
@@ -657,7 +663,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			atomic_store(&cs->processing_compute, 1);
 			start_renderdoc_capture(gl_context);
 
-			BeamformerWorkFrame *frame = &work->frame;
+			BeamformComputeFrame *frame = work->frame;
 			if (ctx->params->upload) {
 				glNamedBufferSubData(cs->shared_ubo, 0, sizeof(ctx->params->raw),
 				                     &ctx->params->raw);
@@ -668,49 +674,49 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 				glProgramUniform1ui(cs->programs[CS_DAS], cs->cycle_t_id, cycle_t++);
 
 			uv3 try_dim = make_valid_test_dim(ctx->params->raw.output_points.xyz);
-			if (!uv3_equal(try_dim, frame->store->dim))
-				alloc_beamform_frame(&ctx->gl, frame->store, frame->stats, try_dim,
+			if (!uv3_equal(try_dim, frame->frame.dim))
+				alloc_beamform_frame(&ctx->gl, &frame->frame, &frame->stats, try_dim,
 				                     s8("Beamformed_Data"), arena);
 
 			if (ctx->params->raw.output_points.w > 1) {
-				if (!uv3_equal(try_dim, ctx->averaged_frames[0].dim)) {
-					alloc_beamform_frame(&ctx->gl, ctx->averaged_frames + 0,
-					                     ctx->averaged_frame_compute_stats + 0,
+				if (!uv3_equal(try_dim, ctx->averaged_frames[0].frame.dim)) {
+					alloc_beamform_frame(&ctx->gl, &ctx->averaged_frames[0].frame,
+					                     &ctx->averaged_frames[0].stats,
 					                     try_dim, s8("Averaged Frame"), arena);
-					alloc_beamform_frame(&ctx->gl, ctx->averaged_frames + 1,
-					                     ctx->averaged_frame_compute_stats + 1,
+					alloc_beamform_frame(&ctx->gl, &ctx->averaged_frames[1].frame,
+					                     &ctx->averaged_frames[1].stats,
 					                     try_dim, s8("Averaged Frame"), arena);
 				}
 			}
 
-			frame->store->in_flight      = 1;
-			frame->store->min_coordinate = ctx->params->raw.output_min_coordinate;
-			frame->store->max_coordinate = ctx->params->raw.output_max_coordinate;
-			frame->store->das_shader_id  = ctx->params->raw.das_shader_id;
-			frame->store->compound_count = ctx->params->raw.dec_data_dim.z;
+			frame->in_flight = 1;
+			frame->frame.min_coordinate = ctx->params->raw.output_min_coordinate;
+			frame->frame.max_coordinate = ctx->params->raw.output_max_coordinate;
+			frame->frame.das_shader_id  = ctx->params->raw.das_shader_id;
+			frame->frame.compound_count = ctx->params->raw.dec_data_dim.z;
 
 			b32 did_sum_shader = 0;
 			u32 stage_count = ctx->params->compute_stages_count;
 			ComputeShaderID *stages = ctx->params->compute_stages;
 			for (u32 i = 0; i < stage_count; i++) {
 				did_sum_shader |= stages[i] == CS_SUM;
-				frame->stats->timer_active[stages[i]] = 1;
-				glBeginQuery(GL_TIME_ELAPSED, frame->stats->timer_ids[stages[i]]);
-				do_compute_shader(ctx, arena, frame->store, stages[i]);
+				frame->stats.timer_active[stages[i]] = 1;
+				glBeginQuery(GL_TIME_ELAPSED, frame->stats.timer_ids[stages[i]]);
+				do_compute_shader(ctx, arena, frame, stages[i]);
 				glEndQuery(GL_TIME_ELAPSED);
 			}
 			/* NOTE(rnp): block until work completes so that we can record timings */
 			glFinish();
 			cs->processing_progress = 1;
 
-			for (u32 i = 0; i < ARRAY_COUNT(frame->stats->timer_ids); i++) {
+			for (u32 i = 0; i < ARRAY_COUNT(frame->stats.timer_ids); i++) {
 				u64 ns = 0;
-				if (frame->stats->timer_active[i]) {
-					glGetQueryObjectui64v(frame->stats->timer_ids[i],
+				if (frame->stats.timer_active[i]) {
+					glGetQueryObjectui64v(frame->stats.timer_ids[i],
 					                      GL_QUERY_RESULT, &ns);
-					frame->stats->timer_active[i] = 0;
+					frame->stats.timer_active[i] = 0;
 				}
-				frame->stats->times[i] = (f32)ns / 1e9;
+				frame->stats.times[i] = (f32)ns / 1e9;
 			}
 
 			if (did_sum_shader) {
@@ -718,19 +724,23 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 				                    ARRAY_COUNT(ctx->averaged_frames));
 				ctx->averaged_frames[aframe_index].ready_to_present = 1;
 				/* TODO(rnp): not really sure what to do here */
-				mem_copy(ctx->averaged_frame_compute_stats[aframe_index].times,
-				         frame->stats->times, sizeof(frame->stats->times));
+				mem_copy(&ctx->averaged_frames[aframe_index].stats.times,
+				         &frame->stats.times, sizeof(frame->stats.times));
 				atomic_inc(&ctx->averaged_frame_index, 1);
 			}
-			frame->store->ready_to_present = 1;
-			cs->processing_compute         = 0;
+			frame->ready_to_present = 1;
+			cs->processing_compute  = 0;
 
 			end_renderdoc_capture(gl_context);
 		} break;
 		case BW_SAVE_FRAME: {
-			BeamformFrame *frame = work->output_frame_ctx.frame.store;
-			ASSERT(frame->ready_to_present);
-			export_frame(ctx, work->output_frame_ctx.file_handle, frame);
+			BeamformComputeFrame *frame = work->output_frame_ctx.frame;
+			if (frame->ready_to_present) {
+				export_frame(ctx, work->output_frame_ctx.file_handle, &frame->frame);
+			} else {
+				/* TODO(rnp): should we handle this? */
+				INVALID_CODE_PATH;
+			}
 		} break;
 		}
 
@@ -794,10 +804,8 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 					if (ctx->params->raw.output_points.w > 1) {
 						u32 a_index = !(ctx->averaged_frame_index %
 						                ARRAY_COUNT(ctx->averaged_frames));
-						BeamformFrame      *aframe = ctx->averaged_frames + a_index;
-						ComputeShaderStats *astats = ctx->averaged_frame_compute_stats + a_index;
-						export->output_frame_ctx.frame.store = aframe;
-						export->output_frame_ctx.frame.stats = astats;
+						BeamformComputeFrame *aframe = ctx->averaged_frames + a_index;
+						export->output_frame_ctx.frame = aframe;
 					} else {
 						export->output_frame_ctx.frame = compute->frame;
 					}
@@ -813,12 +821,12 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		}
 	}
 
-	BeamformFrameIterator bfi = beamform_frame_iterator(ctx, ctx->display_frame_index,
-	                                                    ctx->next_render_frame_index - ctx->display_frame_index);
-	for (BeamformFrame *frame = frame_next(&bfi); frame; frame = frame_next(&bfi)) {
+	ComputeFrameIterator cfi = compute_frame_iterator(ctx, ctx->display_frame_index,
+	                                                  ctx->next_render_frame_index - ctx->display_frame_index);
+	for (BeamformComputeFrame *frame = frame_next(&cfi); frame; frame = frame_next(&cfi)) {
 		if (frame->in_flight && frame->ready_to_present) {
 			frame->in_flight         = 0;
-			ctx->display_frame_index = frame - bfi.frames;
+			ctx->display_frame_index = frame - cfi.frames;
 		}
 	}
 
@@ -827,18 +835,15 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		ctx->os.wake_thread(ctx->os.compute_worker.sync_handle);
 	}
 
-	BeamformFrame      *frame_to_draw;
-	ComputeShaderStats *frame_compute_stats;
+	BeamformComputeFrame *frame_to_draw;
 	if (bp->output_points.w > 1) {
 		u32 a_index = !(ctx->averaged_frame_index % ARRAY_COUNT(ctx->averaged_frames));
-		frame_to_draw       = ctx->averaged_frames + a_index;
-		frame_compute_stats = ctx->averaged_frame_compute_stats + a_index;
+		frame_to_draw = ctx->averaged_frames + a_index;
 	} else {
-		frame_to_draw       = ctx->beamform_frames + ctx->display_frame_index;
-		frame_compute_stats = ctx->beamform_frame_compute_stats + ctx->display_frame_index;
+		frame_to_draw = ctx->beamform_frames + ctx->display_frame_index;
 	}
 
-	draw_ui(ctx, input, frame_to_draw, frame_compute_stats);
+	draw_ui(ctx, input, frame_to_draw->ready_to_present? &frame_to_draw->frame : 0, &frame_to_draw->stats);
 
 	ctx->fsctx.updated = 0;
 

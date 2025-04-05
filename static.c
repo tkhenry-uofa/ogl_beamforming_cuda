@@ -295,9 +295,6 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 
 	ctx->beamform_work_queue = push_struct(memory, BeamformWorkQueue);
 
-	ctx->averaged_frames[0].id = 0;
-	ctx->averaged_frames[1].id = 1;
-
 	ctx->params = os_open_shared_memory_area(OS_SMEM_NAME, sizeof(*ctx->params));
 	/* TODO: properly handle this? */
 	ASSERT(ctx->params);

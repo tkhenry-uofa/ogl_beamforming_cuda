@@ -743,12 +743,10 @@ ui_copy_frame(BeamformerUI *ui, Variable *button, RegionSplitDirection direction
 	bv->frame = SLLPop(ui->frame_freelist);
 	if (!bv->frame) bv->frame = push_struct(&ui->arena, typeof(*bv->frame));
 
-	ASSERT(old->frame->in_flight == 0);
 	mem_copy(bv->frame, old->frame, sizeof(*bv->frame));
 	bv->frame->texture = 0;
 	bv->frame->next    = 0;
 	alloc_beamform_frame(0, bv->frame, 0, old->frame->dim, s8("Frame Copy: "), ui->arena);
-	bv->frame->ready_to_present = 1;
 
 	glCopyImageSubData(old->frame->texture, GL_TEXTURE_3D, 0, 0, 0, 0,
 	                   bv->frame->texture,  GL_TEXTURE_3D, 0, 0, 0, 0,
@@ -2264,7 +2262,7 @@ ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
 
 			switch (is->active->type) {
 			case VT_UI_REGION_SPLIT: {
-				f32 min_fraction;
+				f32 min_fraction = 0;
 				RegionSplit *rs = &is->active->u.region_split;
 				switch (rs->direction) {
 				case RSD_VERTICAL: {
@@ -2376,7 +2374,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 {
 	BeamformerUI *ui = ctx->ui;
 
-	if (frame_to_draw->ready_to_present) ui->latest_frame = frame_to_draw;
+	ui->latest_frame         = frame_to_draw;
 	ui->latest_compute_stats = latest_compute_stats;
 
 	/* TODO(rnp): there should be a better way of detecting this */

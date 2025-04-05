@@ -136,14 +136,19 @@ typedef struct BeamformFrame {
 	v4  max_coordinate;
 
 	u32 mips;
-	b32 in_flight;
-	b32 ready_to_present;
 	DASShaderID das_shader_id;
 	u32 compound_count;
 	u32 id;
 
 	struct BeamformFrame *next;
 } BeamformFrame;
+
+typedef struct {
+	BeamformFrame      frame;
+	ComputeShaderStats stats;
+	b32 in_flight;
+	b32 ready_to_present;
+} BeamformComputeFrame;
 
 typedef struct {
 	enum gl_vendor_ids vendor_id;
@@ -173,20 +178,15 @@ typedef struct {
 } ComputeShaderReloadContext;
 
 typedef struct {
-	BeamformFrame      *store;
-	ComputeShaderStats *stats;
-} BeamformerWorkFrame;
-
-typedef struct {
-	BeamformerWorkFrame frame;
-	iptr                file_handle;
+	BeamformComputeFrame *frame;
+	iptr                  file_handle;
 } BeamformOutputFrameContext;
 
 /* NOTE: discriminated union based on type */
 typedef struct {
 	union {
 		iptr                        file_handle;
-		BeamformerWorkFrame         frame;
+		BeamformComputeFrame       *frame;
 		BeamformOutputFrameContext  output_frame_ctx;
 		ComputeShaderReloadContext *reload_shader_ctx;
 	};
@@ -200,14 +200,6 @@ typedef struct {
 	};
 	BeamformWork work_items[1 << 6];
 } BeamformWorkQueue;
-
-typedef struct {
-	BeamformFrame *frames;
-	u32 capacity;
-	u32 offset;
-	u32 cursor;
-	u32 needed_frames;
-} BeamformFrameIterator;
 
 typedef struct BeamformerCtx {
 	GLParams gl;
@@ -224,15 +216,13 @@ typedef struct BeamformerCtx {
 	/* TODO(rnp): this is nasty and should be removed */
 	b32    ui_read_params;
 
-	BeamformFrame      beamform_frames[MAX_BEAMFORMED_SAVED_FRAMES];
-	ComputeShaderStats beamform_frame_compute_stats[MAX_BEAMFORMED_SAVED_FRAMES];
+	BeamformComputeFrame beamform_frames[MAX_BEAMFORMED_SAVED_FRAMES];
 	u32 next_render_frame_index;
 	u32 display_frame_index;
 
 	/* NOTE: this will only be used when we are averaging */
-	u32                averaged_frame_index;
-	BeamformFrame      averaged_frames[2];
-	ComputeShaderStats averaged_frame_compute_stats[2];
+	u32                  averaged_frame_index;
+	BeamformComputeFrame averaged_frames[2];
 
 	ComputeShaderCtx  csctx;
 	FragmentShaderCtx fsctx;
