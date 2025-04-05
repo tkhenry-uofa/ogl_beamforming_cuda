@@ -90,7 +90,6 @@ W32(iptr)   CreateFileA(c8 *, u32, u32, void *, u32, u32, void *);
 W32(iptr)   CreateFileMappingA(iptr, void *, u32, u32, u32, c8 *);
 W32(iptr)   CreateIoCompletionPort(iptr, iptr, uptr, u32);
 W32(iptr)   CreateNamedPipeA(c8 *, u32, u32, u32, u32, u32, u32, void *);
-W32(iptr)   CreateSemaphoreA(iptr, i64, i64, c8 *);
 W32(iptr)   CreateThread(iptr, uz, iptr, iptr, u32, u32 *);
 W32(b32)    DeleteFileA(c8 *);
 W32(b32)    DisconnectNamedPipe(iptr);
@@ -109,8 +108,9 @@ W32(void *) MapViewOfFile(iptr, u32, u32, u32, u64);
 W32(b32)    ReadDirectoryChangesW(iptr, u8 *, u32, b32, u32, u32 *, void *, void *);
 W32(b32)    ReadFile(iptr, u8 *, i32, i32 *, void *);
 W32(b32)    ReleaseSemaphore(iptr, i64, i64 *);
+W32(i32)    RtlWakeAddressAll(void *);
+W32(i32)    RtlWaitOnAddress(void *, void *, uz, void *);
 W32(i32)    SetThreadDescription(iptr, u16 *);
-W32(u32)    WaitForSingleObjectEx(iptr, u32, b32);
 W32(b32)    WriteFile(iptr, u8 *, i32, i32 *, void *);
 W32(void *) VirtualAlloc(u8 *, iz, u32, u32);
 W32(b32)    VirtualFree(u8 *, iz, u32);
@@ -339,22 +339,24 @@ os_create_thread(Arena arena, iptr user_context, s8 name, os_thread_entry_point_
 	return result;
 }
 
-static iptr
-os_create_sync_object(Arena *arena)
-{
-	iptr result = CreateSemaphoreA(0, 0, 1, 0);
-	return result;
-}
-
 static void
-os_sleep_thread(iptr sync_handle)
+os_wait_on_value(i32 *value, i32 current, u32 timeout_ms)
 {
-	WaitForSingleObjectEx(sync_handle, 0xFFFFFFFF, 0);
+	i64 *timeout = 0, timeout_value;
+	if (timeout_ms != U32_MAX) {
+		/* TODO(rnp): not sure about this one, but this is how wine converts the ms */
+		timeout_value = -(i64)timeout_ms * 10000;
+		timeout       = &timeout_value;
+	}
+	RtlWaitOnAddress(value, &current, sizeof(*value), timeout);
 }
 
-static OS_WAKE_THREAD_FN(os_wake_thread)
+static OS_WAKE_WAITERS_FN(os_wake_waiters)
 {
-	ReleaseSemaphore(sync_handle, 1, 0);
+	if (sync) {
+		atomic_inc(sync, 1);
+		RtlWakeAddressAll(sync);
+	}
 }
 
 iptr glfwGetWGLContext(iptr);

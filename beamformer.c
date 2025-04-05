@@ -773,7 +773,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 			BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
 			if (fill_frame_compute_work(ctx, work)) {
 				beamform_work_queue_push_commit(ctx->beamform_work_queue);
-				ctx->os.wake_thread(ctx->os.compute_worker.sync_handle);
+				ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
 				ctx->start_compute = 0;
 			}
 		}
@@ -832,7 +832,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 
 	if (ctx->start_compute) {
 		ctx->start_compute = 0;
-		ctx->os.wake_thread(ctx->os.compute_worker.sync_handle);
+		ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
 	}
 
 	BeamformComputeFrame *frame_to_draw;

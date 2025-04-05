@@ -75,6 +75,7 @@
 #define MB(a)            ((a) << 20ULL)
 #define GB(a)            ((a) << 30ULL)
 
+#define I32_MAX          (0x7FFFFFFFL)
 #define U32_MAX          (0xFFFFFFFFUL)
 #define F32_INFINITY     (__builtin_inff())
 
@@ -199,8 +200,8 @@ typedef struct {
 	iptr  handle;
 	iptr  window_handle;
 	iptr  gl_context;
-	iptr  sync_handle;
 	iptr  user_context;
+	i32   sync_variable;
 	b32   asleep;
 } GLWorkerThreadContext;
 
@@ -251,8 +252,8 @@ typedef OS_READ_WHOLE_FILE_FN(os_read_whole_file_fn);
 #define OS_READ_FILE_FN(name) iz name(iptr file, void *buf, iz size)
 typedef OS_READ_FILE_FN(os_read_file_fn);
 
-#define OS_WAKE_THREAD_FN(name) void name(iptr sync_handle)
-typedef OS_WAKE_THREAD_FN(os_wake_thread_fn);
+#define OS_WAKE_WAITERS_FN(name) void name(i32 *sync)
+typedef OS_WAKE_WAITERS_FN(os_wake_waiters_fn);
 
 #define OS_WRITE_NEW_FILE_FN(name) b32 name(char *fname, s8 raw)
 typedef OS_WRITE_NEW_FILE_FN(os_write_new_file_fn);
@@ -268,9 +269,9 @@ typedef OS_THREAD_ENTRY_POINT_FN(os_thread_entry_point_fn);
 	X(alloc_arena)     \
 	X(close)           \
 	X(open_for_write)  \
-	X(read_whole_file) \
 	X(read_file)       \
-	X(wake_thread)     \
+	X(read_whole_file) \
+	X(wake_waiters)    \
 	X(write_new_file)  \
 	X(write_file)
 

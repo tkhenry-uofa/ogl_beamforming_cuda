@@ -211,7 +211,7 @@ static FILE_WATCH_CALLBACK_FN(queue_compute_shader_reload)
 		work->type = BW_RELOAD_SHADER;
 		work->reload_shader_ctx = csr;
 		beamform_work_queue_push_commit(ctx->beamform_work_queue);
-		ctx->os.wake_thread(ctx->os.compute_worker.sync_handle);
+		ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
 	}
 	return 1;
 }
@@ -254,9 +254,17 @@ static OS_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
 	ctx->gl_context = os_get_native_gl_context(ctx->window_handle);
 
 	for (;;) {
-		ctx->asleep = 1;
-		os_sleep_thread(ctx->sync_handle);
-		ctx->asleep = 0;
+		for (;;) {
+			i32 current = atomic_load(&ctx->sync_variable);
+			if (current) {
+				atomic_inc(&ctx->sync_variable, -current);
+				break;
+			}
+
+			ctx->asleep = 1;
+			os_wait_on_value(&ctx->sync_variable, current, -1);
+			ctx->asleep = 0;
+		}
 		beamformer_complete_compute(ctx->user_context, ctx->arena, ctx->gl_context);
 	}
 
@@ -285,7 +293,6 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	iptr raylib_window_handle = (iptr)GetPlatformWindowHandle();
 	GLWorkerThreadContext *worker = &ctx->os.compute_worker;
 	worker->window_handle = glfwCreateWindow(320, 240, "", 0, raylib_window_handle);
-	worker->sync_handle   = os_create_sync_object(memory);
 	worker->handle        = os_create_thread(*memory, (iptr)worker, s8("[compute]"),
 	                                         compute_worker_thread_entry_point);
 	/* TODO(rnp): we should lock this down after we have something working */
@@ -341,7 +348,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	} while (0);
 	COMPUTE_SHADERS
 	#undef X
-	os_wake_thread(worker->sync_handle);
+	os_wake_waiters(&worker->sync_variable);
 
 	s8 render = s8(static_path_join("shaders", "render.glsl"));
 	reload_render_shader(&ctx->os, render, (iptr)&ctx->fsctx, *memory);

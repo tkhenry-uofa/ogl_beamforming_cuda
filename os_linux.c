@@ -7,13 +7,16 @@
 
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <linux/futex.h>
 #include <poll.h>
 #include <pthread.h>
-#include <semaphore.h>
 #include <sys/inotify.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <unistd.h>
+
+i64 syscall(i64, ...);
 
 #ifdef _DEBUG
 static void *
@@ -261,23 +264,24 @@ os_create_thread(Arena arena, iptr user_context, s8 name, os_thread_entry_point_
 	return (iptr)result;
 }
 
-static iptr
-os_create_sync_object(Arena *arena)
-{
-	sem_t *result = push_struct(arena, sem_t);
-	sem_init(result, 0, 0);
-	return (iptr)result;
-}
-
 static void
-os_sleep_thread(iptr sync_handle)
+os_wait_on_value(i32 *value, i32 current, u32 timeout_ms)
 {
-	sem_wait((sem_t *)sync_handle);
+	struct timespec *timeout = 0, timeout_value;
+	if (timeout_ms != U32_MAX) {
+		timeout_value.tv_sec  = timeout_ms / 1000;
+		timeout_value.tv_nsec = (timeout_ms % 1000) * 1000000;
+		timeout = &timeout_value;
+	}
+	syscall(SYS_futex, value, FUTEX_WAIT, current, timeout, 0, 0);
 }
 
-static OS_WAKE_THREAD_FN(os_wake_thread)
+static OS_WAKE_WAITERS_FN(os_wake_waiters)
 {
-	sem_post((sem_t *)sync_handle);
+	if (sync) {
+		atomic_inc(sync, 1);
+		syscall(SYS_futex, sync, FUTEX_WAKE, I32_MAX, 0, 0, 0);
+	}
 }
 
 /* TODO(rnp): what do if not X11? */

@@ -161,7 +161,7 @@ main(void)
 
 	debug_init(&ctx.os, (iptr)&input, &temp_memory);
 	setup_beamformer(&ctx, &temp_memory);
-	os_wake_thread(ctx.os.compute_worker.sync_handle);
+	os_wake_waiters(&ctx.os.compute_worker.sync_variable);
 
 	while (!ctx.should_exit) {
 		clear_io_queue(&ctx.os, &input, temp_memory);

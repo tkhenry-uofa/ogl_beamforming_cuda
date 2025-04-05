@@ -30,7 +30,7 @@ MINGW64*)
 	raylib="libraylib.dll"
 	main="main_w32.c"
 	libname="beamformer.dll"
-	ldflags="${ldflags} -lgdi32 -lwinmm"
+	ldflags="${ldflags} -lgdi32 -lwinmm -lntdll"
 	if [ ! ${NO_MATLAB} ]; then
 		libcflags="${libcflags} -DMATLAB_CONSOLE"
 		extra_ldflags="-llibmat -llibmex"

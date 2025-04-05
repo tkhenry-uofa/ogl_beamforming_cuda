@@ -5,7 +5,7 @@
 
 #include "beamformer.h"
 
-#include "os_unix.c"
+#include "os_linux.c"
 
 #define OS_DEBUG_LIB_NAME      "./beamformer.so"
 #define OS_DEBUG_LIB_TEMP_NAME "./beamformer_temp.so"
@@ -85,7 +85,7 @@ main(void)
 
 	debug_init(&ctx.os, (iptr)&input, &temp_memory);
 	setup_beamformer(&ctx, &temp_memory);
-	os_wake_thread(ctx.os.compute_worker.sync_handle);
+	os_wake_waiters(&ctx.os.compute_worker.sync_variable);
 
 	struct pollfd fds[2] = {{0}, {0}};
 	fds[0].fd     = ctx.os.file_watch_context.handle;
