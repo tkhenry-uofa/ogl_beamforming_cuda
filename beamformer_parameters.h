@@ -85,7 +85,10 @@ typedef struct {
 } BeamformerParameters;
 #undef X
 
+/* NOTE(rnp): keep this header importable for old C versions */
+#if __STDC_VERSION__ >= 201112L
 _Static_assert((offsetof(BeamformerParameters, output_min_coordinate) & 15) == 0,
                "BeamformerParameters.output_min_coordinate must lie on a 16 byte boundary");
 _Static_assert((sizeof(BeamformerParameters) & 15) == 0,
                "sizeof(BeamformerParameters) must be a multiple of 16");
+#endif
