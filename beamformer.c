@@ -347,6 +347,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 	case CS_DAS: {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
 		glBindImageTexture(0, frame->frame.texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glBindImageTexture(1, csctx->sparse_elements_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16I);
 
 		#if 1
 		/* TODO(rnp): compute max_points_per_dispatch based on something like a
@@ -613,6 +614,18 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				glNamedBufferSubData(cs->raw_data_ssbo, 0, cs->rf_raw_size, raw_data);
 				break;
 			}
+		} break;
+		case BW_UPLOAD_SPARSE_ELEMENTS: {
+			ASSERT(!atomic_load(&ctx->shared_memory->sparse_elements_sync));
+			if (!cs->sparse_elements_texture) {
+				glCreateTextures(GL_TEXTURE_1D, 1, &cs->sparse_elements_texture);
+				glTextureStorage1D(cs->sparse_elements_texture, 1, GL_R16I,
+				                   ARRAY_COUNT(sm->sparse_elements));
+				LABEL_GL_OBJECT(GL_TEXTURE, cs->sparse_elements_texture, s8("Sparse_Elements"));
+			}
+			glTextureSubImage1D(cs->sparse_elements_texture, 0, 0,
+			                    ARRAY_COUNT(sm->sparse_elements), GL_RED_INTEGER,
+			                    GL_SHORT, sm->sparse_elements);
 		} break;
 		case BW_COMPUTE: {
 			atomic_store(&cs->processing_compute, 1);

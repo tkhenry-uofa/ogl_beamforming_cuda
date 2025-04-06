@@ -87,6 +87,7 @@ typedef struct {
 	u32 shared_ubo;
 
 	u32 channel_mapping_texture;
+	u32 sparse_elements_texture;
 
 	f32 processing_progress;
 	b32 processing_compute;

@@ -69,7 +69,6 @@ typedef enum {
 	X(time_offset,       f32,      , float,     , "/* pulse length correction time [s] */")
 
 #define BEAMFORMER_PARAMS_HEAD \
-	X(uforces_channels,  u16, [256], uvec4, [32], "/* Channels used for virtual UFORCES elements */")                         \
 	X(focal_depths,      f32, [256], vec4,  [64], "/* [m] Focal Depths for each transmit of a RCA imaging scheme*/")          \
 	X(transmit_angles,   f32, [256], vec4,  [64], "/* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/") \
 	X(xdc_transform,     f32, [16] , mat4,      , "/* IMPORTANT: column major order */")                                      \

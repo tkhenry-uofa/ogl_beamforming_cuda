@@ -211,6 +211,24 @@ os_open_shared_memory_area(char *name)
 #endif
 
 static b32
+try_wait_sync(i32 *sync, i32 timeout_ms)
+{
+	b32 result = 0;
+	for (;;) {
+		i32 current = atomic_load(sync);
+		if (current) {
+			atomic_inc(sync, -current);
+			result = 1;
+			break;
+		} else if (!timeout_ms) {
+			break;
+		}
+		os_wait_on_value(sync, 0, timeout_ms);
+	}
+	return result;
+}
+
+static b32
 check_shared_memory(char *name)
 {
 	if (!g_bp) {
@@ -258,20 +276,28 @@ beamformer_push_channel_mapping(char *shm_name, i16 *mapping, u32 count, i32 tim
 	b32 result = check_shared_memory(shm_name) && count <= ARRAY_COUNT(g_bp->channel_mapping);
 	if (result) {
 		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
-		if (work) {
-			/* TODO(rnp): refactor */
-			for (;;) {
-				i32 current = atomic_load(&g_bp->channel_mapping_sync);
-				if (current) {
-					atomic_inc(&g_bp->channel_mapping_sync, -current);
-					break;
-				}
-				os_wait_on_value(&g_bp->channel_mapping_sync, 0, timeout_ms);
-			}
+		result = work && try_wait_sync(&g_bp->channel_mapping_sync, timeout_ms);
+		if (result) {
 			work->type = BW_UPLOAD_CHANNEL_MAPPING;
 			work->completion_barrier = offsetof(BeamformerSharedMemory, channel_mapping_sync);
 			mem_copy(g_bp->channel_mapping, mapping, count * sizeof(*mapping));
+			beamform_work_queue_push_commit(&g_bp->external_work_queue);
+		}
+	}
+	return result;
+}
 
+b32
+beamformer_push_sparse_elements(char *shm_name, i16 *elements, u32 count, i32 timeout_ms)
+{
+	b32 result = check_shared_memory(shm_name) && count <= ARRAY_COUNT(g_bp->sparse_elements);
+	if (result) {
+		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
+		result = work && try_wait_sync(&g_bp->sparse_elements_sync, timeout_ms);
+		if (result) {
+			work->type = BW_UPLOAD_SPARSE_ELEMENTS;
+			work->completion_barrier = offsetof(BeamformerSharedMemory, sparse_elements_sync);
+			mem_copy(g_bp->sparse_elements, elements, count * sizeof(*elements));
 			beamform_work_queue_push_commit(&g_bp->external_work_queue);
 		}
 	}
@@ -284,8 +310,10 @@ set_beamformer_parameters(char *shm_name, BeamformerParametersV0 *new_bp)
 	b32 result = 0;
 	result |= beamformer_push_channel_mapping(shm_name, (i16 *)new_bp->channel_mapping,
 	                                          ARRAY_COUNT(new_bp->channel_mapping), 0);
+	result |= beamformer_push_sparse_elements(shm_name, (i16 *)new_bp->uforces_channels,
+	                                          ARRAY_COUNT(new_bp->uforces_channels), 0);
 	if (result) {
-		mem_copy(&g_bp->raw, &new_bp->uforces_channels, sizeof(BeamformerParameters));
+		mem_copy(&g_bp->raw, &new_bp->focal_depths, sizeof(g_bp->raw));
 		g_bp->upload = 1;
 	}
 

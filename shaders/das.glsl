@@ -3,7 +3,8 @@ layout(std430, binding = 1) readonly restrict buffer buffer_1 {
 	vec2 rf_data[];
 };
 
-layout(rg32f, binding = 0) writeonly uniform image3D u_out_data_tex;
+layout(rg32f, binding = 0) writeonly restrict uniform image3D  u_out_data_tex;
+layout(r16i,  binding = 1) readonly  restrict uniform iimage1D sparse_elements;
 
 layout(location = 2) uniform ivec3 u_voxel_offset;
 layout(location = 3) uniform uint  u_cycle_t;
@@ -17,7 +18,7 @@ layout(location = 3) uniform uint  u_cycle_t;
 #define TX_MODE_RX_COLS(a) (((a) & 1) != 0)
 
 /* NOTE: See: https://cubic.org/docs/hermite.htm */
-vec2 cubic(uint ridx, float x)
+vec2 cubic(int ridx, float x)
 {
 	mat4 h = mat4(
 		 2, -3,  0, 1,
@@ -26,7 +27,7 @@ vec2 cubic(uint ridx, float x)
 		 1, -1,  0, 0
 	);
 
-	uint  xk = uint(floor(x));
+	int   xk = int(floor(x));
 	float t  = (x  - float(xk));
 	vec4  S  = vec4(t * t * t, t * t, t, 1);
 
@@ -40,11 +41,11 @@ vec2 cubic(uint ridx, float x)
 	return vec2(dot(S, h * C1), dot(S, h * C2));
 }
 
-vec2 sample_rf(uint ridx, float t)
+vec2 sample_rf(int ridx, float t)
 {
 	vec2 result;
 	if (interpolate) result = cubic(ridx, t);
-	else             result = rf_data[ridx + uint(floor(t))];
+	else             result = rf_data[ridx + int(floor(t))];
 	return result;
 }
 
@@ -109,8 +110,8 @@ float cylindricalwave_transmit_distance(vec3 point, float focal_depth, float tra
 
 vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 {
-	uint ridx      = 0;
-	int  direction = beamform_plane;
+	int ridx      = 0;
+	int direction = beamform_plane;
 	if (direction != TX_ROWS) image_point = image_point.yxz;
 
 	bool tx_col = TX_MODE_TX_COLS(transmit_mode);
@@ -146,8 +147,8 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 			float sidx  = sample_index(transmit_distance + length(receive_distance));
 			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
 			sum        += apodize(sample_rf(ridx, sidx), apodization_arg, length(receive_distance.xy)) * valid;
-			receive_distance   -= delta;
-			ridx       += dec_data_dim.x;
+			receive_distance -= delta;
+			ridx             += int(dec_data_dim.x);
 		}
 	}
 	return sum;
@@ -155,8 +156,8 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 
 vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 {
-	uint uhercules = uint(das_shader_id == DAS_ID_UHERCULES);
-	uint ridx      = dec_data_dim.y * dec_data_dim.x * uhercules;
+	int uhercules  = int(das_shader_id == DAS_ID_UHERCULES);
+	int ridx       = int(dec_data_dim.y * dec_data_dim.x * uhercules);
 	int  direction = beamform_plane;
 	if (direction != TX_ROWS) image_point = image_point.yxz;
 
@@ -179,12 +180,8 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 
 	vec2 sum = vec2(0);
 	/* NOTE: For Each Acquistion in Raw Data */
-	for (uint i = uhercules; i < dec_data_dim.z; i++) {
-		uint base_idx = ((i - uhercules) / 8);
-		uint sub_idx  = ((i - uhercules) % 8) / 2;
-		uint shift    = (~(i - uhercules) & 1u) * 16u;
-		uint channel  = (uforces_channels[base_idx][sub_idx] << shift) >> 16u;
-
+	for (int i = uhercules; i < dec_data_dim.z; i++) {
+		int channel = imageLoad(sparse_elements, i - uhercules).x;
 		/* NOTE: For Each Virtual Source */
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			vec3 element_position;
@@ -199,7 +196,7 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 
 			sum  += apodize(sample_rf(ridx, sidx), apodization_arg,
 			                length(receive_distance.xy)) * valid;
-			ridx += dec_data_dim.x;
+			ridx += int(dec_data_dim.x);
 		}
 	}
 	return sum;
@@ -208,8 +205,8 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 {
 	/* NOTE: skip first acquisition in uforces since its garbage */
-	uint uforces = uint(das_shader_id == DAS_ID_UFORCES);
-	uint ridx    = dec_data_dim.y * dec_data_dim.x * uforces;
+	int uforces = int(das_shader_id == DAS_ID_UFORCES);
+	int ridx    = int(dec_data_dim.y * dec_data_dim.x * uforces);
 
 	image_point  = (xdc_transform * vec4(image_point, 1)).xyz;
 
@@ -217,12 +214,8 @@ vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 	delta.y = 0;
 
 	vec2 sum = vec2(0);
-	for (uint i = uforces; i < dec_data_dim.z; i++) {
-		uint base_idx = ((i - uforces) / 8);
-		uint sub_idx  = ((i - uforces) % 8) / 2;
-		uint shift    = (~(i - uforces) & 1u) * 16u;
-		uint channel  = (uforces_channels[base_idx][sub_idx] << shift) >> 16u;
-
+	for (int i = uforces; i < dec_data_dim.z; i++) {
+		int   channel       = imageLoad(sparse_elements, i - uforces).x;
 		vec2  rdist         = vec2(image_point.x, image_point.z);
 		vec3  focal_point   = channel * delta + focal_point_offset;
 		float transmit_dist = distance(image_point, focal_point);
@@ -232,7 +225,7 @@ vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
 			sum        += apodize(sample_rf(ridx, sidx), apodization_arg, rdist.x) * valid;
 			rdist.x    -= delta.x;
-			ridx       += dec_data_dim.x;
+			ridx       += int(dec_data_dim.x);
 		}
 	}
 	return sum;

@@ -34,3 +34,4 @@ LIB_FN b32 beamform_data_synchronized(char *pipe_name, char *shm_name, void *dat
 /* NOTE: these functions only queue an upload; you must flush (for now via one of the data functions) */
 
 LIB_FN b32 beamformer_push_channel_mapping(char *shm_name, i16 *mapping, u32 count, i32 timeout_ms);
+LIB_FN b32 beamformer_push_sparse_elements(char *shm_name, i16 *elements, u32 count, i32 timeout_ms);
