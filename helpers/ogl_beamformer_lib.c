@@ -270,56 +270,28 @@ set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 	return 1;
 }
 
-b32
-beamformer_push_channel_mapping(char *shm_name, i16 *mapping, u32 count, i32 timeout_ms)
-{
-	b32 result = check_shared_memory(shm_name) && count <= ARRAY_COUNT(g_bp->channel_mapping);
-	if (result) {
-		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
-		result = work && try_wait_sync(&g_bp->channel_mapping_sync, timeout_ms);
-		if (result) {
-			work->type = BW_UPLOAD_CHANNEL_MAPPING;
-			work->completion_barrier = offsetof(BeamformerSharedMemory, channel_mapping_sync);
-			mem_copy(g_bp->channel_mapping, mapping, count * sizeof(*mapping));
-			beamform_work_queue_push_commit(&g_bp->external_work_queue);
-		}
-	}
-	return result;
-}
+#define BEAMFORMER_UPLOAD_FNS \
+	X(channel_mapping, i16, CHANNEL_MAPPING) \
+	X(sparse_elements, i16, SPARSE_ELEMENTS) \
+	X(focal_vectors,   f32, FOCAL_VECTORS)
 
-b32
-beamformer_push_sparse_elements(char *shm_name, i16 *elements, u32 count, i32 timeout_ms)
-{
-	b32 result = check_shared_memory(shm_name) && count <= ARRAY_COUNT(g_bp->sparse_elements);
-	if (result) {
-		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
-		result = work && try_wait_sync(&g_bp->sparse_elements_sync, timeout_ms);
-		if (result) {
-			work->type = BW_UPLOAD_SPARSE_ELEMENTS;
-			work->completion_barrier = offsetof(BeamformerSharedMemory, sparse_elements_sync);
-			mem_copy(g_bp->sparse_elements, elements, count * sizeof(*elements));
-			beamform_work_queue_push_commit(&g_bp->external_work_queue);
-		}
-	}
-	return result;
+#define X(name, dtype, command) \
+b32 beamformer_push_##name (char *shm_id, dtype *data, u32 count, i32 timeout_ms) { \
+	b32 result = check_shared_memory(shm_id) && count <= ARRAY_COUNT(g_bp->name);             \
+	if (result) {                                                                             \
+		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);        \
+		result = work && try_wait_sync(&g_bp->name##_sync, timeout_ms);                   \
+		if (result) {                                                                     \
+			work->type = BW_UPLOAD_##command;                                         \
+			work->completion_barrier = offsetof(BeamformerSharedMemory, name##_sync); \
+			mem_copy(g_bp->name, data, count * sizeof(*g_bp->name));                  \
+			beamform_work_queue_push_commit(&g_bp->external_work_queue);              \
+		}                                                                                 \
+	}                                                                                         \
+	return result;                                                                            \
 }
-
-b32
-beamformer_push_focal_vectors(char *shm_name, f32 *vectors, u32 count, i32 timeout_ms)
-{
-	b32 result = check_shared_memory(shm_name) && count <= ARRAY_COUNT(g_bp->focal_vectors);
-	if (result) {
-		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
-		result = work && try_wait_sync(&g_bp->focal_vectors_sync, timeout_ms);
-		if (result) {
-			work->type = BW_UPLOAD_FOCAL_VECTORS;
-			work->completion_barrier = offsetof(BeamformerSharedMemory, focal_vectors_sync);
-			mem_copy(g_bp->focal_vectors, vectors, count * sizeof(*g_bp->focal_vectors));
-			beamform_work_queue_push_commit(&g_bp->external_work_queue);
-		}
-	}
-	return result;
-}
+BEAMFORMER_UPLOAD_FNS
+#undef X
 
 b32
 set_beamformer_parameters(char *shm_name, BeamformerParametersV0 *new_bp)
