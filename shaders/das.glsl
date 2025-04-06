@@ -5,6 +5,7 @@ layout(std430, binding = 1) readonly restrict buffer buffer_1 {
 
 layout(rg32f, binding = 0) writeonly restrict uniform image3D  u_out_data_tex;
 layout(r16i,  binding = 1) readonly  restrict uniform iimage1D sparse_elements;
+layout(rg32f, binding = 2) readonly  restrict uniform image1D  focal_vectors;
 
 layout(location = 2) uniform ivec3 u_voxel_offset;
 layout(location = 3) uniform uint  u_cycle_t;
@@ -123,12 +124,9 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 	vec2 sum = vec2(0);
 	/* NOTE: For Each Acquistion in Raw Data */
 	// uint i = (dec_data_dim.z - 1) * uint(clamp(u_cycle_t, 0, 1)); {
-	for (uint i = 0; i < dec_data_dim.z; i++) {
-		uint base_idx = i / 4;
-		uint sub_idx  = i % 4;
-
-		float focal_depth    = focal_depths[base_idx][sub_idx];
-		float transmit_angle = radians(transmit_angles[base_idx][sub_idx]);
+	for (int i = 0; i < dec_data_dim.z; i++) {
+		float transmit_angle = radians(imageLoad(focal_vectors, i).x);
+		float focal_depth    = imageLoad(focal_vectors, i).y;
 
 		float transmit_distance;
 		if (isinf(focal_depth)) {
@@ -163,8 +161,8 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 
 	bool tx_col = TX_MODE_TX_COLS(transmit_mode);
 	bool rx_col = TX_MODE_RX_COLS(transmit_mode);
-	float focal_depth    = focal_depths[0][0];
-	float transmit_angle = radians(transmit_angles[0][0]);
+	float transmit_angle = radians(imageLoad(focal_vectors, 0).x);
+	float focal_depth    = imageLoad(focal_vectors, 0).y;
 
 	vec3 receive_point = (xdc_transform * vec4(image_point, 1)).xyz;
 

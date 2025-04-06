@@ -58,7 +58,7 @@ typedef enum {
 	X(channel_mapping,   u16, [256], uvec4, [32], "/* Transducer Channel to Verasonics Channel */")                           \
 	X(uforces_channels,  u16, [256], uvec4, [32], "/* Channels used for virtual UFORCES elements */")                         \
 	X(focal_depths,      f32, [256], vec4,  [64], "/* [m] Focal Depths for each transmit of a RCA imaging scheme*/")          \
-	X(transmit_angles,   f32, [256], vec4,  [64], "/* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/") \
+	X(transmit_angles,   f32, [256], vec4,  [64], "/* [degrees] Transmit Angles for each transmit of a RCA imaging scheme*/") \
 	X(xdc_transform,     f32, [16] , mat4,      , "/* IMPORTANT: column major order */")                                      \
 	X(dec_data_dim,      uv4,      , uvec4,     , "/* Samples * Channels * Acquisitions; last element ignored */")            \
 	X(xdc_element_pitch, f32, [2]  , vec2,      , "/* [m] Transducer Element Pitch {row, col} */")                            \
@@ -69,8 +69,6 @@ typedef enum {
 	X(time_offset,       f32,      , float,     , "/* pulse length correction time [s] */")
 
 #define BEAMFORMER_PARAMS_HEAD \
-	X(focal_depths,      f32, [256], vec4,  [64], "/* [m] Focal Depths for each transmit of a RCA imaging scheme*/")          \
-	X(transmit_angles,   f32, [256], vec4,  [64], "/* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/") \
 	X(xdc_transform,     f32, [16] , mat4,      , "/* IMPORTANT: column major order */")                                      \
 	X(dec_data_dim,      uv4,      , uvec4,     , "/* Samples * Channels * Acquisitions; last element ignored */")            \
 	X(xdc_element_pitch, f32, [2]  , vec2,      , "/* [m] Transducer Element Pitch {row, col} */")                            \

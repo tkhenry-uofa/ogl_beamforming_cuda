@@ -305,6 +305,23 @@ beamformer_push_sparse_elements(char *shm_name, i16 *elements, u32 count, i32 ti
 }
 
 b32
+beamformer_push_focal_vectors(char *shm_name, f32 *vectors, u32 count, i32 timeout_ms)
+{
+	b32 result = check_shared_memory(shm_name) && count <= ARRAY_COUNT(g_bp->focal_vectors);
+	if (result) {
+		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
+		result = work && try_wait_sync(&g_bp->focal_vectors_sync, timeout_ms);
+		if (result) {
+			work->type = BW_UPLOAD_FOCAL_VECTORS;
+			work->completion_barrier = offsetof(BeamformerSharedMemory, focal_vectors_sync);
+			mem_copy(g_bp->focal_vectors, vectors, count * sizeof(*g_bp->focal_vectors));
+			beamform_work_queue_push_commit(&g_bp->external_work_queue);
+		}
+	}
+	return result;
+}
+
+b32
 set_beamformer_parameters(char *shm_name, BeamformerParametersV0 *new_bp)
 {
 	b32 result = 0;
@@ -312,8 +329,13 @@ set_beamformer_parameters(char *shm_name, BeamformerParametersV0 *new_bp)
 	                                          ARRAY_COUNT(new_bp->channel_mapping), 0);
 	result |= beamformer_push_sparse_elements(shm_name, (i16 *)new_bp->uforces_channels,
 	                                          ARRAY_COUNT(new_bp->uforces_channels), 0);
+	v2 focal_vectors[256];
+	for (u32 i = 0; i < ARRAY_COUNT(focal_vectors); i++)
+		focal_vectors[i] = (v2){{new_bp->transmit_angles[i], new_bp->focal_depths[i]}};
+	result |= beamformer_push_focal_vectors(shm_name, (f32 *)focal_vectors, ARRAY_COUNT(focal_vectors), 0);
+
 	if (result) {
-		mem_copy(&g_bp->raw, &new_bp->focal_depths, sizeof(g_bp->raw));
+		mem_copy(&g_bp->raw, &new_bp->xdc_transform, sizeof(g_bp->raw));
 		g_bp->upload = 1;
 	}
 

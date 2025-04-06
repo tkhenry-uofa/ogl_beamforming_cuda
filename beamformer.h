@@ -88,6 +88,7 @@ typedef struct {
 
 	u32 channel_mapping_texture;
 	u32 sparse_elements_texture;
+	u32 focal_vectors_texture;
 
 	f32 processing_progress;
 	b32 processing_compute;

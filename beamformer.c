@@ -348,6 +348,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
 		glBindImageTexture(0, frame->frame.texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
 		glBindImageTexture(1, csctx->sparse_elements_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16I);
+		glBindImageTexture(2, csctx->focal_vectors_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
 
 		#if 1
 		/* TODO(rnp): compute max_points_per_dispatch based on something like a
@@ -593,6 +594,18 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			glTextureSubImage1D(cs->channel_mapping_texture, 0, 0,
 			                    ARRAY_COUNT(sm->channel_mapping), GL_RED_INTEGER,
 			                    GL_SHORT, sm->channel_mapping);
+		} break;
+		case BW_UPLOAD_FOCAL_VECTORS: {
+			ASSERT(!atomic_load(&ctx->shared_memory->focal_vectors_sync));
+			if (!cs->focal_vectors_texture) {
+				glCreateTextures(GL_TEXTURE_1D, 1, &cs->focal_vectors_texture);
+				glTextureStorage1D(cs->focal_vectors_texture, 1, GL_RG32F,
+				                   ARRAY_COUNT(sm->focal_vectors));
+				LABEL_GL_OBJECT(GL_TEXTURE, cs->focal_vectors_texture, s8("Focal_Vectors"));
+			}
+			glTextureSubImage1D(cs->focal_vectors_texture, 0, 0,
+			                    ARRAY_COUNT(sm->focal_vectors), GL_RG,
+			                    GL_FLOAT, sm->focal_vectors);
 		} break;
 		case BW_UPLOAD_RF_DATA: {
 			ASSERT(!atomic_load(&ctx->shared_memory->raw_data_sync));

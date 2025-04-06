@@ -309,6 +309,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	ctx->shared_memory->raw_data_sync        = 1;
 	ctx->shared_memory->channel_mapping_sync = 1;
 	ctx->shared_memory->sparse_elements_sync = 1;
+	ctx->shared_memory->focal_vectors_sync   = 1;
 
 	/* NOTE: default compute shader pipeline */
 	ctx->shared_memory->compute_stages[0]    = CS_DECODE;

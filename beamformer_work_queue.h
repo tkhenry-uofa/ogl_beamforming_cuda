@@ -70,15 +70,17 @@ typedef struct {
 	b32 start_compute;
 	b32 export_next_frame;
 
+	i32 channel_mapping_sync;
+	i32 sparse_elements_sync;
+	i32 focal_vectors_sync;
+
 	/* TODO(rnp): probably remove this */
 	c8  export_pipe_name[256];
 
-	i32 channel_mapping_sync;
-	i32 sparse_elements_sync;
-
 	i16 channel_mapping[256];
 	i16 sparse_elements[256];
-	v2  transmit_angles_focal_depths[256];
+	/* NOTE(rnp): interleaved transmit angle, focal depth pairs */
+	v2  focal_vectors[256];
 
 	BeamformWorkQueue external_work_queue;
 } BeamformerSharedMemory;
