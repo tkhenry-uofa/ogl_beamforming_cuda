@@ -18,12 +18,9 @@ enum gl_vendor_ids {
 };
 
 typedef struct {
+	v2   mouse;
+	v2   last_mouse;
 	b32  executable_reloaded;
-	b32  pipe_data_available;
-	iptr pipe_handle;
-
-	v2 mouse;
-	v2 last_mouse;
 } BeamformerInput;
 
 #define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims, u16 *channel_mapping)
@@ -56,17 +53,14 @@ typedef struct {
 	#undef X
 } CudaLib;
 
-#include "beamformer_parameters.h"
-
 typedef struct {
-	BeamformerParameters raw;
-	ComputeShaderID compute_stages[16];
-	u32             compute_stages_count;
-	b32             upload;
-	u32             raw_data_size;
-	b32             export_next_frame;
-	c8              export_pipe_name[1024];
-} BeamformerParametersFull;
+	Shader shader;
+	b32    updated;
+	i32    db_cutoff_id;
+	i32    threshold_id;
+} FragmentShaderCtx;
+
+#include "beamformer_parameters.h"
 
 #define CS_UNIFORMS \
 	X(CS_DAS,     voxel_offset) \
@@ -103,13 +97,6 @@ typedef struct {
 	#undef X
 } ComputeShaderCtx;
 
-typedef struct {
-	Shader shader;
-	b32    updated;
-	i32    db_cutoff_id;
-	i32    threshold_id;
-} FragmentShaderCtx;
-
 typedef enum {
 #define X(type, id, pretty, fixed_tx) DAS_ ##type = id,
 DAS_TYPES
@@ -143,12 +130,14 @@ typedef struct BeamformFrame {
 	struct BeamformFrame *next;
 } BeamformFrame;
 
-typedef struct {
+struct BeamformComputeFrame {
 	BeamformFrame      frame;
 	ComputeShaderStats stats;
 	b32 in_flight;
 	b32 ready_to_present;
-} BeamformComputeFrame;
+};
+
+#include "beamformer_work_queue.h"
 
 typedef struct {
 	enum gl_vendor_ids vendor_id;
@@ -161,55 +150,12 @@ typedef struct {
 	i32  max_server_wait_time;
 } GLParams;
 
-enum beamform_work {
-	BW_COMPUTE,
-	BW_LOAD_RF_DATA,
-	BW_RELOAD_SHADER,
-	BW_SAVE_FRAME,
-	BW_SEND_FRAME,
-};
-
 typedef struct {
-	void *beamformer_ctx;
-	s8    label;
-	s8    path;
-	ComputeShaderID shader;
-	b32   needs_header;
-} ComputeShaderReloadContext;
-
-typedef struct {
-	BeamformComputeFrame *frame;
-	iptr                  file_handle;
-} BeamformOutputFrameContext;
-
-/* NOTE: discriminated union based on type */
-typedef struct {
-	union {
-		iptr                        file_handle;
-		BeamformComputeFrame       *frame;
-		BeamformOutputFrameContext  output_frame_ctx;
-		ComputeShaderReloadContext *reload_shader_ctx;
-	};
-	u32 type;
-} BeamformWork;
-
-typedef struct {
-	union {
-		u64 queue;
-		struct {u32 widx, ridx;};
-	};
-	BeamformWork work_items[1 << 6];
-} BeamformWorkQueue;
-
-typedef struct BeamformerCtx {
 	GLParams gl;
 
 	uv2 window_size;
 	b32 start_compute;
 	b32 should_exit;
-
-	/* TODO(rnp): is there a better way of tracking this? */
-	b32 ready_for_rf;
 
 	Arena  ui_backing_store;
 	void  *ui;
@@ -235,8 +181,16 @@ typedef struct BeamformerCtx {
 
 	BeamformWorkQueue *beamform_work_queue;
 
-	BeamformerParametersFull *params;
+	BeamformerSharedMemory *shared_memory;
 } BeamformerCtx;
+
+struct ComputeShaderReloadContext {
+	BeamformerCtx *beamformer_ctx;
+	s8    label;
+	s8    path;
+	ComputeShaderID shader;
+	b32   needs_header;
+};
 
 #define LABEL_GL_OBJECT(type, id, s) {s8 _s = (s); glObjectLabel(type, id, _s.len, (c8 *)_s.data);}
 
@@ -246,11 +200,5 @@ typedef BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step_fn);
 
 #define BEAMFORMER_COMPLETE_COMPUTE_FN(name) void name(iptr user_context, Arena arena, iptr gl_context)
 typedef BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute_fn);
-
-#define BEAMFORM_WORK_QUEUE_PUSH_FN(name) BeamformWork *name(BeamformWorkQueue *q)
-typedef BEAMFORM_WORK_QUEUE_PUSH_FN(beamform_work_queue_push_fn);
-
-#define BEAMFORM_WORK_QUEUE_PUSH_COMMIT_FN(name) void name(BeamformWorkQueue *q)
-typedef BEAMFORM_WORK_QUEUE_PUSH_COMMIT_FN(beamform_work_queue_push_commit_fn);
 
 #endif /*_BEAMFORMER_H_ */

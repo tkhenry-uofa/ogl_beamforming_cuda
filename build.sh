@@ -31,11 +31,12 @@ MINGW64*)
 	main="main_w32.c"
 	libname="beamformer.dll"
 	ldflags="${ldflags} -lgdi32 -lwinmm -lntdll"
+	extra_ldflags="-lntdll"
 	if [ ! ${NO_MATLAB} ]; then
 		libcflags="${libcflags} -DMATLAB_CONSOLE"
-		extra_ldflags="-llibmat -llibmex"
+		extra_ldflags="${extra_ldflags} -llibmat -llibmex"
 	fi
-	${cc} ${libcflags} helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.dll \
+	${cc} ${libcflags} -O3 helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.dll \
 		-L'C:/Program Files/MATLAB/R2022a/extern/lib/win64/microsoft' \
 		${extra_ldflags}
 	;;
@@ -47,7 +48,7 @@ Linux*)
 	libname="beamformer.so"
 	cflags="${cflags} -D_DEFAULT_SOURCE"
 
-	${cc} ${libcflags} helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.so
+	${cc} ${libcflags} -O3 helpers/ogl_beamformer_lib.c -o helpers/ogl_beamformer_lib.so
 	;;
 esac
 

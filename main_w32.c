@@ -29,7 +29,6 @@ typedef struct {
 
 #define OS_RENDERDOC_SONAME    "renderdoc.dll"
 
-#define OS_PIPE_NAME           "\\\\.\\pipe\\beamformer_data_fifo"
 #define OS_SMEM_NAME           "Local\\ogl_beamformer_parameters"
 
 #define OS_PATH_SEPERATOR      "\\"
@@ -103,36 +102,6 @@ clear_io_queue(OS *os, BeamformerInput *input, Arena arena)
 	}
 }
 
-static b32
-poll_pipe(Pipe *p, Stream *e, OS *os)
-{
-	u8  data;
-	i32 total_read = 0;
-	b32 result = ReadFile(p->file, &data, 0, &total_read, 0);
-	if (!result) {
-		i32 error = GetLastError();
-		/* NOTE: These errors mean nothing's been sent yet, otherwise pipe is busted
-		 * and needs to be recreated. */
-		if (error != ERROR_NO_DATA &&
-		    error != ERROR_PIPE_LISTENING &&
-		    error != ERROR_PIPE_NOT_CONNECTED)
-		{
-			DisconnectNamedPipe(p->file);
-			CloseHandle(p->file);
-			*p = os_open_named_pipe(p->name);
-
-			if (p->file == INVALID_FILE) {
-				stream_append_s8(e, s8("poll_pipe: failed to reopen pipe: error: "));
-				stream_append_i64(e, GetLastError());
-				stream_append_byte(e, '\n');
-				os->write_file(os->stderr, stream_to_s8(e));
-				stream_reset(e, 0);
-			}
-		}
-	}
-	return result;
-}
-
 int
 main(void)
 {
@@ -143,10 +112,6 @@ main(void)
 
 	ctx.ui_backing_store        = sub_arena(&temp_memory, MB(2), KB(4));
 	ctx.os.compute_worker.arena = sub_arena(&temp_memory, MB(2), KB(4));
-
-	Pipe data_pipe    = os_open_named_pipe(OS_PIPE_NAME);
-	input.pipe_handle = data_pipe.file;
-	ASSERT(data_pipe.file != INVALID_FILE);
 
 	#define X(name) ctx.os.name = os_ ## name;
 	OS_FNS
@@ -168,8 +133,6 @@ main(void)
 
 		input.last_mouse = input.mouse;
 		input.mouse.rl   = GetMousePosition();
-
-		input.pipe_data_available = poll_pipe(&data_pipe, &ctx.error_stream, &ctx.os);
 
 		beamformer_frame_step(&ctx, &temp_memory, &input);
 

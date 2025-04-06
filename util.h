@@ -71,9 +71,9 @@
 	if ((v)->prev) (v)->prev->next = (v)->next; \
 } while (0)
 
-#define KB(a)            ((a) << 10ULL)
-#define MB(a)            ((a) << 20ULL)
-#define GB(a)            ((a) << 30ULL)
+#define KB(a)            ((u64)(a) << 10ULL)
+#define MB(a)            ((u64)(a) << 20ULL)
+#define GB(a)            ((u64)(a) << 30ULL)
 
 #define I32_MAX          (0x7FFFFFFFL)
 #define U32_MAX          (0xFFFFFFFFUL)

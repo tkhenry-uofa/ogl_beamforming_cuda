@@ -15,8 +15,7 @@
 
 #define OS_RENDERDOC_SONAME    "librenderdoc.so"
 
-#define OS_PIPE_NAME           "/tmp/beamformer_data_fifo"
-#define OS_SMEM_NAME           "/ogl_beamformer_parameters"
+#define OS_SMEM_NAME           "/ogl_beamformer_shared_memory"
 
 #define OS_PATH_SEPERATOR      "/"
 
@@ -71,10 +70,6 @@ main(void)
 	ctx.ui_backing_store        = sub_arena(&temp_memory, MB(2), KB(4));
 	ctx.os.compute_worker.arena = sub_arena(&temp_memory, MB(2), KB(4));
 
-	Pipe data_pipe    = os_open_named_pipe(OS_PIPE_NAME);
-	input.pipe_handle = data_pipe.file;
-	ASSERT(data_pipe.file != INVALID_FILE);
-
 	#define X(name) ctx.os.name = os_ ## name;
 	OS_FNS
 	#undef X
@@ -87,20 +82,17 @@ main(void)
 	setup_beamformer(&ctx, &temp_memory);
 	os_wake_waiters(&ctx.os.compute_worker.sync_variable);
 
-	struct pollfd fds[2] = {{0}, {0}};
+	struct pollfd fds[1] = {{0}};
 	fds[0].fd     = ctx.os.file_watch_context.handle;
 	fds[0].events = POLLIN;
-	fds[1].fd     = data_pipe.file;
-	fds[1].events = POLLIN;
 
 	while (!ctx.should_exit) {
 		poll(fds, 2, 0);
 		if (fds[0].revents & POLLIN)
 			dispatch_file_watch_events(&ctx.os, temp_memory);
 
-		input.pipe_data_available = !!(fds[1].revents & POLLIN);
-		input.last_mouse          = input.mouse;
-		input.mouse.rl            = GetMousePosition();
+		input.last_mouse = input.mouse;
+		input.mouse.rl   = GetMousePosition();
 
 		beamformer_frame_step(&ctx, &temp_memory, &input);
 
@@ -110,8 +102,4 @@ main(void)
 	/* NOTE: make sure this will get cleaned up after external
 	 * programs release their references */
 	shm_unlink(OS_SMEM_NAME);
-
-	/* NOTE: garbage code needed for Linux */
-	close(data_pipe.file);
-	unlink(data_pipe.name);
 }

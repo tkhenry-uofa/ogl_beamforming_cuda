@@ -1,5 +1,6 @@
 /* See LICENSE for license details. */
 #include "beamformer.h"
+#include "beamformer_work_queue.c"
 
 static f32 dt_for_frame;
 static u32 cycle_t;
@@ -105,10 +106,10 @@ static void
 alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 {
 	ComputeShaderCtx *cs     = &ctx->csctx;
-	BeamformerParameters *bp = &ctx->params->raw;
+	BeamformerParameters *bp = &ctx->shared_memory->raw;
 
 	uv4 dec_data_dim = bp->dec_data_dim;
-	u32 rf_raw_size  = ctx->params->raw_data_size;
+	u32 rf_raw_size  = ctx->shared_memory->raw_data_size;
 	cs->dec_data_dim = dec_data_dim;
 	cs->rf_raw_size  = rf_raw_size;
 
@@ -174,56 +175,6 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glTextureSubImage2D(cs->hadamard_texture, 0, 0, 0, dec_data_dim.z, dec_data_dim.z,
 	                    GL_RED_INTEGER, GL_INT, hadamard);
 	LABEL_GL_OBJECT(GL_TEXTURE, cs->hadamard_texture, s8("Hadamard_Matrix"));
-}
-
-static BeamformWork *
-beamform_work_queue_pop(BeamformWorkQueue *q)
-{
-	BeamformWork *result = 0;
-
-	static_assert(ISPOWEROF2(ARRAY_COUNT(q->work_items)), "queue capacity must be a power of 2");
-	u64 val  = atomic_load(&q->queue);
-	u64 mask = ARRAY_COUNT(q->work_items) - 1;
-	u32 widx = val       & mask;
-	u32 ridx = val >> 32 & mask;
-
-	if (ridx != widx)
-		result = q->work_items + ridx;
-
-	return result;
-}
-
-static void
-beamform_work_queue_pop_commit(BeamformWorkQueue *q)
-{
-	atomic_add(&q->queue, 0x100000000ULL);
-}
-
-DEBUG_EXPORT BEAMFORM_WORK_QUEUE_PUSH_FN(beamform_work_queue_push)
-{
-	BeamformWork *result = 0;
-
-	static_assert(ISPOWEROF2(ARRAY_COUNT(q->work_items)), "queue capacity must be a power of 2");
-	u64 val  = atomic_load(&q->queue);
-	u64 mask = ARRAY_COUNT(q->work_items) - 1;
-	u32 widx = val       & mask;
-	u32 ridx = val >> 32 & mask;
-	u32 next = (widx + 1) & mask;
-
-	if (val & 0x80000000)
-		atomic_and(&q->queue, ~0x80000000);
-
-	if (next != ridx) {
-		result = q->work_items + widx;
-		zero_struct(result);
-	}
-
-	return result;
-}
-
-DEBUG_EXPORT BEAMFORM_WORK_QUEUE_PUSH_COMMIT_FN(beamform_work_queue_push_commit)
-{
-	atomic_add(&q->queue, 1);
 }
 
 static b32
@@ -434,7 +385,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		ASSERT(frame >= ctx->beamform_frames);
 		ASSERT(frame < ctx->beamform_frames + ARRAY_COUNT(ctx->beamform_frames));
 		u32 base_index   = (u32)(frame - ctx->beamform_frames);
-		u32 to_average   = ctx->params->raw.output_points.w;
+		u32 to_average   = ctx->shared_memory->raw.output_points.w;
 		u32 frame_count  = 0;
 		u32 *in_textures = alloc(&arena, u32, MAX_BEAMFORMED_SAVED_FRAMES);
 		ComputeFrameIterator cfi = compute_frame_iterator(ctx, 1 + base_index - to_average,
@@ -594,15 +545,13 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, s8 extra, ComputeShaderReload
 	return result;
 }
 
-DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
+static void
+complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_context, iz barrier_offset)
 {
-	BeamformerCtx *ctx   = (BeamformerCtx *)user_context;
-	BeamformWorkQueue *q = ctx->beamform_work_queue;
-	BeamformWork *work   = beamform_work_queue_pop(q);
-	ComputeShaderCtx *cs = &ctx->csctx;
+	ComputeShaderCtx *cs     = &ctx->csctx;
+	BeamformerParameters *bp = &ctx->shared_memory->raw;
 
-	BeamformerParameters *bp = &ctx->params->raw;
-
+	BeamformWork *work = beamform_work_queue_pop(q);
 	while (work) {
 		b32 can_commit = 1;
 		switch (work->type) {
@@ -630,55 +579,47 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 				#undef X
 			}
 		} break;
-		case BW_LOAD_RF_DATA: {
-			if (cs->rf_raw_size != ctx->params->raw_data_size ||
+		case BW_UPLOAD_RF_DATA: {
+			ASSERT(!atomic_load(&ctx->shared_memory->raw_data_sync));
+
+			if (cs->rf_raw_size != ctx->shared_memory->raw_data_size ||
 			    !uv4_equal(cs->dec_data_dim, bp->dec_data_dim))
 			{
 				alloc_shader_storage(ctx, arena);
 			}
 
-			void *rf_data_buf = cs->raw_data_arena.beg;
-			iz rlen = ctx->os.read_file(work->file_handle, rf_data_buf, cs->rf_raw_size);
-			if (rlen != cs->rf_raw_size) {
-				stream_append_s8(&ctx->error_stream, s8("Partial Read Occurred: "));
-				stream_append_i64(&ctx->error_stream, rlen);
-				stream_append_byte(&ctx->error_stream, '/');
-				stream_append_i64(&ctx->error_stream, cs->rf_raw_size);
-				stream_append_byte(&ctx->error_stream, '\n');
-				ctx->os.write_file(ctx->os.stderr, stream_to_s8(&ctx->error_stream));
-				ctx->error_stream.widx = 0;
-			} else {
-				switch (ctx->gl.vendor_id) {
-				case GL_VENDOR_AMD:
-				case GL_VENDOR_ARM:
-				case GL_VENDOR_INTEL:
-					break;
-				case GL_VENDOR_NVIDIA:
-					glNamedBufferSubData(cs->raw_data_ssbo, 0, rlen, rf_data_buf);
-				}
+			void *raw_data = (u8 *)ctx->shared_memory + BEAMFORMER_RF_DATA_OFF;
+			switch (ctx->gl.vendor_id) {
+			case GL_VENDOR_AMD:
+			case GL_VENDOR_ARM:
+			case GL_VENDOR_INTEL:
+				mem_copy(cs->raw_data_arena.beg, raw_data, cs->rf_raw_size);
+				break;
+			case GL_VENDOR_NVIDIA:
+				glNamedBufferSubData(cs->raw_data_ssbo, 0, cs->rf_raw_size, raw_data);
+				break;
 			}
-			ctx->ready_for_rf = 1;
 		} break;
 		case BW_COMPUTE: {
 			atomic_store(&cs->processing_compute, 1);
 			start_renderdoc_capture(gl_context);
 
 			BeamformComputeFrame *frame = work->frame;
-			if (ctx->params->upload) {
-				glNamedBufferSubData(cs->shared_ubo, 0, sizeof(ctx->params->raw),
-				                     &ctx->params->raw);
-				ctx->params->upload = 0;
+			if (ctx->shared_memory->upload) {
+				glNamedBufferSubData(cs->shared_ubo, 0, sizeof(ctx->shared_memory->raw),
+				                     &ctx->shared_memory->raw);
+				ctx->shared_memory->upload = 0;
 			}
 
 			if (cs->programs[CS_DAS])
 				glProgramUniform1ui(cs->programs[CS_DAS], cs->cycle_t_id, cycle_t++);
 
-			uv3 try_dim = make_valid_test_dim(ctx->params->raw.output_points.xyz);
+			uv3 try_dim = make_valid_test_dim(ctx->shared_memory->raw.output_points.xyz);
 			if (!uv3_equal(try_dim, frame->frame.dim))
 				alloc_beamform_frame(&ctx->gl, &frame->frame, &frame->stats, try_dim,
 				                     s8("Beamformed_Data"), arena);
 
-			if (ctx->params->raw.output_points.w > 1) {
+			if (ctx->shared_memory->raw.output_points.w > 1) {
 				if (!uv3_equal(try_dim, ctx->averaged_frames[0].frame.dim)) {
 					alloc_beamform_frame(&ctx->gl, &ctx->averaged_frames[0].frame,
 					                     &ctx->averaged_frames[0].stats,
@@ -690,14 +631,14 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 			}
 
 			frame->in_flight = 1;
-			frame->frame.min_coordinate = ctx->params->raw.output_min_coordinate;
-			frame->frame.max_coordinate = ctx->params->raw.output_max_coordinate;
-			frame->frame.das_shader_id  = ctx->params->raw.das_shader_id;
-			frame->frame.compound_count = ctx->params->raw.dec_data_dim.z;
+			frame->frame.min_coordinate = ctx->shared_memory->raw.output_min_coordinate;
+			frame->frame.max_coordinate = ctx->shared_memory->raw.output_max_coordinate;
+			frame->frame.das_shader_id  = ctx->shared_memory->raw.das_shader_id;
+			frame->frame.compound_count = ctx->shared_memory->raw.dec_data_dim.z;
 
 			b32 did_sum_shader = 0;
-			u32 stage_count = ctx->params->compute_stages_count;
-			ComputeShaderID *stages = ctx->params->compute_stages;
+			u32 stage_count = ctx->shared_memory->compute_stages_count;
+			ComputeShaderID *stages = ctx->shared_memory->compute_stages;
 			for (u32 i = 0; i < stage_count; i++) {
 				did_sum_shader |= stages[i] == CS_SUM;
 				frame->stats.timer_active[stages[i]] = 1;
@@ -742,13 +683,25 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 				INVALID_CODE_PATH;
 			}
 		} break;
+		default: INVALID_CODE_PATH; break;
 		}
 
 		if (can_commit) {
+			if (work->completion_barrier) {
+				i32 *value = (i32 *)(barrier_offset + work->completion_barrier);
+				ctx->os.wake_waiters(value);
+			}
 			beamform_work_queue_pop_commit(q);
 			work = beamform_work_queue_pop(q);
 		}
 	}
+}
+
+DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
+{
+	BeamformerCtx *ctx = (BeamformerCtx *)user_context;
+	complete_queue(ctx, &ctx->shared_memory->external_work_queue, arena, gl_context, (iz)ctx->shared_memory);
+	complete_queue(ctx, ctx->beamform_work_queue, arena, gl_context, 0);
 }
 
 #include "ui.c"
@@ -768,55 +721,50 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		DEBUG_DECL(end_frame_capture   = ctx->os.end_frame_capture);
 	}
 
-	if (ctx->start_compute && !input->pipe_data_available) {
+	BeamformerParameters *bp = &ctx->shared_memory->raw;
+	if (ctx->shared_memory->start_compute) {
+		ctx->shared_memory->start_compute = 0;
+		BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
+		if (work) {
+			if (fill_frame_compute_work(ctx, work))
+				beamform_work_queue_push_commit(ctx->beamform_work_queue);
+
+			if (ctx->shared_memory->export_next_frame) {
+				BeamformWork *export = beamform_work_queue_push(ctx->beamform_work_queue);
+				if (export) {
+					/* TODO: we don't really want the beamformer opening/closing files */
+					iptr f = ctx->os.open_for_write(ctx->shared_memory->export_pipe_name);
+					export->type = BW_SAVE_FRAME;
+					export->output_frame_ctx.file_handle = f;
+					if (ctx->shared_memory->raw.output_points.w > 1) {
+						u32 a_index = !(ctx->averaged_frame_index %
+						                ARRAY_COUNT(ctx->averaged_frames));
+						BeamformComputeFrame *aframe = ctx->averaged_frames + a_index;
+						export->output_frame_ctx.frame = aframe;
+					} else {
+						export->output_frame_ctx.frame = work->frame;
+					}
+					beamform_work_queue_push_commit(ctx->beamform_work_queue);
+				}
+				ctx->shared_memory->export_next_frame = 0;
+			}
+
+			if (ctx->shared_memory->upload) {
+				/* TODO(rnp): clean this up */
+				ctx->ui_read_params = 1;
+			}
+
+			ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
+		}
+	}
+
+	if (ctx->start_compute) {
 		if (ctx->beamform_frames[ctx->display_frame_index].ready_to_present) {
 			BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
 			if (fill_frame_compute_work(ctx, work)) {
 				beamform_work_queue_push_commit(ctx->beamform_work_queue);
 				ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
 				ctx->start_compute = 0;
-			}
-		}
-	}
-
-	BeamformerParameters *bp = &ctx->params->raw;
-	if (ctx->ready_for_rf && input->pipe_data_available) {
-		BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
-		if (work) {
-			ctx->start_compute = 1;
-			ctx->ready_for_rf  = 0;
-
-			work->type        = BW_LOAD_RF_DATA;
-			work->file_handle = input->pipe_handle;
-			beamform_work_queue_push_commit(ctx->beamform_work_queue);
-
-			BeamformWork *compute = beamform_work_queue_push(ctx->beamform_work_queue);
-			if (fill_frame_compute_work(ctx, compute))
-				beamform_work_queue_push_commit(ctx->beamform_work_queue);
-
-			if (compute && ctx->params->export_next_frame) {
-				BeamformWork *export = beamform_work_queue_push(ctx->beamform_work_queue);
-				if (export) {
-					/* TODO: we don't really want the beamformer opening/closing files */
-					iptr f = ctx->os.open_for_write(ctx->params->export_pipe_name);
-					export->type = BW_SAVE_FRAME;
-					export->output_frame_ctx.file_handle = f;
-					if (ctx->params->raw.output_points.w > 1) {
-						u32 a_index = !(ctx->averaged_frame_index %
-						                ARRAY_COUNT(ctx->averaged_frames));
-						BeamformComputeFrame *aframe = ctx->averaged_frames + a_index;
-						export->output_frame_ctx.frame = aframe;
-					} else {
-						export->output_frame_ctx.frame = compute->frame;
-					}
-					beamform_work_queue_push_commit(ctx->beamform_work_queue);
-				}
-				ctx->params->export_next_frame = 0;
-			}
-
-			if (ctx->params->upload) {
-				/* TODO(rnp): clean this up */
-				ctx->ui_read_params = 1;
 			}
 		}
 	}

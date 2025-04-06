@@ -1498,10 +1498,10 @@ draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *sta
 	v2 at = r.pos;
 	Stream buf = stream_alloc(&arena, 64);
 	f32 compute_time_sum = 0;
-	u32 stages = ctx->params->compute_stages_count;
+	u32 stages = ctx->shared_memory->compute_stages_count;
 	TextSpec text_spec = {.font = &ui->font, .colour = NORMALIZED_FG_COLOUR, .flags = TF_LIMITED};
 	for (u32 i = 0; i < stages; i++) {
-		u32 index  = ctx->params->compute_stages[i];
+		u32 index  = ctx->shared_memory->compute_stages[i];
 		text_spec.limits.size.x = r.size.w;
 		draw_text(labels[index], at, &text_spec);
 		text_spec.limits.size.x -= LISTING_ITEM_PAD + max_label_width;
@@ -2380,7 +2380,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 
 	/* TODO(rnp): there should be a better way of detecting this */
 	if (ctx->ui_read_params) {
-		mem_copy(&ui->params, &ctx->params->raw.output_min_coordinate, sizeof(ui->params));
+		mem_copy(&ui->params, &ctx->shared_memory->raw.output_min_coordinate, sizeof(ui->params));
 		ui->flush_params    = 0;
 		ctx->ui_read_params = 0;
 	}
@@ -2392,9 +2392,10 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 	if (ui->flush_params) {
 		validate_ui_parameters(&ui->params);
 		if (!ctx->csctx.processing_compute) {
-			mem_copy(&ctx->params->raw.output_min_coordinate, &ui->params, sizeof(ui->params));
+			mem_copy(&ctx->shared_memory->raw.output_min_coordinate, &ui->params,
+			         sizeof(ui->params));
 			ui->flush_params    = 0;
-			ctx->params->upload = 1;
+			ctx->shared_memory->upload = 1;
 			ctx->start_compute  = 1;
 		}
 	}

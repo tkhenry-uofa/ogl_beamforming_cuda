@@ -12,12 +12,6 @@
 #define GENERIC_WRITE  0x40000000
 #define GENERIC_READ   0x80000000
 
-#define PIPE_WAIT      0x00
-#define PIPE_NOWAIT    0x01
-
-#define PIPE_TYPE_BYTE      0x00
-#define PIPE_ACCESS_INBOUND 0x01
-
 #define FILE_SHARE_READ            0x00000001
 #define FILE_MAP_ALL_ACCESS        0x000F001F
 #define FILE_FLAG_BACKUP_SEMANTICS 0x02000000
@@ -29,10 +23,6 @@
 
 #define CREATE_ALWAYS  2
 #define OPEN_EXISTING  3
-
-#define ERROR_NO_DATA            232L
-#define ERROR_PIPE_NOT_CONNECTED 233L
-#define ERROR_PIPE_LISTENING     536L
 
 #define THREAD_SET_LIMITED_INFORMATION 0x0400
 
@@ -89,10 +79,8 @@ W32(b32)    CopyFileA(c8 *, c8 *, b32);
 W32(iptr)   CreateFileA(c8 *, u32, u32, void *, u32, u32, void *);
 W32(iptr)   CreateFileMappingA(iptr, void *, u32, u32, u32, c8 *);
 W32(iptr)   CreateIoCompletionPort(iptr, iptr, uptr, u32);
-W32(iptr)   CreateNamedPipeA(c8 *, u32, u32, u32, u32, u32, u32, void *);
 W32(iptr)   CreateThread(iptr, uz, iptr, iptr, u32, u32 *);
 W32(b32)    DeleteFileA(c8 *);
-W32(b32)    DisconnectNamedPipe(iptr);
 W32(void)   ExitProcess(i32);
 W32(b32)    FreeLibrary(void *);
 W32(i32)    GetFileAttributesA(c8 *);
@@ -233,22 +221,14 @@ os_file_exists(char *path)
 	return result;
 }
 
-static Pipe
-os_open_named_pipe(char *name)
-{
-	iptr h = CreateNamedPipeA(name, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE|PIPE_NOWAIT, 1,
-	                          0, MB(1), 0, 0);
-	return (Pipe){.file = h, .name = name};
-}
-
 static void *
 os_open_shared_memory_area(char *name, iz cap)
 {
+	void *result = 0;
 	iptr h = CreateFileMappingA(-1, 0, PAGE_READWRITE, 0, cap, name);
-	if (h == INVALID_FILE)
-		return NULL;
-
-	return MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, cap);
+	if (h != INVALID_FILE)
+		result = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, cap);
+	return result;
 }
 
 static void *

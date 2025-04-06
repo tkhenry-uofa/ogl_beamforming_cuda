@@ -26,7 +26,6 @@ mem_clear(void *p_, u8 c, iz size)
 static void
 mem_copy(void *restrict dest, void *restrict src, uz n)
 {
-	ASSERT(n >= 0);
 	u8 *s = src, *d = dest;
 	for (; n; n--) *d++ = *s++;
 }

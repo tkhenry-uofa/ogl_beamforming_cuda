@@ -302,14 +302,15 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 
 	ctx->beamform_work_queue = push_struct(memory, BeamformWorkQueue);
 
-	ctx->params = os_open_shared_memory_area(OS_SMEM_NAME, sizeof(*ctx->params));
-	/* TODO: properly handle this? */
-	ASSERT(ctx->params);
+	ctx->shared_memory = os_open_shared_memory_area(OS_SMEM_NAME, BEAMFORMER_SHARED_MEMORY_SIZE);
+	if (!ctx->shared_memory)
+		os_fatal(s8("Get more ram lol\n"));
+	ctx->shared_memory->raw_data_sync = 1;
 
 	/* NOTE: default compute shader pipeline */
-	ctx->params->compute_stages[0]    = CS_DECODE;
-	ctx->params->compute_stages[1]    = CS_DAS;
-	ctx->params->compute_stages_count = 2;
+	ctx->shared_memory->compute_stages[0]    = CS_DECODE;
+	ctx->shared_memory->compute_stages[1]    = CS_DAS;
+	ctx->shared_memory->compute_stages_count = 2;
 
 	if (ctx->gl.vendor_id == GL_VENDOR_NVIDIA
 	    && load_cuda_lib(&ctx->os, s8(OS_CUDA_LIB_NAME), (iptr)&ctx->cuda_lib, *memory))
@@ -353,6 +354,4 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	s8 render = s8(static_path_join("shaders", "render.glsl"));
 	reload_render_shader(&ctx->os, render, (iptr)&ctx->fsctx, *memory);
 	os_add_file_watch(&ctx->os, memory, render, reload_render_shader, (iptr)&ctx->fsctx);
-
-	ctx->ready_for_rf = 1;
 }

@@ -1,42 +1,23 @@
 /* See LICENSE for license details. */
-#include "ogl_beamformer_lib.h"
-
-typedef struct {
-	BeamformerParameters raw;
-	ComputeShaderID compute_stages[16];
-	u32             compute_stages_count;
-	b32             upload;
-	u32             raw_data_size;
-	b32             export_next_frame;
-	c8              export_pipe_name[1024];
-} BeamformerParametersFull;
-
-typedef struct {
-	iptr  file;
-	char *name;
-} Pipe;
-
-typedef struct { size len; u8 *data; } s8;
-#define s8(s) (s8){.len = ARRAY_COUNT(s) - 1, .data = (u8 *)s}
-
-#define ARRAY_COUNT(a) (sizeof(a) / sizeof(*a))
-
-#define U32_MAX (0xFFFFFFFFUL)
-
-#define INVALID_FILE (-1)
+#include "../util.h"
+#include "../beamformer_parameters.h"
+#include "../beamformer_work_queue.c"
 
 #define PIPE_RETRY_PERIOD_MS (100ULL)
 
-static volatile BeamformerParametersFull *g_bp;
-static Pipe g_pipe = {.file = INVALID_FILE};
+static BeamformerSharedMemory *g_bp;
 
-#if defined(__unix__)
+#if defined(__linux__)
 #include <fcntl.h>
+#include <linux/futex.h>
 #include <poll.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <time.h>
 #include <unistd.h>
+
+i64 syscall(i64, ...);
 
 #define OS_EXPORT_PIPE_NAME "/tmp/beamformer_output_pipe"
 
@@ -67,6 +48,7 @@ W32(i32)  GetLastError(void);
 W32(iptr) MapViewOfFile(iptr, u32, u32, u32, u64);
 W32(iptr) OpenFileMappingA(u32, b32, c8 *);
 W32(b32)  ReadFile(iptr, u8 *, i32, i32 *, void *);
+W32(i32)  RtlWaitOnAddress(void *, void *, uz, void *);
 W32(void) Sleep(u32);
 W32(void) UnmapViewOfFile(iptr);
 W32(b32)  WriteFile(iptr, u8 *, i32, i32 *, void *);
@@ -88,11 +70,17 @@ void mexWarnMsgIdAndTxt(const c8*, c8*, ...);
 #define warning_msg(...)
 #endif
 
-#if defined(__unix__)
-static Pipe
-os_open_named_pipe(char *name)
+#if defined(__linux__)
+static void
+os_wait_on_value(i32 *value, i32 current, u32 timeout_ms)
 {
-	return (Pipe){.file = open(name, O_WRONLY), .name = name};
+	struct timespec *timeout = 0, timeout_value;
+	if (timeout_ms != U32_MAX) {
+		timeout_value.tv_sec  = timeout_ms / 1000;
+		timeout_value.tv_nsec = (timeout_ms % 1000) * 1000000;
+		timeout = &timeout_value;
+	}
+	syscall(SYS_futex, value, FUTEX_WAIT, current, timeout, 0, 0);
 }
 
 static Pipe
@@ -116,12 +104,12 @@ os_close_pipe(iptr *file, char *name)
 }
 
 static b32
-os_wait_read_pipe(Pipe p, void *buf, size read_size, u32 timeout_ms)
+os_wait_read_pipe(Pipe p, void *buf, iz read_size, u32 timeout_ms)
 {
 	struct pollfd pfd = {.fd = p.file, .events = POLLIN};
-	size total_read = 0;
+	iz total_read = 0;
 	if (poll(&pfd, 1, timeout_ms) > 0) {
-		size r;
+		iz r;
 		do {
 			 r = read(p.file, (u8 *)buf + total_read, read_size - total_read);
 			 if (r > 0) total_read += r;
@@ -130,47 +118,32 @@ os_wait_read_pipe(Pipe p, void *buf, size read_size, u32 timeout_ms)
 	return total_read == read_size;
 }
 
-static size
-os_write(iptr f, void *data, size data_size)
-{
-	size written = 0, w = 0;
-	do {
-		w = write(f, (u8 *)data + written, data_size - written);
-		if (w != -1) written += w;
-	} while (written != data_size && w != 0);
-	return written;
-}
-
-static BeamformerParametersFull *
+static BeamformerSharedMemory *
 os_open_shared_memory_area(char *name)
 {
+	BeamformerSharedMemory *result = 0;
 	i32 fd = shm_open(name, O_RDWR, S_IRUSR|S_IWUSR);
-	if (fd == -1)
-		return NULL;
-
-	BeamformerParametersFull *new;
-	new = mmap(NULL, sizeof(*new), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-	close(fd);
-
-	if (new == MAP_FAILED)
-		return NULL;
-
-	return new;
-}
-
-static void
-os_release_shared_memory(iptr memory, u64 size)
-{
-	munmap((void *)memory, size);
+	if (fd > 0) {
+		void *new = mmap(0, BEAMFORMER_SHARED_MEMORY_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+		if (new != MAP_FAILED)
+			result = new;
+		close(fd);
+	}
+	return result;
 }
 
 #elif defined(_WIN32)
 
-static Pipe
-os_open_named_pipe(char *name)
+static void
+os_wait_on_value(i32 *value, i32 current, u32 timeout_ms)
 {
-	iptr pipe = CreateFileA(name, GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
-	return (Pipe){.file = pipe, .name = name};
+	i64 *timeout = 0, timeout_value;
+	if (timeout_ms != U32_MAX) {
+		/* TODO(rnp): not sure about this one, but this is how wine converts the ms */
+		timeout_value = -(i64)timeout_ms * 10000;
+		timeout       = &timeout_value;
+	}
+	RtlWaitOnAddress(value, &current, sizeof(*value), timeout);
 }
 
 static Pipe
@@ -195,9 +168,9 @@ os_close_pipe(iptr *file, char *name)
 }
 
 static b32
-os_wait_read_pipe(Pipe p, void *buf, size read_size, u32 timeout_ms)
+os_wait_read_pipe(Pipe p, void *buf, iz read_size, u32 timeout_ms)
 {
-	size elapsed_ms = 0, total_read = 0;
+	iz elapsed_ms = 0, total_read = 0;
 	while (elapsed_ms <= timeout_ms && read_size != total_read) {
 		u8 data;
 		i32 read;
@@ -221,37 +194,18 @@ os_wait_read_pipe(Pipe p, void *buf, size read_size, u32 timeout_ms)
 	return total_read == read_size;
 }
 
-static size
-os_write(iptr f, void *data, size data_size)
-{
-	i32 written = 0;
-	b32 result = WriteFile(f, (u8 *)data, data_size, &written, 0);
-	if (!result) {
-		i32 error = GetLastError();
-		warning_msg("os_write(data_size = %td): error: %d", data_size, error);
-	}
-	return written;
-}
-
-static BeamformerParametersFull *
+static BeamformerSharedMemory *
 os_open_shared_memory_area(char *name)
 {
+	BeamformerSharedMemory *result = 0;
 	iptr h = OpenFileMappingA(FILE_MAP_ALL_ACCESS, 0, name);
-	if (h == INVALID_FILE)
-		return 0;
+	if (h != INVALID_FILE) {
+		iptr view = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, BEAMFORMER_SHARED_MEMORY_SIZE);
+		result = (BeamformerSharedMemory *)view;
+		CloseHandle(h);
+	}
 
-	BeamformerParametersFull *new;
-	iptr view = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(*new));
-	new = (BeamformerParametersFull *)view;
-	CloseHandle(h);
-
-	return new;
-}
-
-static void
-os_release_shared_memory(iptr memory, u64 size)
-{
-	UnmapViewOfFile(memory);
+	return result;
 }
 
 #endif
@@ -304,9 +258,7 @@ set_beamformer_parameters(char *shm_name, BeamformerParameters *new_bp)
 	if (!check_shared_memory(shm_name))
 		return 0;
 
-	u8 *src = (u8 *)new_bp, *dest = (u8 *)&g_bp->raw;
-	for (size i = 0; i < sizeof(BeamformerParameters); i++)
-		dest[i] = src[i];
+	mem_copy(&g_bp->raw, new_bp, sizeof(BeamformerParameters));
 	g_bp->upload = 1;
 
 	return 1;
@@ -315,37 +267,29 @@ set_beamformer_parameters(char *shm_name, BeamformerParameters *new_bp)
 b32
 send_data(char *pipe_name, char *shm_name, void *data, u32 data_size)
 {
-	b32 result = g_pipe.file != INVALID_FILE;
-	if (!result) {
-		g_pipe = os_open_named_pipe(pipe_name);
-		result = g_pipe.file != INVALID_FILE;
-		if (!result)
-			error_msg("failed to open pipe");
-	}
-	result &= check_shared_memory(shm_name);
-
+	b32 result = check_shared_memory(shm_name) && data_size <= BEAMFORMER_MAX_RF_DATA_SIZE;
 	if (result) {
-		g_bp->raw_data_size = data_size;
-		g_bp->upload        = 1;
+		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
+		if (work) {
+			i32 current = atomic_load(&g_bp->raw_data_sync);
+			if (current) {
+				atomic_inc(&g_bp->raw_data_sync, -current);
+				work->type = BW_UPLOAD_RF_DATA;
+				work->completion_barrier = offsetof(BeamformerSharedMemory, raw_data_sync);
+				mem_copy((u8 *)g_bp + BEAMFORMER_RF_DATA_OFF, data, data_size);
+				g_bp->raw_data_size = data_size;
 
-		size written = os_write(g_pipe.file, data, data_size);
-		result = written == data_size;
-		if (!result) {
-			warning_msg("failed to write data to pipe: retrying...");
-			os_close_pipe(&g_pipe.file, 0);
-			os_release_shared_memory((iptr)g_bp, sizeof(*g_bp));
-			g_bp   = 0;
-			g_pipe = os_open_named_pipe(pipe_name);
-			result = g_pipe.file != INVALID_FILE && check_shared_memory(shm_name);
-			if (result)
-				written = os_write(g_pipe.file, data, data_size);
-			result = written == data_size;
-			if (!result)
-				warning_msg("failed again, wrote %ld/%u\ngiving up",
-				            written, data_size);
+				beamform_work_queue_push_commit(&g_bp->external_work_queue);
+
+				g_bp->start_compute = 1;
+				/* TODO(rnp): set timeout on acquiring the lock instead of this */
+				os_wait_on_value(&g_bp->raw_data_sync, 0, -1);
+			} else {
+				warning_msg("failed to acquire raw data lock");
+				result = 0;
+			}
 		}
 	}
-
 	return result;
 }
 
@@ -383,7 +327,7 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, u32 data
 
 	b32 result = send_data(pipe_name, shm_name, data, data_size);
 	if (result) {
-		size output_size = output_points.x * output_points.y * output_points.z * sizeof(f32) * 2;
+		iz output_size = output_points.x * output_points.y * output_points.z * sizeof(f32) * 2;
 		result = os_wait_read_pipe(export_pipe, out_data, output_size, timeout_ms);
 		if (!result)
 			warning_msg("failed to read full export data from pipe");
@@ -391,7 +335,6 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, u32 data
 
 	os_disconnect_pipe(export_pipe);
 	os_close_pipe(&export_pipe.file, export_pipe.name);
-	os_close_pipe(&g_pipe.file, 0);
 
 	return result;
 }

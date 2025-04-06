@@ -119,13 +119,6 @@ os_file_exists(char *path)
 	return result;
 }
 
-static Pipe
-os_open_named_pipe(char *name)
-{
-	mkfifo(name, 0660);
-	return (Pipe){.file = open(name, O_RDONLY|O_NONBLOCK), .name = name};
-}
-
 static OS_READ_FILE_FN(os_read_file)
 {
 	iz r = 0, total_read = 0;
@@ -140,22 +133,17 @@ static OS_READ_FILE_FN(os_read_file)
 static void *
 os_open_shared_memory_area(char *name, iz cap)
 {
+	void *result = 0;
 	i32 fd = shm_open(name, O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
-	if (fd == -1)
-		return NULL;
-
-	if (ftruncate(fd, cap) == -1) {
+	if (fd > 0) {
+		if (ftruncate(fd, cap) != -1) {
+			void *new = mmap(NULL, cap, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+			if (new != MAP_FAILED)
+				result = new;
+		}
 		close(fd);
-		return NULL;
 	}
-
-	void *new = mmap(NULL, cap, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-	close(fd);
-
-	if (new == MAP_FAILED)
-		return NULL;
-
-	return new;
+	return result;
 }
 
 /* NOTE: complete garbage because there is no standarized copyfile() in POSix */
