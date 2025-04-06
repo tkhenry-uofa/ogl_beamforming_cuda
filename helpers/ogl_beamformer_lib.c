@@ -253,15 +253,43 @@ set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 }
 
 b32
-set_beamformer_parameters(char *shm_name, BeamformerParameters *new_bp)
+beamformer_push_channel_mapping(char *shm_name, i16 *mapping, u32 count, i32 timeout_ms)
 {
-	if (!check_shared_memory(shm_name))
-		return 0;
+	b32 result = check_shared_memory(shm_name) && count <= ARRAY_COUNT(g_bp->channel_mapping);
+	if (result) {
+		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
+		if (work) {
+			/* TODO(rnp): refactor */
+			for (;;) {
+				i32 current = atomic_load(&g_bp->channel_mapping_sync);
+				if (current) {
+					atomic_inc(&g_bp->channel_mapping_sync, -current);
+					break;
+				}
+				os_wait_on_value(&g_bp->channel_mapping_sync, 0, timeout_ms);
+			}
+			work->type = BW_UPLOAD_CHANNEL_MAPPING;
+			work->completion_barrier = offsetof(BeamformerSharedMemory, channel_mapping_sync);
+			mem_copy(g_bp->channel_mapping, mapping, count * sizeof(*mapping));
 
-	mem_copy(&g_bp->raw, new_bp, sizeof(BeamformerParameters));
-	g_bp->upload = 1;
+			beamform_work_queue_push_commit(&g_bp->external_work_queue);
+		}
+	}
+	return result;
+}
 
-	return 1;
+b32
+set_beamformer_parameters(char *shm_name, BeamformerParametersV0 *new_bp)
+{
+	b32 result = 0;
+	result |= beamformer_push_channel_mapping(shm_name, (i16 *)new_bp->channel_mapping,
+	                                          ARRAY_COUNT(new_bp->channel_mapping), 0);
+	if (result) {
+		mem_copy(&g_bp->raw, &new_bp->uforces_channels, sizeof(BeamformerParameters));
+		g_bp->upload = 1;
+	}
+
+	return result;
 }
 
 b32

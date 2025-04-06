@@ -23,7 +23,7 @@ typedef struct {
 	b32  executable_reloaded;
 } BeamformerInput;
 
-#define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims, u16 *channel_mapping)
+#define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims, i16 *channel_mapping)
 typedef INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_fn);
 INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_stub) {}
 
@@ -85,6 +85,8 @@ typedef struct {
 	u32 hadamard_texture;
 
 	u32 shared_ubo;
+
+	u32 channel_mapping_texture;
 
 	f32 processing_progress;
 	b32 processing_compute;

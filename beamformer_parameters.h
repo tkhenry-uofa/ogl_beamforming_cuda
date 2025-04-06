@@ -54,8 +54,21 @@ typedef enum {
 	X(f_number,              f32, , float, , "/* F# (set to 0 to disable) */")                                     \
 	X(interpolate,           b32, , bool,  , "/* Perform Cubic Interpolation of RF Samples */")
 
-#define BEAMFORMER_PARAMS_HEAD \
+#define BEAMFORMER_PARAMS_HEAD_V0 \
 	X(channel_mapping,   u16, [256], uvec4, [32], "/* Transducer Channel to Verasonics Channel */")                           \
+	X(uforces_channels,  u16, [256], uvec4, [32], "/* Channels used for virtual UFORCES elements */")                         \
+	X(focal_depths,      f32, [256], vec4,  [64], "/* [m] Focal Depths for each transmit of a RCA imaging scheme*/")          \
+	X(transmit_angles,   f32, [256], vec4,  [64], "/* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/") \
+	X(xdc_transform,     f32, [16] , mat4,      , "/* IMPORTANT: column major order */")                                      \
+	X(dec_data_dim,      uv4,      , uvec4,     , "/* Samples * Channels * Acquisitions; last element ignored */")            \
+	X(xdc_element_pitch, f32, [2]  , vec2,      , "/* [m] Transducer Element Pitch {row, col} */")                            \
+	X(rf_raw_dim,        uv2,      , uvec2,     , "/* Raw Data Dimensions */")                                                \
+	X(transmit_mode,     i32,      , int,       , "/* Method/Orientation of Transmit */")                                     \
+	X(decode,            u32,      , uint,      , "/* Decode or just reshape data */")                                        \
+	X(das_shader_id,     u32,      , uint,      , "")                                                                         \
+	X(time_offset,       f32,      , float,     , "/* pulse length correction time [s] */")
+
+#define BEAMFORMER_PARAMS_HEAD \
 	X(uforces_channels,  u16, [256], uvec4, [32], "/* Channels used for virtual UFORCES elements */")                         \
 	X(focal_depths,      f32, [256], vec4,  [64], "/* [m] Focal Depths for each transmit of a RCA imaging scheme*/")          \
 	X(transmit_angles,   f32, [256], vec4,  [64], "/* [radians] Transmit Angles for each transmit of a RCA imaging scheme*/") \
@@ -73,7 +86,15 @@ typedef enum {
 	X(readi_group_size, u32, , uint, , "/* Size of readi transmit group */")
 
 #define X(name, type, size, gltype, glsize, comment) type name size;
-typedef struct { BEAMFORMER_UI_PARAMS } BeamformerUIParameters;
+typedef struct { BEAMFORMER_UI_PARAMS }      BeamformerUIParameters;
+typedef struct { BEAMFORMER_PARAMS_HEAD_V0 } BeamformerFixedParametersV0;
+
+typedef struct {
+	BEAMFORMER_PARAMS_HEAD_V0
+	BEAMFORMER_UI_PARAMS
+	BEAMFORMER_PARAMS_TAIL
+	f32 _pad[3];
+} BeamformerParametersV0;
 
 /* NOTE: This struct follows the OpenGL std140 layout. DO NOT modify unless you have
  * read and understood the rules, particulary with regards to _member alignment_ */

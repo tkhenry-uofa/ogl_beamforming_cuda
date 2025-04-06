@@ -305,7 +305,9 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	ctx->shared_memory = os_open_shared_memory_area(OS_SMEM_NAME, BEAMFORMER_SHARED_MEMORY_SIZE);
 	if (!ctx->shared_memory)
 		os_fatal(s8("Get more ram lol\n"));
-	ctx->shared_memory->raw_data_sync = 1;
+	/* TODO(rnp): refactor - this is annoying */
+	ctx->shared_memory->raw_data_sync        = 1;
+	ctx->shared_memory->channel_mapping_sync = 1;
 
 	/* NOTE: default compute shader pipeline */
 	ctx->shared_memory->compute_stages[0]    = CS_DECODE;

@@ -160,7 +160,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		ctx->cuda_lib.register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
 		                                    cs->raw_data_ssbo);
 		ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E,
-		                                      bp->channel_mapping);
+		                                      ctx->shared_memory->channel_mapping);
 		break;
 	}
 
@@ -308,6 +308,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
 		glBindImageTexture(0, csctx->hadamard_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8I);
+		glBindImageTexture(1, csctx->channel_mapping_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16I);
 		glDispatchCompute(ORONE(csctx->dec_data_dim.x / 32),
 		                  ORONE(csctx->dec_data_dim.y / 32),
 		                  ORONE(csctx->dec_data_dim.z));
@@ -548,8 +549,9 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, s8 extra, ComputeShaderReload
 static void
 complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_context, iz barrier_offset)
 {
-	ComputeShaderCtx *cs     = &ctx->csctx;
-	BeamformerParameters *bp = &ctx->shared_memory->raw;
+	ComputeShaderCtx       *cs = &ctx->csctx;
+	BeamformerParameters   *bp = &ctx->shared_memory->raw;
+	BeamformerSharedMemory *sm = ctx->shared_memory;
 
 	BeamformWork *work = beamform_work_queue_pop(q);
 	while (work) {
@@ -578,6 +580,18 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				CS_UNIFORMS
 				#undef X
 			}
+		} break;
+		case BW_UPLOAD_CHANNEL_MAPPING: {
+			ASSERT(!atomic_load(&ctx->shared_memory->channel_mapping_sync));
+			if (!cs->channel_mapping_texture) {
+				glCreateTextures(GL_TEXTURE_1D, 1, &cs->channel_mapping_texture);
+				glTextureStorage1D(cs->channel_mapping_texture, 1, GL_R16I,
+				                   ARRAY_COUNT(sm->channel_mapping));
+				LABEL_GL_OBJECT(GL_TEXTURE, cs->channel_mapping_texture, s8("Channel_Mapping"));
+			}
+			glTextureSubImage1D(cs->channel_mapping_texture, 0, 0,
+			                    ARRAY_COUNT(sm->channel_mapping), GL_RED_INTEGER,
+			                    GL_SHORT, sm->channel_mapping);
 		} break;
 		case BW_UPLOAD_RF_DATA: {
 			ASSERT(!atomic_load(&ctx->shared_memory->raw_data_sync));

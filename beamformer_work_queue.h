@@ -73,8 +73,11 @@ typedef struct {
 	/* TODO(rnp): probably remove this */
 	c8  export_pipe_name[256];
 
-	u16 channel_mapping[256];
-	u16 sparse_elements[256];
+	i32 channel_mapping_sync;
+	i32 sparse_elements_sync;
+
+	i16 channel_mapping[256];
+	i16 sparse_elements[256];
 	v2  transmit_angles_focal_depths[256];
 
 	BeamformWorkQueue external_work_queue;
