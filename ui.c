@@ -299,7 +299,6 @@ struct BeamformerUI {
 	v2  ruler_stop_p;
 	u32 ruler_state;
 
-	b32                 latest_frame_changed;
 	BeamformFrame      *latest_frame;
 	ComputeShaderStats *latest_compute_stats;
 
@@ -768,8 +767,10 @@ view_update(BeamformerUI *ui, BeamformerFrameView *view)
 		/* TODO(rnp): x-z or y-z */
 		target = (uv2){.w = ui->params.output_points.x, .h = ui->params.output_points.z};
 		needs_resize = !uv2_equal(current, target) && !uv2_equal(target, (uv2){0});
-		view->needs_update |= view->frame != ui->latest_frame;
-		view->frame         = ui->latest_frame;
+		if (ui->latest_frame) {
+			view->needs_update |= view->frame != ui->latest_frame;
+			view->frame         = ui->latest_frame;
+		}
 	} break;
 	default: {
 		/* TODO(rnp): add method of setting a target size in frame view */
@@ -778,7 +779,7 @@ view_update(BeamformerUI *ui, BeamformerFrameView *view)
 	} break;
 	}
 
-	if (needs_resize && view->frame) {
+	if (needs_resize) {
 		resize_frame_view(view, target);
 		view->needs_update = 1;
 	}
@@ -813,7 +814,7 @@ frame_view_ready_to_present(BeamformerFrameView *view)
 {
 	uv2 render_size = {.w = view->rendered_view.texture.width,
 	                   .h = view->rendered_view.texture.height};
-	return !uv2_equal((uv2){0}, render_size);
+	return !uv2_equal((uv2){0}, render_size) && view->frame;
 }
 
 static Color
