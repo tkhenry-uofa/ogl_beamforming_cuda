@@ -319,11 +319,10 @@ os_create_thread(Arena arena, iptr user_context, s8 name, os_thread_entry_point_
 	return result;
 }
 
-static void
-os_wait_on_value(i32 *value, i32 current, u32 timeout_ms)
+static OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 {
 	i64 *timeout = 0, timeout_value;
-	if (timeout_ms != U32_MAX) {
+	if (timeout_ms != -1) {
 		/* TODO(rnp): not sure about this one, but this is how wine converts the ms */
 		timeout_value = -(i64)timeout_ms * 10000;
 		timeout       = &timeout_value;

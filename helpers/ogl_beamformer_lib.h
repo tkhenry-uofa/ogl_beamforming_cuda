@@ -36,3 +36,4 @@ LIB_FN b32 beamform_data_synchronized(char *pipe_name, char *shm_name, void *dat
 LIB_FN b32 beamformer_push_channel_mapping(char *shm_name, i16 *mapping, u32 count, i32 timeout_ms);
 LIB_FN b32 beamformer_push_sparse_elements(char *shm_name, i16 *elements, u32 count, i32 timeout_ms);
 LIB_FN b32 beamformer_push_focal_vectors(char *shm_name, f32 *vectors, u32 count, i32 timeout_ms);
+LIB_FN b32 beamformer_push_parameters(char *shm_name, BeamformerParameters *bp, i32 timeout_ms);

@@ -2380,7 +2380,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 
 	/* TODO(rnp): there should be a better way of detecting this */
 	if (ctx->ui_read_params) {
-		mem_copy(&ui->params, &ctx->shared_memory->raw.output_min_coordinate, sizeof(ui->params));
+		mem_copy(&ui->params, &ctx->shared_memory->parameters.output_min_coordinate, sizeof(ui->params));
 		ui->flush_params    = 0;
 		ctx->ui_read_params = 0;
 	}
@@ -2391,12 +2391,16 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 
 	if (ui->flush_params) {
 		validate_ui_parameters(&ui->params);
-		if (!ctx->csctx.processing_compute) {
-			mem_copy(&ctx->shared_memory->raw.output_min_coordinate, &ui->params,
-			         sizeof(ui->params));
-			ui->flush_params    = 0;
-			ctx->shared_memory->upload = 1;
-			ctx->start_compute  = 1;
+		BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
+		if (work && try_wait_sync(&ctx->shared_memory->parameters_sync, 0, ctx->os.wait_on_value)) {
+			work->generic            = (void *)1;
+			work->type               = BW_UPLOAD_PARAMETERS;
+			work->completion_barrier = (iptr)&ctx->shared_memory->parameters_sync;
+			mem_copy(&ctx->shared_memory->parameters.output_min_coordinate,
+			         &ui->params, sizeof(ui->params));
+			beamform_work_queue_push_commit(ctx->beamform_work_queue);
+			ui->flush_params   = 0;
+			ctx->start_compute = 1;
 		}
 	}
 

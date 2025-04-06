@@ -252,11 +252,10 @@ os_create_thread(Arena arena, iptr user_context, s8 name, os_thread_entry_point_
 	return (iptr)result;
 }
 
-static void
-os_wait_on_value(i32 *value, i32 current, u32 timeout_ms)
+static OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 {
 	struct timespec *timeout = 0, timeout_value;
-	if (timeout_ms != U32_MAX) {
+	if (timeout_ms != -1) {
 		timeout_value.tv_sec  = timeout_ms / 1000;
 		timeout_value.tv_nsec = (timeout_ms % 1000) * 1000000;
 		timeout = &timeout_value;

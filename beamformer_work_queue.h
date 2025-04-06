@@ -12,7 +12,7 @@ typedef enum {
 	BW_SEND_FRAME,
 	BW_UPLOAD_CHANNEL_MAPPING,
 	BW_UPLOAD_FOCAL_VECTORS,
-	BW_UPLOAD_PARAMS,
+	BW_UPLOAD_PARAMETERS,
 	BW_UPLOAD_RF_DATA,
 	BW_UPLOAD_SPARSE_ELEMENTS,
 } BeamformWorkType;
@@ -57,7 +57,7 @@ typedef BEAMFORM_WORK_QUEUE_PUSH_COMMIT_FN(beamform_work_queue_push_commit_fn);
 #define BEAMFORMER_MAX_RF_DATA_SIZE   (BEAMFORMER_SHARED_MEMORY_SIZE - BEAMFORMER_RF_DATA_OFF)
 
 typedef struct {
-	BeamformerParameters raw;
+	BeamformerParameters parameters;
 
 	ComputeShaderID compute_stages[16];
 	u32             compute_stages_count;
@@ -66,10 +66,10 @@ typedef struct {
 	u32   raw_data_size;
 
 	/* TODO(rnp): these shouldn't be needed */
-	b32 upload;
 	b32 start_compute;
 	b32 export_next_frame;
 
+	i32 parameters_sync;
 	i32 channel_mapping_sync;
 	i32 sparse_elements_sync;
 	i32 focal_vectors_sync;

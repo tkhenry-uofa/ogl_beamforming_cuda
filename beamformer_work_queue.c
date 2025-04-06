@@ -50,3 +50,21 @@ DEBUG_EXPORT BEAMFORM_WORK_QUEUE_PUSH_COMMIT_FN(beamform_work_queue_push_commit)
 {
 	atomic_add(&q->queue, 1);
 }
+
+static b32
+try_wait_sync(i32 *sync, i32 timeout_ms, os_wait_on_value_fn *os_wait_on_value)
+{
+	b32 result = 0;
+	for (;;) {
+		i32 current = atomic_load(sync);
+		if (current) {
+			atomic_inc(sync, -current);
+			result = 1;
+			break;
+		} else if (!timeout_ms) {
+			break;
+		}
+		os_wait_on_value(sync, 0, timeout_ms);
+	}
+	return result;
+}

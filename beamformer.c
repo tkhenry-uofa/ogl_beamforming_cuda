@@ -106,7 +106,7 @@ static void
 alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 {
 	ComputeShaderCtx *cs     = &ctx->csctx;
-	BeamformerParameters *bp = &ctx->shared_memory->raw;
+	BeamformerParameters *bp = &ctx->shared_memory->parameters;
 
 	uv4 dec_data_dim = bp->dec_data_dim;
 	u32 rf_raw_size  = ctx->shared_memory->raw_data_size;
@@ -388,7 +388,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		ASSERT(frame >= ctx->beamform_frames);
 		ASSERT(frame < ctx->beamform_frames + ARRAY_COUNT(ctx->beamform_frames));
 		u32 base_index   = (u32)(frame - ctx->beamform_frames);
-		u32 to_average   = ctx->shared_memory->raw.output_points.w;
+		u32 to_average   = ctx->shared_memory->parameters.output_points.w;
 		u32 frame_count  = 0;
 		u32 *in_textures = alloc(&arena, u32, MAX_BEAMFORMED_SAVED_FRAMES);
 		ComputeFrameIterator cfi = compute_frame_iterator(ctx, 1 + base_index - to_average,
@@ -552,7 +552,7 @@ static void
 complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_context, iz barrier_offset)
 {
 	ComputeShaderCtx       *cs = &ctx->csctx;
-	BeamformerParameters   *bp = &ctx->shared_memory->raw;
+	BeamformerParameters   *bp = &ctx->shared_memory->parameters;
 	BeamformerSharedMemory *sm = ctx->shared_memory;
 
 	BeamformWork *work = beamform_work_queue_pop(q);
@@ -607,6 +607,12 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			                    ARRAY_COUNT(sm->focal_vectors), GL_RG,
 			                    GL_FLOAT, sm->focal_vectors);
 		} break;
+		case BW_UPLOAD_PARAMETERS: {
+			ASSERT(!atomic_load(&ctx->shared_memory->parameters_sync));
+			glNamedBufferSubData(cs->shared_ubo, 0, sizeof(ctx->shared_memory->parameters),
+				             &ctx->shared_memory->parameters);
+			ctx->ui_read_params = !work->generic;
+		} break;
 		case BW_UPLOAD_RF_DATA: {
 			ASSERT(!atomic_load(&ctx->shared_memory->raw_data_sync));
 
@@ -641,25 +647,20 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			                    GL_SHORT, sm->sparse_elements);
 		} break;
 		case BW_COMPUTE: {
+			BeamformerParameters *bp = &ctx->shared_memory->parameters;
 			atomic_store(&cs->processing_compute, 1);
 			start_renderdoc_capture(gl_context);
 
 			BeamformComputeFrame *frame = work->frame;
-			if (ctx->shared_memory->upload) {
-				glNamedBufferSubData(cs->shared_ubo, 0, sizeof(ctx->shared_memory->raw),
-				                     &ctx->shared_memory->raw);
-				ctx->shared_memory->upload = 0;
-			}
-
 			if (cs->programs[CS_DAS])
 				glProgramUniform1ui(cs->programs[CS_DAS], cs->cycle_t_id, cycle_t++);
 
-			uv3 try_dim = make_valid_test_dim(ctx->shared_memory->raw.output_points.xyz);
+			uv3 try_dim = make_valid_test_dim(bp->output_points.xyz);
 			if (!uv3_equal(try_dim, frame->frame.dim))
 				alloc_beamform_frame(&ctx->gl, &frame->frame, &frame->stats, try_dim,
 				                     s8("Beamformed_Data"), arena);
 
-			if (ctx->shared_memory->raw.output_points.w > 1) {
+			if (bp->output_points.w > 1) {
 				if (!uv3_equal(try_dim, ctx->averaged_frames[0].frame.dim)) {
 					alloc_beamform_frame(&ctx->gl, &ctx->averaged_frames[0].frame,
 					                     &ctx->averaged_frames[0].stats,
@@ -671,10 +672,10 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			}
 
 			frame->in_flight = 1;
-			frame->frame.min_coordinate = ctx->shared_memory->raw.output_min_coordinate;
-			frame->frame.max_coordinate = ctx->shared_memory->raw.output_max_coordinate;
-			frame->frame.das_shader_id  = ctx->shared_memory->raw.das_shader_id;
-			frame->frame.compound_count = ctx->shared_memory->raw.dec_data_dim.z;
+			frame->frame.min_coordinate = bp->output_min_coordinate;
+			frame->frame.max_coordinate = bp->output_max_coordinate;
+			frame->frame.das_shader_id  = bp->das_shader_id;
+			frame->frame.compound_count = bp->dec_data_dim.z;
 
 			b32 did_sum_shader = 0;
 			u32 stage_count = ctx->shared_memory->compute_stages_count;
@@ -761,7 +762,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		DEBUG_DECL(end_frame_capture   = ctx->os.end_frame_capture);
 	}
 
-	BeamformerParameters *bp = &ctx->shared_memory->raw;
+	BeamformerParameters *bp = &ctx->shared_memory->parameters;
 	if (ctx->shared_memory->start_compute) {
 		ctx->shared_memory->start_compute = 0;
 		BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
@@ -776,7 +777,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 					iptr f = ctx->os.open_for_write(ctx->shared_memory->export_pipe_name);
 					export->type = BW_SAVE_FRAME;
 					export->output_frame_ctx.file_handle = f;
-					if (ctx->shared_memory->raw.output_points.w > 1) {
+					if (bp->output_points.w > 1) {
 						u32 a_index = !(ctx->averaged_frame_index %
 						                ARRAY_COUNT(ctx->averaged_frames));
 						BeamformComputeFrame *aframe = ctx->averaged_frames + a_index;
@@ -787,11 +788,6 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 					beamform_work_queue_push_commit(ctx->beamform_work_queue);
 				}
 				ctx->shared_memory->export_next_frame = 0;
-			}
-
-			if (ctx->shared_memory->upload) {
-				/* TODO(rnp): clean this up */
-				ctx->ui_read_params = 1;
 			}
 
 			ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);

@@ -71,11 +71,10 @@ void mexWarnMsgIdAndTxt(const c8*, c8*, ...);
 #endif
 
 #if defined(__linux__)
-static void
-os_wait_on_value(i32 *value, i32 current, u32 timeout_ms)
+static OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 {
 	struct timespec *timeout = 0, timeout_value;
-	if (timeout_ms != U32_MAX) {
+	if (timeout_ms != -1) {
 		timeout_value.tv_sec  = timeout_ms / 1000;
 		timeout_value.tv_nsec = (timeout_ms % 1000) * 1000000;
 		timeout = &timeout_value;
@@ -134,11 +133,10 @@ os_open_shared_memory_area(char *name)
 
 #elif defined(_WIN32)
 
-static void
-os_wait_on_value(i32 *value, i32 current, u32 timeout_ms)
+static OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 {
 	i64 *timeout = 0, timeout_value;
-	if (timeout_ms != U32_MAX) {
+	if (timeout_ms != -1) {
 		/* TODO(rnp): not sure about this one, but this is how wine converts the ms */
 		timeout_value = -(i64)timeout_ms * 10000;
 		timeout       = &timeout_value;
@@ -211,24 +209,6 @@ os_open_shared_memory_area(char *name)
 #endif
 
 static b32
-try_wait_sync(i32 *sync, i32 timeout_ms)
-{
-	b32 result = 0;
-	for (;;) {
-		i32 current = atomic_load(sync);
-		if (current) {
-			atomic_inc(sync, -current);
-			result = 1;
-			break;
-		} else if (!timeout_ms) {
-			break;
-		}
-		os_wait_on_value(sync, 0, timeout_ms);
-	}
-	return result;
-}
-
-static b32
 check_shared_memory(char *name)
 {
 	if (!g_bp) {
@@ -280,7 +260,7 @@ b32 beamformer_push_##name (char *shm_id, dtype *data, u32 count, i32 timeout_ms
 	b32 result = check_shared_memory(shm_id) && count <= ARRAY_COUNT(g_bp->name);             \
 	if (result) {                                                                             \
 		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);        \
-		result = work && try_wait_sync(&g_bp->name##_sync, timeout_ms);                   \
+		result = work && try_wait_sync(&g_bp->name##_sync, timeout_ms, os_wait_on_value); \
 		if (result) {                                                                     \
 			work->type = BW_UPLOAD_##command;                                         \
 			work->completion_barrier = offsetof(BeamformerSharedMemory, name##_sync); \
@@ -294,6 +274,23 @@ BEAMFORMER_UPLOAD_FNS
 #undef X
 
 b32
+beamformer_push_parameters(char *shm_name, BeamformerParameters *bp, i32 timeout_ms)
+{
+	b32 result = check_shared_memory(shm_name);
+	if (result) {
+		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
+		result = work && try_wait_sync(&g_bp->parameters_sync, timeout_ms, os_wait_on_value);
+		if (result) {
+			work->type = BW_UPLOAD_PARAMETERS;
+			work->completion_barrier = offsetof(BeamformerSharedMemory, parameters_sync);
+			mem_copy(&g_bp->parameters, bp, sizeof(g_bp->parameters));
+			beamform_work_queue_push_commit(&g_bp->external_work_queue);
+		}
+	}
+	return result;
+}
+
+b32
 set_beamformer_parameters(char *shm_name, BeamformerParametersV0 *new_bp)
 {
 	b32 result = 0;
@@ -305,12 +302,7 @@ set_beamformer_parameters(char *shm_name, BeamformerParametersV0 *new_bp)
 	for (u32 i = 0; i < ARRAY_COUNT(focal_vectors); i++)
 		focal_vectors[i] = (v2){{new_bp->transmit_angles[i], new_bp->focal_depths[i]}};
 	result |= beamformer_push_focal_vectors(shm_name, (f32 *)focal_vectors, ARRAY_COUNT(focal_vectors), 0);
-
-	if (result) {
-		mem_copy(&g_bp->raw, &new_bp->xdc_transform, sizeof(g_bp->raw));
-		g_bp->upload = 1;
-	}
-
+	result |= beamformer_push_parameters(shm_name, (BeamformerParameters *)&new_bp->xdc_transform, 0);
 	return result;
 }
 
@@ -355,9 +347,9 @@ beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, u32 data
 	if (output_points.z == 0) output_points.z = 1;
 	output_points.w = 1;
 
-	g_bp->raw.output_points.x = output_points.x;
-	g_bp->raw.output_points.y = output_points.y;
-	g_bp->raw.output_points.z = output_points.z;
+	g_bp->parameters.output_points.x = output_points.x;
+	g_bp->parameters.output_points.y = output_points.y;
+	g_bp->parameters.output_points.z = output_points.z;
 	g_bp->export_next_frame   = 1;
 
 	s8 export_name = s8(OS_EXPORT_PIPE_NAME);

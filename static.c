@@ -306,6 +306,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	if (!ctx->shared_memory)
 		os_fatal(s8("Get more ram lol\n"));
 	/* TODO(rnp): refactor - this is annoying */
+	ctx->shared_memory->parameters_sync      = 1;
 	ctx->shared_memory->raw_data_sync        = 1;
 	ctx->shared_memory->channel_mapping_sync = 1;
 	ctx->shared_memory->sparse_elements_sync = 1;
