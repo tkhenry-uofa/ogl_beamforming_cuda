@@ -57,8 +57,7 @@ try_wait_sync(i32 *sync, i32 timeout_ms, os_wait_on_value_fn *os_wait_on_value)
 	b32 result = 0;
 	for (;;) {
 		i32 current = atomic_load(sync);
-		if (current) {
-			atomic_inc(sync, -current);
+		if (current && atomic_cas(sync, &current, 0)) {
 			result = 1;
 			break;
 		} else if (!timeout_ms) {

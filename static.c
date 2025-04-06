@@ -256,10 +256,8 @@ static OS_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
 	for (;;) {
 		for (;;) {
 			i32 current = atomic_load(&ctx->sync_variable);
-			if (current) {
-				atomic_inc(&ctx->sync_variable, -current);
+			if (current && atomic_swap(&ctx->sync_variable, 0) == current)
 				break;
-			}
 
 			ctx->asleep = 1;
 			os_wait_on_value(&ctx->sync_variable, current, -1);
