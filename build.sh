@@ -40,7 +40,7 @@ MINGW64*)
 		${extra_ldflags}
 	;;
 Linux*)
-	glfw="libglfw.so.3"
+	glfw="libglfw.so"
 	glfw_flags="-D_GLFW_X11"
 	raylib="libraylib.so"
 	main="main_linux.c"
@@ -67,22 +67,19 @@ build_raylib()
 	shared)
 		${cc} ${cflags} ${cppflags} -fPIC -shared -DBUILD_LIBTYPE_SHARED \
 		        external/rcore_extended.c \
-		        external/raylib/src/raudio.c external/raylib/src/rmodels.c \
 		        external/raylib/src/rshapes.c external/raylib/src/rtext.c \
 		        external/raylib/src/rtextures.c external/raylib/src/utils.c \
 			-o ${raylib}
 			;;
 	static)
 		${cc} ${cflags} ${cppflags} -c external/rcore_extended.c       -o external/lib/rcore.c.o
-		${cc} ${cflags} ${cppflags} -c external/raylib/src/raudio.c    -o external/lib/raudio.c.o
-		${cc} ${cflags} ${cppflags} -c external/raylib/src/rmodels.c   -o external/lib/rmodels.c.o
 		${cc} ${cflags} ${cppflags} -c external/raylib/src/rshapes.c   -o external/lib/rshapes.c.o
 		${cc} ${cflags} ${cppflags} -c external/raylib/src/rtext.c     -o external/lib/rtext.c.o
 		${cc} ${cflags} ${cppflags} -c external/raylib/src/rtextures.c -o external/lib/rtextures.c.o
 		${cc} ${cflags} ${cppflags} -c external/raylib/src/utils.c     -o external/lib/utils.c.o
-		ar rc external/lib/libraylib.a external/lib/raudio.c.o external/lib/rcore.c.o \
-		      external/lib/rmodels.c.o external/lib/rshapes.c.o external/lib/rtext.c.o \
-		      external/lib/rtextures.c.o external/lib/rtextures.c.o external/lib/utils.c.o
+		ar rc external/lib/libraylib.a external/lib/rcore.c.o external/lib/rshapes.c.o \
+		      external/lib/rtext.c.o external/lib/rtextures.c.o external/lib/rtextures.c.o \
+		      external/lib/utils.c.o
 		;;
 	esac
 }
