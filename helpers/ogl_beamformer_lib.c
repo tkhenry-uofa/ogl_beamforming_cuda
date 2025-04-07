@@ -288,6 +288,24 @@ BEAMFORMER_UPLOAD_FNS
 #undef X
 
 b32
+beamformer_push_data(char *shm_name, void *data, u32 data_size, i32 timeout_ms)
+{
+	b32 result = data_size <= BEAMFORMER_MAX_RF_DATA_SIZE && check_shared_memory(shm_name);
+	if (result) {
+		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
+		result = work && try_wait_sync(&g_bp->raw_data_sync, timeout_ms, os_wait_on_value);
+		if (result) {
+			work->type = BW_UPLOAD_RF_DATA;
+			work->completion_barrier = offsetof(BeamformerSharedMemory, raw_data_sync);
+			mem_copy((u8 *)g_bp + BEAMFORMER_RF_DATA_OFF, data, data_size);
+			g_bp->raw_data_size = data_size;
+			beamform_work_queue_push_commit(&g_bp->external_work_queue);
+		}
+	}
+	return result;
+}
+
+b32
 beamformer_push_parameters(char *shm_name, BeamformerParameters *bp, i32 timeout_ms)
 {
 	b32 result = check_shared_memory(shm_name);
@@ -323,29 +341,11 @@ set_beamformer_parameters(char *shm_name, BeamformerParametersV0 *new_bp)
 b32
 send_data(char *pipe_name, char *shm_name, void *data, u32 data_size)
 {
-	b32 result = check_shared_memory(shm_name) && data_size <= BEAMFORMER_MAX_RF_DATA_SIZE;
+	b32 result = beamformer_push_data(shm_name, data, data_size, 0);
 	if (result) {
-		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
-		if (work) {
-			i32 current = atomic_load(&g_bp->raw_data_sync);
-			if (current) {
-				atomic_swap(&g_bp->raw_data_sync, 0);
-				work->type = BW_UPLOAD_RF_DATA;
-				work->completion_barrier = offsetof(BeamformerSharedMemory, raw_data_sync);
-				mem_copy((u8 *)g_bp + BEAMFORMER_RF_DATA_OFF, data, data_size);
-				g_bp->raw_data_size = data_size;
-
-				beamform_work_queue_push_commit(&g_bp->external_work_queue);
-
-				beamformer_start_compute(shm_name, 0);
-
-				/* TODO(rnp): set timeout on acquiring the lock instead of this */
-				os_wait_on_value(&g_bp->raw_data_sync, 0, -1);
-			} else {
-				warning_msg("failed to acquire raw data lock");
-				result = 0;
-			}
-		}
+		beamformer_start_compute(shm_name, 0);
+		/* TODO(rnp): should we just set timeout on acquiring the lock instead of this? */
+		os_wait_on_value(&g_bp->raw_data_sync, 0, -1);
 	}
 	return result;
 }
