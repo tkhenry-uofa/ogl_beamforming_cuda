@@ -178,7 +178,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 }
 
 static b32
-fill_frame_compute_work(BeamformerCtx *ctx, BeamformWork *work)
+fill_frame_compute_work(BeamformerCtx *ctx, BeamformWork *work, ImagePlaneTag plane)
 {
 	b32 result = 0;
 	if (work) {
@@ -189,6 +189,7 @@ fill_frame_compute_work(BeamformerCtx *ctx, BeamformWork *work)
 		work->frame     = ctx->beamform_frames + frame_index;
 		work->frame->ready_to_present = 0;
 		work->frame->frame.id = frame_id;
+		work->frame->image_plane_tag = plane;
 	}
 	return result;
 }
@@ -572,9 +573,11 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			}
 
 			if (success) {
+				/* TODO(rnp): this check seems off */
 				if (ctx->csctx.raw_data_ssbo) {
 					can_commit = 0;
-					fill_frame_compute_work(ctx, work);
+					ImagePlaneTag plane = ctx->beamform_frames[ctx->display_frame_index].image_plane_tag;
+					fill_frame_compute_work(ctx, work, plane);
 				}
 
 				/* TODO(rnp): remove this */
@@ -704,6 +707,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			if (did_sum_shader) {
 				u32 aframe_index = (ctx->averaged_frame_index %
 				                    ARRAY_COUNT(ctx->averaged_frames));
+				ctx->averaged_frames[aframe_index].image_plane_tag  = frame->image_plane_tag;
 				ctx->averaged_frames[aframe_index].ready_to_present = 1;
 				/* TODO(rnp): not really sure what to do here */
 				mem_copy(&ctx->averaged_frames[aframe_index].stats.times,
@@ -763,11 +767,12 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 	}
 
 	BeamformerParameters *bp = &ctx->shared_memory->parameters;
-	if (ctx->shared_memory->start_compute) {
-		ctx->shared_memory->start_compute = 0;
+	if (ctx->shared_memory->dispatch_compute_sync) {
+		ImagePlaneTag current_plane = ctx->shared_memory->current_image_plane;
+		atomic_store(&ctx->shared_memory->dispatch_compute_sync, 0);
 		BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
 		if (work) {
-			if (fill_frame_compute_work(ctx, work))
+			if (fill_frame_compute_work(ctx, work, current_plane))
 				beamform_work_queue_push_commit(ctx->beamform_work_queue);
 
 			if (ctx->shared_memory->export_next_frame) {
@@ -796,8 +801,9 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 
 	if (ctx->start_compute) {
 		if (ctx->beamform_frames[ctx->display_frame_index].ready_to_present) {
-			BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
-			if (fill_frame_compute_work(ctx, work)) {
+			BeamformWork *work  = beamform_work_queue_push(ctx->beamform_work_queue);
+			ImagePlaneTag plane = ctx->beamform_frames[ctx->display_frame_index].image_plane_tag;
+			if (fill_frame_compute_work(ctx, work, plane)) {
 				beamform_work_queue_push_commit(ctx->beamform_work_queue);
 				ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
 				ctx->start_compute = 0;
@@ -827,7 +833,8 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		frame_to_draw = ctx->beamform_frames + ctx->display_frame_index;
 	}
 
-	draw_ui(ctx, input, frame_to_draw->ready_to_present? &frame_to_draw->frame : 0, &frame_to_draw->stats);
+	draw_ui(ctx, input, frame_to_draw->ready_to_present? &frame_to_draw->frame : 0,
+	        frame_to_draw->image_plane_tag, &frame_to_draw->stats);
 
 	ctx->fsctx.updated = 0;
 

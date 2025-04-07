@@ -31,8 +31,9 @@ LIB_FN b32 send_data(char *pipe_name, char *shm_name, void *data, u32 data_size)
 LIB_FN b32 beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, u32 data_size,
                                       uv4 output_points, f32 *out_data, i32 timeout_ms);
 
-/* NOTE: these functions only queue an upload; you must flush (for now via one of the data functions) */
+LIB_FN b32 beamformer_start_compute(char *shm_name, u32 image_plane_tag);
 
+/* NOTE: these functions only queue an upload; you must flush (data functions or start_compute) */
 LIB_FN b32 beamformer_push_channel_mapping(char *shm_name, i16 *mapping, u32 count, i32 timeout_ms);
 LIB_FN b32 beamformer_push_sparse_elements(char *shm_name, i16 *elements, u32 count, i32 timeout_ms);
 LIB_FN b32 beamformer_push_focal_vectors(char *shm_name, f32 *vectors, u32 count, i32 timeout_ms);

@@ -300,6 +300,7 @@ struct BeamformerUI {
 	u32 ruler_state;
 
 	BeamformFrame      *latest_frame;
+	BeamformFrame      *latest_plane[IPT_LAST];
 	ComputeShaderStats *latest_compute_stats;
 
 	BeamformerUIParameters params;
@@ -2370,13 +2371,14 @@ validate_ui_parameters(BeamformerUIParameters *p)
 }
 
 static void
-draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw,
+draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw, ImagePlaneTag frame_plane,
         ComputeShaderStats *latest_compute_stats)
 {
 	BeamformerUI *ui = ctx->ui;
 
-	ui->latest_frame         = frame_to_draw;
-	ui->latest_compute_stats = latest_compute_stats;
+	ui->latest_frame              = frame_to_draw;
+	ui->latest_plane[frame_plane] = frame_to_draw;
+	ui->latest_compute_stats      = latest_compute_stats;
 
 	/* TODO(rnp): there should be a better way of detecting this */
 	if (ctx->ui_read_params) {

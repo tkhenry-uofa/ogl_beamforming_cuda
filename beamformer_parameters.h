@@ -24,6 +24,20 @@ typedef enum {
 	X(NONE,     0, "None")     \
 	X(HADAMARD, 1, "Hadamard")
 
+/* X(type, id, pretty name) */
+#define IMAGE_PLANE_TAGS \
+	X(XZ,        0, "XZ Plane")        \
+	X(YZ,        1, "YZ Plane")        \
+	X(XY,        2, "XY Plane")        \
+	X(ARBITRARY, 3, "Arbitrary Plane")
+
+typedef enum {
+	#define X(type, id, pretty) IPT_ ##type = id,
+	IMAGE_PLANE_TAGS
+	#undef X
+	IPT_LAST
+} ImagePlaneTag;
+
 /* X(type, id, pretty name, fixed transmits) */
 #define DAS_TYPES \
 	X(FORCES,       0, "FORCES",       1) \

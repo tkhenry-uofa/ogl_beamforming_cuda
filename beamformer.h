@@ -137,6 +137,7 @@ typedef struct BeamformFrame {
 struct BeamformComputeFrame {
 	BeamformFrame      frame;
 	ComputeShaderStats stats;
+	ImagePlaneTag image_plane_tag;
 	b32 in_flight;
 	b32 ready_to_present;
 };

@@ -250,6 +250,20 @@ set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count)
 	return 1;
 }
 
+b32
+beamformer_start_compute(char *shm_name, u32 image_plane_tag)
+{
+	b32 result = image_plane_tag < IPT_LAST && check_shared_memory(shm_name);
+	if (result) {
+		result = !atomic_load(&g_bp->dispatch_compute_sync);
+		if (result) {
+			g_bp->current_image_plane = image_plane_tag;
+			atomic_store(&g_bp->dispatch_compute_sync, 1);
+		}
+	}
+	return result;
+}
+
 #define BEAMFORMER_UPLOAD_FNS \
 	X(channel_mapping, i16, CHANNEL_MAPPING) \
 	X(sparse_elements, i16, SPARSE_ELEMENTS) \
@@ -315,7 +329,7 @@ send_data(char *pipe_name, char *shm_name, void *data, u32 data_size)
 		if (work) {
 			i32 current = atomic_load(&g_bp->raw_data_sync);
 			if (current) {
-				atomic_inc(&g_bp->raw_data_sync, -current);
+				atomic_swap(&g_bp->raw_data_sync, 0);
 				work->type = BW_UPLOAD_RF_DATA;
 				work->completion_barrier = offsetof(BeamformerSharedMemory, raw_data_sync);
 				mem_copy((u8 *)g_bp + BEAMFORMER_RF_DATA_OFF, data, data_size);
@@ -323,7 +337,8 @@ send_data(char *pipe_name, char *shm_name, void *data, u32 data_size)
 
 				beamform_work_queue_push_commit(&g_bp->external_work_queue);
 
-				g_bp->start_compute = 1;
+				beamformer_start_compute(shm_name, 0);
+
 				/* TODO(rnp): set timeout on acquiring the lock instead of this */
 				os_wait_on_value(&g_bp->raw_data_sync, 0, -1);
 			} else {

@@ -65,8 +65,10 @@ typedef struct {
 	i32   raw_data_sync;
 	u32   raw_data_size;
 
+	i32           dispatch_compute_sync;
+	ImagePlaneTag current_image_plane;
+
 	/* TODO(rnp): these shouldn't be needed */
-	b32 start_compute;
 	b32 export_next_frame;
 
 	i32 parameters_sync;
