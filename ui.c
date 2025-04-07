@@ -20,6 +20,7 @@
  * [ ]: draw the ui with a post-order traversal instead of pre-order traversal
  * [ ]: consider V_HOVER_GROUP and use that to implement submenus
  * [ ]: bug: ruler needs to know which view is associated with it
+ * [ ]: menu's need to support nested groups
  */
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -162,10 +163,16 @@ typedef struct {
 	UIViewFlags    flags;
 } UIView;
 
+/* TODO(rnp): opening split for different live views should go in global menu not here */
 /* X(id, text) */
 #define FRAME_VIEW_BUTTONS \
-	X(FV_COPY_HORIZONTAL, "Copy Horizontal") \
-	X(FV_COPY_VERTICAL,   "Copy Vertical")
+	X(FV_COPY_HORIZONTAL,     "Copy Horizontal")                \
+	X(FV_COPY_VERTICAL,       "Copy Vertical")                  \
+	X(FV_LIVE_VIEW,           "Show Latest Frame")              \
+	X(FV_XZ_LIVE_VIEW,        "Show XZ Live View")              \
+	X(FV_YZ_LIVE_VIEW,        "Show YZ Live View")              \
+	X(FV_XY_LIVE_VIEW,        "Show XY Live View")              \
+	X(FV_ARBITRARY_LIVE_VIEW, "Show Arbitrary Plane Live View")
 
 #define X(id, text) UI_BID_ ##id,
 typedef enum {
@@ -240,8 +247,11 @@ typedef struct {
 } ScaleBar;
 
 typedef enum {
-	FVT_INDEXED,
 	FVT_LATEST,
+	#define X(type, id, pretty) FVT_LATEST_ ##type,
+	IMAGE_PLANE_TAGS
+	#undef X
+	FVT_INDEXED,
 	FVT_COPY,
 } BeamformerFrameViewType;
 
@@ -427,8 +437,10 @@ ui_variable_free(BeamformerUI *ui, Variable *var)
 				if (var->type == VT_BEAMFORMER_FRAME_VIEW) {
 					/* TODO(rnp): instead there should be a way of linking these up */
 					BeamformerFrameView *bv = var->u.generic;
-					glDeleteTextures(1, &bv->frame->texture);
-					bv->frame->texture = 0;
+					if (bv->type == FVT_COPY) {
+						glDeleteTextures(1, &bv->frame->texture);
+						bv->frame->texture = 0;
+					}
 					DLLRemove(bv);
 					/* TODO(rnp): hack; use a sentinal */
 					if (bv == ui->views)
@@ -756,6 +768,35 @@ ui_copy_frame(BeamformerUI *ui, Variable *button, RegionSplitDirection direction
 	resize_frame_view(bv, (uv2){.x = bv->frame->dim.x, .y = bv->frame->dim.z});
 }
 
+static void
+ui_set_view_type(BeamformerUI *ui, Variable *view, BeamformerFrameViewType type)
+{
+	ASSERT(view->type == VT_UI_VIEW);
+	ASSERT(type != FVT_COPY);
+
+	BeamformerFrameView *bv = view->u.group.first->u.generic;
+	if (bv->type == FVT_COPY) {
+		glDeleteTextures(1, &bv->frame->texture);
+		SLLPush(bv->frame, ui->frame_freelist);
+	}
+
+	#define X(type, id, pretty) \
+		case FVT_LATEST_ ##type: bv->frame = ui->latest_plane[IPT_ ##type]; break;
+	switch (type) {
+	IMAGE_PLANE_TAGS
+	case FVT_LATEST: bv->frame = ui->latest_frame; break;
+	default:         INVALID_CODE_PATH;            break;
+	}
+	#undef X
+
+	if (bv->frame) {
+		bv->min_coordinate = bv->frame->min_coordinate;
+		bv->max_coordinate = bv->frame->max_coordinate;
+	}
+	bv->type         = type;
+	bv->needs_update = 1;
+}
+
 static b32
 view_update(BeamformerUI *ui, BeamformerFrameView *view)
 {
@@ -764,21 +805,26 @@ view_update(BeamformerUI *ui, BeamformerFrameView *view)
 	uv2 target;
 
 	switch (view->type) {
+	#define X(type, id, pretty) \
+		case FVT_LATEST_ ##type: if (ui->latest_plane[IPT_ ##type]) { \
+			view->needs_update |= view->frame != ui->latest_plane[IPT_ ##type]; \
+			view->frame = ui->latest_plane[IPT_ ##type];                        \
+		} break;
+	IMAGE_PLANE_TAGS
+	#undef X
 	case FVT_LATEST: {
-		/* TODO(rnp): x-z or y-z */
-		target = (uv2){.w = ui->params.output_points.x, .h = ui->params.output_points.z};
-		needs_resize = !uv2_equal(current, target) && !uv2_equal(target, (uv2){0});
 		if (ui->latest_frame) {
 			view->needs_update |= view->frame != ui->latest_frame;
 			view->frame         = ui->latest_frame;
 		}
 	} break;
-	default: {
-		/* TODO(rnp): add method of setting a target size in frame view */
-		target = (uv2){.w = ui->params.output_points.x, .h = ui->params.output_points.z};
-		needs_resize = !uv2_equal(current, target) && !uv2_equal(target, (uv2){0});
-	} break;
+	default: break;
 	}
+
+	/* TODO(rnp): x-z or y-z */
+	/* TODO(rnp): add method of setting a target size in frame view */
+	target = (uv2){.w = ui->params.output_points.x, .h = ui->params.output_points.z};
+	needs_resize = !uv2_equal(current, target) && !uv2_equal(target, (uv2){0});
 
 	if (needs_resize) {
 		resize_frame_view(view, target);
@@ -886,6 +932,10 @@ push_custom_view_title(Stream *s, Variable *var)
 		case FVT_LATEST:  stream_append_s8(s, s8(": Live [")); break;
 		case FVT_COPY:    stream_append_s8(s, s8(": Copy [")); break;
 		case FVT_INDEXED: stream_append_s8(s, s8(": ["));      break;
+		#define X(plane, id, pretty) \
+			case FVT_LATEST_ ##plane: stream_append_s8(s, s8(": " pretty " [")); break;
+		IMAGE_PLANE_TAGS
+		#undef X
 		}
 		stream_append_hex_u64(s, bv->frame? bv->frame->id : 0);
 		stream_append_byte(s, ']');
@@ -2110,6 +2160,12 @@ ui_button_interaction(BeamformerUI *ui, Variable *button)
 	switch (button->u.button) {
 	case UI_BID_FV_COPY_HORIZONTAL: ui_copy_frame(ui, button, RSD_HORIZONTAL);  break;
 	case UI_BID_FV_COPY_VERTICAL:   ui_copy_frame(ui, button, RSD_VERTICAL);    break;
+	case UI_BID_FV_LIVE_VIEW:       ui_set_view_type(ui, button->parent->parent, FVT_LATEST); break;
+	#define X(plane, id, pretty) \
+		case UI_BID_FV_ ##plane ##_LIVE_VIEW: ui_set_view_type(ui, button->parent->parent, \
+		                                                       FVT_LATEST_ ##plane); break;
+	IMAGE_PLANE_TAGS
+	#undef X
 	case UI_BID_CLOSE_VIEW: {
 		Variable *view   = button->parent;
 		Variable *region = view->parent;
