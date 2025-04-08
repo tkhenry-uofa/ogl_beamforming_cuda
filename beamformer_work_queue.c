@@ -60,10 +60,9 @@ try_wait_sync(i32 *sync, i32 timeout_ms, os_wait_on_value_fn *os_wait_on_value)
 		if (current && atomic_cas(sync, &current, 0)) {
 			result = 1;
 			break;
-		} else if (!timeout_ms) {
-			break;
 		}
-		os_wait_on_value(sync, 0, timeout_ms);
+		if (!timeout_ms || !os_wait_on_value(sync, 0, timeout_ms))
+			break;
 	}
 	return result;
 }

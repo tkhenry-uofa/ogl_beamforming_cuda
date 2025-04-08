@@ -96,9 +96,9 @@ W32(void *) MapViewOfFile(iptr, u32, u32, u32, u64);
 W32(b32)    ReadDirectoryChangesW(iptr, u8 *, u32, b32, u32, u32 *, void *, void *);
 W32(b32)    ReadFile(iptr, u8 *, i32, i32 *, void *);
 W32(b32)    ReleaseSemaphore(iptr, i64, i64 *);
-W32(i32)    RtlWakeAddressAll(void *);
-W32(i32)    RtlWaitOnAddress(void *, void *, uz, void *);
 W32(i32)    SetThreadDescription(iptr, u16 *);
+W32(b32)    WaitOnAddress(void *, void *, uz, u32);
+W32(i32)    WakeByAddressAll(void *);
 W32(b32)    WriteFile(iptr, u8 *, i32, i32 *, void *);
 W32(void *) VirtualAlloc(u8 *, iz, u32, u32);
 W32(b32)    VirtualFree(u8 *, iz, u32);
@@ -321,20 +321,14 @@ os_create_thread(Arena arena, iptr user_context, s8 name, os_thread_entry_point_
 
 static OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 {
-	i64 *timeout = 0, timeout_value;
-	if (timeout_ms != -1) {
-		/* TODO(rnp): not sure about this one, but this is how wine converts the ms */
-		timeout_value = -(i64)timeout_ms * 10000;
-		timeout       = &timeout_value;
-	}
-	RtlWaitOnAddress(value, &current, sizeof(*value), timeout);
+	return WaitOnAddress(value, &current, sizeof(*value), timeout_ms);
 }
 
 static OS_WAKE_WAITERS_FN(os_wake_waiters)
 {
 	if (sync) {
 		atomic_inc(sync, 1);
-		RtlWakeAddressAll(sync);
+		WakeByAddressAll(sync);
 	}
 }
 

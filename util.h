@@ -252,7 +252,7 @@ typedef OS_READ_WHOLE_FILE_FN(os_read_whole_file_fn);
 #define OS_READ_FILE_FN(name) iz name(iptr file, void *buf, iz size)
 typedef OS_READ_FILE_FN(os_read_file_fn);
 
-#define OS_WAIT_ON_VALUE_FN(name) void name(i32 *value, i32 current, i32 timeout_ms)
+#define OS_WAIT_ON_VALUE_FN(name) b32 name(i32 *value, i32 current, u32 timeout_ms)
 typedef OS_WAIT_ON_VALUE_FN(os_wait_on_value_fn);
 
 #define OS_WAKE_WAITERS_FN(name) void name(i32 *sync)

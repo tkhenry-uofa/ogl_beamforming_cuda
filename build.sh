@@ -6,7 +6,7 @@ cflags="-march=native -std=c11 -Wall -I./external/include"
 #cflags="${cflags} -fsanitize=address,undefined"
 #cflags="${cflags} -fproc-stat-report"
 #cflags="${cflags} -Rpass-missed=.*"
-libcflags="${cflags} -fPIC -shared -Wno-unused-variable"
+libcflags="${cflags} -fPIC -shared -Wno-unused-function -Wno-unused-variable"
 ldflags="-lm"
 
 cc=${CC:-cc}
@@ -30,8 +30,8 @@ MINGW64*)
 	raylib="libraylib.dll"
 	main="main_w32.c"
 	libname="beamformer.dll"
-	ldflags="${ldflags} -lgdi32 -lwinmm -lntdll"
-	extra_ldflags="-lntdll"
+	ldflags="${ldflags} -lgdi32 -lwinmm -lSynchronization"
+	extra_ldflags="-lSynchronization"
 	if [ ! ${NO_MATLAB} ]; then
 		libcflags="${libcflags} -DMATLAB_CONSOLE"
 		extra_ldflags="${extra_ldflags} -llibmat -llibmex"

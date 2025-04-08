@@ -48,9 +48,9 @@ W32(i32)  GetLastError(void);
 W32(iptr) MapViewOfFile(iptr, u32, u32, u32, u64);
 W32(iptr) OpenFileMappingA(u32, b32, c8 *);
 W32(b32)  ReadFile(iptr, u8 *, i32, i32 *, void *);
-W32(i32)  RtlWaitOnAddress(void *, void *, uz, void *);
 W32(void) Sleep(u32);
 W32(void) UnmapViewOfFile(iptr);
+W32(b32)  WaitOnAddress(void *, void *, uz, i32);
 W32(b32)  WriteFile(iptr, u8 *, i32, i32 *, void *);
 
 #else
@@ -79,7 +79,7 @@ static OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 		timeout_value.tv_nsec = (timeout_ms % 1000) * 1000000;
 		timeout = &timeout_value;
 	}
-	syscall(SYS_futex, value, FUTEX_WAIT, current, timeout, 0, 0);
+	return syscall(SYS_futex, value, FUTEX_WAIT, current, timeout, 0, 0) == 0;
 }
 
 static Pipe
@@ -135,13 +135,9 @@ os_open_shared_memory_area(char *name)
 
 static OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 {
-	i64 *timeout = 0, timeout_value;
-	if (timeout_ms != -1) {
-		/* TODO(rnp): not sure about this one, but this is how wine converts the ms */
-		timeout_value = -(i64)timeout_ms * 10000;
-		timeout       = &timeout_value;
-	}
-	RtlWaitOnAddress(value, &current, sizeof(*value), timeout);
+	/* TODO(rnp): this doesn't work across processes on win32 */
+	return 0;
+	return WaitOnAddress(value, &current, sizeof(*value), timeout_ms);
 }
 
 static Pipe
@@ -345,7 +341,7 @@ send_data(char *pipe_name, char *shm_name, void *data, u32 data_size)
 	if (result) {
 		beamformer_start_compute(shm_name, 0);
 		/* TODO(rnp): should we just set timeout on acquiring the lock instead of this? */
-		os_wait_on_value(&g_bp->raw_data_sync, 0, -1);
+		try_wait_sync(&g_bp->raw_data_sync, -1, os_wait_on_value);
 	}
 	return result;
 }

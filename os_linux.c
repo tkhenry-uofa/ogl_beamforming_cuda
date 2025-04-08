@@ -255,12 +255,12 @@ os_create_thread(Arena arena, iptr user_context, s8 name, os_thread_entry_point_
 static OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 {
 	struct timespec *timeout = 0, timeout_value;
-	if (timeout_ms != -1) {
+	if (timeout_ms != (u32)-1) {
 		timeout_value.tv_sec  = timeout_ms / 1000;
 		timeout_value.tv_nsec = (timeout_ms % 1000) * 1000000;
 		timeout = &timeout_value;
 	}
-	syscall(SYS_futex, value, FUTEX_WAIT, current, timeout, 0, 0);
+	return syscall(SYS_futex, value, FUTEX_WAIT, current, timeout, 0, 0) == 0;
 }
 
 static OS_WAKE_WAITERS_FN(os_wake_waiters)
