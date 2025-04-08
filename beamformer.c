@@ -1,4 +1,12 @@
 /* See LICENSE for license details. */
+/* TODO(rnp):
+ * - make channel_mapping, sparse_elements, focal_vectors into buffer backed textures.
+ *   this way they can all use the same UPLOAD_SUBBUFFER command
+ * - bake compute shader uniform indices (use push_compute_shader_header)
+ * - reinvestigate ring buffer raw_data_ssbo ?
+ * - START_COMPUTE command ?
+ */
+
 #include "beamformer.h"
 #include "beamformer_work_queue.c"
 
@@ -117,18 +125,6 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glCreateBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
 
 	i32 storage_flags = GL_DYNAMIC_STORAGE_BIT;
-	switch (ctx->gl.vendor_id) {
-	case GL_VENDOR_AMD:
-	case GL_VENDOR_ARM:
-	case GL_VENDOR_INTEL:
-		if (cs->raw_data_ssbo)
-			glUnmapNamedBuffer(cs->raw_data_ssbo);
-		storage_flags |= GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT;
-	case GL_VENDOR_NVIDIA:
-		/* NOTE: register_cuda_buffers will handle the updated ssbo */
-		break;
-	}
-
 	glDeleteBuffers(1, &cs->raw_data_ssbo);
 	glCreateBuffers(1, &cs->raw_data_ssbo);
 	glNamedBufferStorage(cs->raw_data_ssbo, rf_raw_size, 0, storage_flags);
@@ -146,23 +142,11 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 		stream_reset(&label, s_widx);
 	}
 
-	i32 map_flags = GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT|GL_MAP_UNSYNCHRONIZED_BIT;
-	switch (ctx->gl.vendor_id) {
-	case GL_VENDOR_AMD:
-	case GL_VENDOR_ARM:
-	case GL_VENDOR_INTEL:
-		cs->raw_data_arena.beg = glMapNamedBufferRange(cs->raw_data_ssbo, 0,
-		                                               rf_raw_size, map_flags);
-		cs->raw_data_arena.end = cs->raw_data_arena.beg + rf_raw_size;
-		break;
-	case GL_VENDOR_NVIDIA:
-		cs->raw_data_arena = ctx->os.alloc_arena(cs->raw_data_arena, rf_raw_size);
-		ctx->cuda_lib.register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
-		                                    cs->raw_data_ssbo);
-		ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E,
-		                                      ctx->shared_memory->channel_mapping);
-		break;
-	}
+	/* NOTE(rnp): these are stubs when CUDA isn't supported */
+	ctx->cuda_lib.register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
+		                            cs->raw_data_ssbo);
+	ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E,
+		                              ctx->shared_memory->channel_mapping);
 
 	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
 	iz   hadamard_elements = dec_data_dim.z * dec_data_dim.z;
@@ -625,17 +609,8 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				alloc_shader_storage(ctx, arena);
 			}
 
-			void *raw_data = (u8 *)ctx->shared_memory + BEAMFORMER_RF_DATA_OFF;
-			switch (ctx->gl.vendor_id) {
-			case GL_VENDOR_AMD:
-			case GL_VENDOR_ARM:
-			case GL_VENDOR_INTEL:
-				mem_copy(cs->raw_data_arena.beg, raw_data, cs->rf_raw_size);
-				break;
-			case GL_VENDOR_NVIDIA:
-				glNamedBufferSubData(cs->raw_data_ssbo, 0, cs->rf_raw_size, raw_data);
-				break;
-			}
+			glNamedBufferSubData(cs->raw_data_ssbo, 0, cs->rf_raw_size,
+			                     (u8 *)ctx->shared_memory + BEAMFORMER_RF_DATA_OFF);
 		} break;
 		case BW_UPLOAD_SPARSE_ELEMENTS: {
 			ASSERT(!atomic_load(&ctx->shared_memory->sparse_elements_sync));
