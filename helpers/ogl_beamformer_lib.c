@@ -135,8 +135,8 @@ os_open_shared_memory_area(char *name)
 
 static OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 {
-	/* TODO(rnp): this doesn't work across processes on win32 */
-	return 0;
+	/* TODO(rnp): this doesn't work across processes on win32 (return 1 to cause a spin wait) */
+	return 1;
 	return WaitOnAddress(value, &current, sizeof(*value), timeout_ms);
 }
 
@@ -373,10 +373,18 @@ send_data(char *pipe_name, char *shm_name, void *data, u32 data_size)
 {
 	b32 result = beamformer_push_data(shm_name, data, data_size, 0);
 	if (result) {
-		beamformer_start_compute(shm_name, 0);
-		/* TODO(rnp): should we just set timeout on acquiring the lock instead of this? */
-		try_wait_sync(&g_bp->raw_data_sync, -1, os_wait_on_value);
-		atomic_store(&g_bp->raw_data_sync, 1);
+		if (beamformer_start_compute(shm_name, 0))
+			/* TODO(rnp): should we just set timeout on acquiring the lock instead of this? */
+			try_wait_sync(&g_bp->raw_data_sync, -1, os_wait_on_value);
+			atomic_store(&g_bp->raw_data_sync, 1);
+		} else {
+			result = 0;
+			/* TODO(rnp): HACK: this is strictly meant for matlab; we need a real
+			 * recovery method. for most (all?) old api uses this won't be hit */
+			warning_msg("failed to start compute after sending data\n"
+			            "library in a borked state\n"
+			            "try calling beamformer_start_compute()");
+		}
 	}
 	return result;
 }
