@@ -376,6 +376,7 @@ send_data(char *pipe_name, char *shm_name, void *data, u32 data_size)
 		beamformer_start_compute(shm_name, 0);
 		/* TODO(rnp): should we just set timeout on acquiring the lock instead of this? */
 		try_wait_sync(&g_bp->raw_data_sync, -1, os_wait_on_value);
+		atomic_store(&g_bp->raw_data_sync, 1);
 	}
 	return result;
 }
