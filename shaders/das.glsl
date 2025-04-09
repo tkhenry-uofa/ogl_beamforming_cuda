@@ -49,7 +49,7 @@ vec2 sample_rf(int ridx, float t)
 
 vec3 calc_image_point(vec3 voxel)
 {
-	ivec3 out_data_dim = imageSize(u_out_data_tex);
+	vec3 out_data_dim  = vec3(imageSize(u_out_data_tex));
 	vec4 output_size   = abs(output_max_coordinate - output_min_coordinate);
 	vec3 image_point   = output_min_coordinate.xyz + voxel * output_size.xyz / out_data_dim;
 
@@ -205,22 +205,20 @@ vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 
 	image_point  = (xdc_transform * vec4(image_point, 1)).xyz;
 
-	vec3 focal_point_offset = vec3(0, delta.y * floor(dec_data_dim.y / 2), 0);
-	delta.y = 0;
-
 	vec2 sum = vec2(0);
 	for (int i = uforces; i < dec_data_dim.z; i++) {
-		int   channel       = imageLoad(sparse_elements, i - uforces).x;
-		vec2  rdist         = vec2(image_point.x, image_point.z);
-		vec3  focal_point   = channel * delta + focal_point_offset;
-		float transmit_dist = distance(image_point, focal_point);
+		int   channel        = imageLoad(sparse_elements, i - uforces).x;
+		vec2  recieve_point  = image_point.xz;
+		vec3  element_center = delta * vec3(channel, floor(dec_data_dim.y / 2), 0);
+		float transmit_dist  = distance(image_point, element_center);
 
 		for (uint j = 0; j < dec_data_dim.y; j++) {
-			float sidx  = sample_index(transmit_dist + length(rdist));
+			float sidx  = sample_index(transmit_dist + length(recieve_point));
 			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
-			sum        += apodize(sample_rf(ridx, sidx), apodization_arg, rdist.x) * valid;
-			rdist.x    -= delta.x;
+			sum        += valid * apodize(sample_rf(ridx, sidx), apodization_arg,
+			                              recieve_point.x);
 			ridx       += int(dec_data_dim.x);
+			recieve_point.x -= delta.x;
 		}
 	}
 	return sum;
