@@ -602,7 +602,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 		case BW_UPLOAD_PARAMETERS:
 		case BW_UPLOAD_PARAMETERS_HEAD:
 		case BW_UPLOAD_PARAMETERS_UI: {
-			ASSERT(!atomic_load((i32 *)((u8 *)ctx->shared_memory + work->completion_barrier)));
+			ASSERT(!atomic_load((i32 *)(barrier_offset + work->completion_barrier)));
 			glNamedBufferSubData(cs->shared_ubo, 0, sizeof(ctx->shared_memory->parameters),
 				             &ctx->shared_memory->parameters);
 			ctx->ui_read_params = work->type != BW_UPLOAD_PARAMETERS_HEAD && !work->generic;
