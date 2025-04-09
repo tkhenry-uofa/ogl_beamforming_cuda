@@ -21,6 +21,7 @@
  * [ ]: consider V_HOVER_GROUP and use that to implement submenus
  * [ ]: bug: ruler needs to know which view is associated with it
  * [ ]: menu's need to support nested groups
+ * [ ]: bug: ruler mark stays active when a frame is removed?
  */
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -788,11 +789,6 @@ ui_set_view_type(BeamformerUI *ui, Variable *view, BeamformerFrameViewType type)
 	default:         INVALID_CODE_PATH;            break;
 	}
 	#undef X
-
-	if (bv->frame) {
-		bv->min_coordinate = bv->frame->min_coordinate;
-		bv->max_coordinate = bv->frame->max_coordinate;
-	}
 	bv->type         = type;
 	bv->needs_update = 1;
 }
@@ -807,15 +803,19 @@ view_update(BeamformerUI *ui, BeamformerFrameView *view)
 	switch (view->type) {
 	#define X(type, id, pretty) \
 		case FVT_LATEST_ ##type: if (ui->latest_plane[IPT_ ##type]) { \
-			view->needs_update |= view->frame != ui->latest_plane[IPT_ ##type]; \
-			view->frame = ui->latest_plane[IPT_ ##type];                        \
+			view->needs_update   |= view->frame != ui->latest_plane[IPT_ ##type]; \
+			view->frame           = ui->latest_plane[IPT_ ##type];                \
+			view->min_coordinate  = ui->params.output_min_coordinate;             \
+			view->max_coordinate  = ui->params.output_max_coordinate;             \
 		} break;
 	IMAGE_PLANE_TAGS
 	#undef X
 	case FVT_LATEST: {
 		if (ui->latest_frame) {
-			view->needs_update |= view->frame != ui->latest_frame;
-			view->frame         = ui->latest_frame;
+			view->needs_update   |= view->frame != ui->latest_frame;
+			view->frame           = ui->latest_frame;
+			view->min_coordinate  = ui->params.output_min_coordinate;
+			view->max_coordinate  = ui->params.output_max_coordinate;
 		}
 	} break;
 	default: break;
@@ -1304,10 +1304,9 @@ static void
 draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect display_rect, v2 mouse)
 {
 	ASSERT(var->type == VT_BEAMFORMER_FRAME_VIEW);
-	BeamformerUIParameters *bp = &ui->params;
-	InteractionState *is       = &ui->interaction;
-	BeamformerFrameView *view  = var->u.generic;
-	BeamformFrame *frame       = view->frame;
+	InteractionState *is      = &ui->interaction;
+	BeamformerFrameView *view = var->u.generic;
+	BeamformFrame *frame      = view->frame;
 
 	v2 txt_s = measure_text(ui->small_font, s8("-288.8 mm"));
 
@@ -1329,9 +1328,8 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		pad.y      = scale_bar_size;
 	}
 
-	/* TODO(rnp): ideally we hook up both versions to view->min/max */
-	v4 min = (view->type == FVT_LATEST)? bp->output_min_coordinate : view->min_coordinate;
-	v4 max = (view->type == FVT_LATEST)? bp->output_max_coordinate : view->max_coordinate;
+	v4 min = view->min_coordinate;
+	v4 max = view->max_coordinate;
 
 	/* TODO(rnp): make this depend on the requested draw orientation (x-z or y-z or x-y) */
 	v2 output_dim = {
