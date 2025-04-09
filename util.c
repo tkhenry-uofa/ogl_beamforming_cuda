@@ -390,7 +390,7 @@ static s8
 c_str_to_s8(char *cstr)
 {
 	s8 result = {.data = (u8 *)cstr};
-	while (*cstr) { result.len++; cstr++; }
+	if (cstr) { while (*cstr) { result.len++; cstr++; } }
 	return result;
 }
 
