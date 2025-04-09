@@ -319,6 +319,40 @@ beamformer_push_parameters(char *shm_name, BeamformerParameters *bp, i32 timeout
 }
 
 b32
+beamformer_push_ui_parameters(char *shm_name, BeamformerUIParameters *bp, i32 timeout_ms)
+{
+	b32 result = check_shared_memory(shm_name);
+	if (result) {
+		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
+		result = work && try_wait_sync(&g_bp->parameters_ui_sync, timeout_ms, os_wait_on_value);
+		if (result) {
+			work->type = BW_UPLOAD_PARAMETERS_UI;
+			work->completion_barrier = offsetof(BeamformerSharedMemory, parameters_ui_sync);
+			mem_copy(&g_bp->parameters_ui, bp, sizeof(g_bp->parameters_ui));
+			beamform_work_queue_push_commit(&g_bp->external_work_queue);
+		}
+	}
+	return result;
+}
+
+b32
+beamformer_push_parameters_head(char *shm_name, BeamformerParametersHead *bp, i32 timeout_ms)
+{
+	b32 result = check_shared_memory(shm_name);
+	if (result) {
+		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
+		result = work && try_wait_sync(&g_bp->parameters_head_sync, timeout_ms, os_wait_on_value);
+		if (result) {
+			work->type = BW_UPLOAD_PARAMETERS_HEAD;
+			work->completion_barrier = offsetof(BeamformerSharedMemory, parameters_head_sync);
+			mem_copy(&g_bp->parameters_head, bp, sizeof(g_bp->parameters_head));
+			beamform_work_queue_push_commit(&g_bp->external_work_queue);
+		}
+	}
+	return result;
+}
+
+b32
 set_beamformer_parameters(char *shm_name, BeamformerParametersV0 *new_bp)
 {
 	b32 result = 0;

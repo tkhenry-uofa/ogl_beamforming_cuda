@@ -97,8 +97,9 @@ typedef enum {
 	X(readi_group_size, u32, , uint, , "/* Size of readi transmit group */")
 
 #define X(name, type, size, gltype, glsize, comment) type name size;
-typedef struct { BEAMFORMER_UI_PARAMS }      BeamformerUIParameters;
-typedef struct { BEAMFORMER_PARAMS_HEAD_V0 } BeamformerFixedParametersV0;
+typedef struct { BEAMFORMER_UI_PARAMS }    BeamformerUIParameters;
+typedef struct { BEAMFORMER_PARAMS_HEAD }  BeamformerParametersHead;
+typedef struct { BEAMFORMER_PARAMS_TAIL }  BeamformerParametersTail;
 
 typedef struct {
 	BEAMFORMER_PARAMS_HEAD_V0

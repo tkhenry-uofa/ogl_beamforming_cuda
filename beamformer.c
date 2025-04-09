@@ -594,11 +594,13 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			                    ARRAY_COUNT(sm->focal_vectors), GL_RG,
 			                    GL_FLOAT, sm->focal_vectors);
 		} break;
-		case BW_UPLOAD_PARAMETERS: {
-			ASSERT(!atomic_load(&ctx->shared_memory->parameters_sync));
+		case BW_UPLOAD_PARAMETERS:
+		case BW_UPLOAD_PARAMETERS_HEAD:
+		case BW_UPLOAD_PARAMETERS_UI: {
+			ASSERT(!atomic_load((i32 *)((u8 *)ctx->shared_memory + work->completion_barrier)));
 			glNamedBufferSubData(cs->shared_ubo, 0, sizeof(ctx->shared_memory->parameters),
 				             &ctx->shared_memory->parameters);
-			ctx->ui_read_params = !work->generic;
+			ctx->ui_read_params = work->type != BW_UPLOAD_PARAMETERS_HEAD && !work->generic;
 		} break;
 		case BW_UPLOAD_RF_DATA: {
 			ASSERT(!atomic_load(&ctx->shared_memory->raw_data_sync));

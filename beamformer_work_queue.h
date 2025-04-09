@@ -13,6 +13,8 @@ typedef enum {
 	BW_UPLOAD_CHANNEL_MAPPING,
 	BW_UPLOAD_FOCAL_VECTORS,
 	BW_UPLOAD_PARAMETERS,
+	BW_UPLOAD_PARAMETERS_HEAD,
+	BW_UPLOAD_PARAMETERS_UI,
 	BW_UPLOAD_RF_DATA,
 	BW_UPLOAD_SPARSE_ELEMENTS,
 } BeamformWorkType;
@@ -57,13 +59,34 @@ typedef BEAMFORM_WORK_QUEUE_PUSH_COMMIT_FN(beamform_work_queue_push_commit_fn);
 #define BEAMFORMER_MAX_RF_DATA_SIZE   (BEAMFORMER_SHARED_MEMORY_SIZE - BEAMFORMER_RF_DATA_OFF)
 
 typedef struct {
-	BeamformerParameters parameters;
+	/* NOTE(rnp): interleaved transmit angle, focal depth pairs */
+	_Alignas(64) v2 focal_vectors[256];
+
+	i16 channel_mapping[256];
+	i16 sparse_elements[256];
+
+	union {
+		BeamformerParameters parameters;
+		struct {
+			BeamformerParametersHead parameters_head;
+			BeamformerUIParameters   parameters_ui;
+			BeamformerParametersTail parameters_tail;
+		};
+	};
 
 	ComputeShaderID compute_stages[16];
 	u32             compute_stages_count;
 
-	i32   raw_data_sync;
-	u32   raw_data_size;
+	i32 parameters_sync;
+	i32 parameters_head_sync;
+	i32 parameters_ui_sync;
+
+	i32 focal_vectors_sync;
+	i32 channel_mapping_sync;
+	i32 sparse_elements_sync;
+
+	i32 raw_data_sync;
+	u32 raw_data_size;
 
 	i32           dispatch_compute_sync;
 	ImagePlaneTag current_image_plane;
@@ -71,18 +94,8 @@ typedef struct {
 	/* TODO(rnp): these shouldn't be needed */
 	b32 export_next_frame;
 
-	i32 parameters_sync;
-	i32 channel_mapping_sync;
-	i32 sparse_elements_sync;
-	i32 focal_vectors_sync;
-
 	/* TODO(rnp): probably remove this */
 	c8  export_pipe_name[256];
-
-	i16 channel_mapping[256];
-	i16 sparse_elements[256];
-	/* NOTE(rnp): interleaved transmit angle, focal depth pairs */
-	v2  focal_vectors[256];
 
 	BeamformWorkQueue external_work_queue;
 } BeamformerSharedMemory;
