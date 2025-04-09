@@ -37,6 +37,10 @@
 
 #define INVALID_CODE_PATH ASSERT(0)
 
+#define function      static
+#define global        static
+#define local_persist static
+
 #define static_assert _Static_assert
 
 /* NOTE: garbage to get the prepocessor to properly stringize the value of a macro */

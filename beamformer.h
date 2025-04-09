@@ -63,8 +63,6 @@ typedef struct {
 #include "beamformer_parameters.h"
 
 #define CS_UNIFORMS \
-	X(CS_DAS,     voxel_offset) \
-	X(CS_DAS,     cycle_t)      \
 	X(CS_MIN_MAX, mips_level)   \
 	X(CS_SUM,     sum_prescale)
 

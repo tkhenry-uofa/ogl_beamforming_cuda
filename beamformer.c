@@ -10,8 +10,8 @@
 #include "beamformer.h"
 #include "beamformer_work_queue.c"
 
-static f32 dt_for_frame;
-static u32 cycle_t;
+global f32 dt_for_frame;
+global u32 cycle_t;
 
 #ifndef _DEBUG
 #define start_renderdoc_capture(...)
@@ -335,6 +335,8 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		glBindImageTexture(1, csctx->sparse_elements_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16I);
 		glBindImageTexture(2, csctx->focal_vectors_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
 
+		glUniform1ui(DAS_CYCLE_T_UNIFORM_LOC, cycle_t++);
+
 		#if 1
 		/* TODO(rnp): compute max_points_per_dispatch based on something like a
 		 * transmit_count * channel_count product */
@@ -349,7 +351,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 			csctx->processing_progress += percent_per_step;
 			/* IMPORTANT(rnp): prevents OS from coalescing and killing our shader */
 			glFinish();
-			glUniform3iv(csctx->voxel_offset_id, 1, offset.E);
+			glUniform3iv(DAS_VOXEL_OFFSET_UNIFORM_LOC, 1, offset.E);
 			glDispatchCompute(cursor.dispatch.x, cursor.dispatch.y, cursor.dispatch.z);
 		}
 		#else
@@ -465,6 +467,9 @@ push_compute_shader_header(Arena *a, ComputeShaderID shader)
 		              "local_size_y = " str(DAS_LOCAL_SIZE_Y) ", "
 		              "local_size_z = " str(DAS_LOCAL_SIZE_Z) ") "
 		              "in;\n\n"));
+
+		push_s8(a, s8("layout(location = " str(DAS_VOXEL_OFFSET_UNIFORM_LOC) ") uniform ivec3 u_voxel_offset;\n"));
+		push_s8(a, s8("layout(location = " str(DAS_CYCLE_T_UNIFORM_LOC)      ") uniform uint  u_cycle_t;\n\n"));
 		#define X(type, id, pretty, fixed_tx) push_s8(a, s8("#define DAS_ID_" #type " " #id "\n"));
 		DAS_TYPES
 		#undef X
@@ -632,9 +637,6 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			start_renderdoc_capture(gl_context);
 
 			BeamformComputeFrame *frame = work->frame;
-			if (cs->programs[CS_DAS])
-				glProgramUniform1ui(cs->programs[CS_DAS], cs->cycle_t_id, cycle_t++);
-
 			uv3 try_dim = make_valid_test_dim(bp->output_points.xyz);
 			if (!uv3_equal(try_dim, frame->frame.dim))
 				alloc_beamform_frame(&ctx->gl, &frame->frame, &frame->stats, try_dim,

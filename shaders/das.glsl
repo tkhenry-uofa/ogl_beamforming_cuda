@@ -7,9 +7,6 @@ layout(rg32f, binding = 0) writeonly restrict uniform image3D  u_out_data_tex;
 layout(r16i,  binding = 1) readonly  restrict uniform iimage1D sparse_elements;
 layout(rg32f, binding = 2) readonly  restrict uniform image1D  focal_vectors;
 
-layout(location = 2) uniform ivec3 u_voxel_offset;
-layout(location = 3) uniform uint  u_cycle_t;
-
 #define C_SPLINE 0.5
 
 #define TX_ROWS 0

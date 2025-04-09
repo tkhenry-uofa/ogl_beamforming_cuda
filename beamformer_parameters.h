@@ -52,6 +52,9 @@ typedef enum {
 #define DAS_LOCAL_SIZE_Y  1
 #define DAS_LOCAL_SIZE_Z 32
 
+#define DAS_VOXEL_OFFSET_UNIFORM_LOC 2
+#define DAS_CYCLE_T_UNIFORM_LOC      3
+
 #define MAX_BEAMFORMED_SAVED_FRAMES 16
 
 /* TODO(rnp): actually use a substruct but generate a header compatible with MATLAB */
