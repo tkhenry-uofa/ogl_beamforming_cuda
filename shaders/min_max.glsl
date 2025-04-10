@@ -1,13 +1,10 @@
 /* See LICENSE for license details. */
 
 /* NOTE: Does a binary search in 3D for smallest and largest output values */
-
-#version 460 core
 layout(local_size_x = 32, local_size_y = 1, local_size_z = 32) in;
 
 layout(rg32f, binding = 0) readonly  uniform image3D u_out_data_tex;
 layout(rg32f, binding = 1) writeonly uniform image3D u_mip_view_tex;
-layout(location = 1)                 uniform int     u_mip_map = 0;
 
 void main()
 {

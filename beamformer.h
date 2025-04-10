@@ -63,9 +63,8 @@ typedef struct {
 #include "beamformer_parameters.h"
 #include "beamformer_work_queue.h"
 
-#define CS_UNIFORMS \
-	X(CS_MIN_MAX, mips_level)   \
-	X(CS_SUM,     sum_prescale)
+#define CS_MIN_MAX_MIPS_LEVEL_UNIFORM_LOC 1
+#define CS_SUM_PRESCALE_UNIFORM_LOC       1
 
 typedef struct {
 	u32 programs[CS_LAST];
@@ -88,10 +87,6 @@ typedef struct {
 
 	uv4 dec_data_dim;
 	u32 rf_raw_size;
-
-	#define X(idx, name) i32 name ## _id;
-	CS_UNIFORMS
-	#undef X
 } ComputeShaderCtx;
 
 typedef enum {

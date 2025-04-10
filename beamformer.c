@@ -1,6 +1,5 @@
 /* See LICENSE for license details. */
 /* TODO(rnp):
- * [ ]: bake compute shader uniform indices (use push_compute_shader_header)
  * [ ]: refactor: BeamformGPUComputeContext
  * [ ]: refactor: compute shader timers should be generated based on the pipeline stage limit
  * [ ]: reinvestigate ring buffer raw_data_ssbo
@@ -196,7 +195,7 @@ do_sum_shader(ComputeShaderCtx *cs, u32 *in_textures, u32 in_texture_count, f32 
 	glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
 
 	glBindImageTexture(0, out_texture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RG32F);
-	glUniform1f(cs->sum_prescale_id, in_scale);
+	glUniform1f(CS_SUM_PRESCALE_UNIFORM_LOC, in_scale);
 	for (u32 i = 0; i < in_texture_count; i++) {
 		glBindImageTexture(1, in_textures[i], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RG32F);
 		glDispatchCompute(ORONE(out_data_dim.x / 32),
@@ -316,7 +315,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		for (u32 i = 1; i < frame->frame.mips; i++) {
 			glBindImageTexture(0, texture, i - 1, GL_TRUE, 0, GL_READ_ONLY,  GL_RG32F);
 			glBindImageTexture(1, texture, i - 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
-			glUniform1i(csctx->mips_level_id, i);
+			glUniform1i(CS_MIN_MAX_MIPS_LEVEL_UNIFORM_LOC, i);
 
 			u32 width  = frame->frame.dim.x >> i;
 			u32 height = frame->frame.dim.y >> i;
@@ -442,18 +441,21 @@ link_program(OS *os, Arena a, u32 shader_id)
 	return result;
 }
 
-static s8
-push_compute_shader_header(Arena *a, ComputeShaderID shader)
+function s8
+push_compute_shader_header(Arena *a, b32 parameters, ComputeShaderID shader)
 {
 	s8 result = {.data = a->beg};
 
+	push_s8(a, s8("#version 460 core\n\n"));
+
 	#define X(name, type, size, gltype, glsize, comment) "\t" #gltype " " #name #glsize "; " comment "\n"
-	push_s8(a, s8("#version 460 core\n\n"
-	              "layout(std140, binding = 0) uniform parameters {\n"
-	              BEAMFORMER_PARAMS_HEAD
-	              BEAMFORMER_UI_PARAMS
-	              BEAMFORMER_PARAMS_TAIL
-	              "};\n\n"));
+	if (parameters) {
+		push_s8(a, s8("layout(std140, binding = 0) uniform parameters {\n"
+		              BEAMFORMER_PARAMS_HEAD
+		              BEAMFORMER_UI_PARAMS
+		              BEAMFORMER_PARAMS_TAIL
+		              "};\n\n"));
+	}
 	#undef X
 
 	switch (shader) {
@@ -480,6 +482,14 @@ push_compute_shader_header(Arena *a, ComputeShaderID shader)
 		DECODE_TYPES
 		#undef X
 	} break;
+	case CS_MIN_MAX: {
+		push_s8(a, s8("layout(location = " str(CS_MIN_MAX_MIPS_LEVEL_UNIFORM_LOC)
+		              ") uniform int u_mip_map;\n\n"));
+	} break;
+	case CS_SUM: {
+		push_s8(a, s8("layout(location = " str(CS_SUM_PRESCALE_UNIFORM_LOC)
+		              ") uniform float u_sum_prescale = 1.0;\n\n"));
+	} break;
 	default: break;
 	}
 	s8 end = push_s8(a, s8("\n#line 1\n"));
@@ -494,10 +504,7 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, s8 extra, ComputeShaderReload
 	b32 result = 0;
 
 	/* NOTE: arena works as stack (since everything here is 1 byte aligned) */
-	s8 header = {.data = tmp.beg};
-	if (csr->needs_header)
-		header = push_compute_shader_header(&tmp, csr->shader);
-
+	s8 header      = push_compute_shader_header(&tmp, csr->needs_header, csr->shader);
 	s8 shader_text = ctx->os.read_whole_file(&tmp, (c8 *)path.data);
 	shader_text.data -= header.len;
 	shader_text.len  += header.len;
@@ -564,11 +571,6 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 					ImagePlaneTag plane = ctx->beamform_frames[ctx->display_frame_index].image_plane_tag;
 					fill_frame_compute_work(ctx, work, plane);
 				}
-
-				/* TODO(rnp): remove this */
-				#define X(idx, name) cs->name##_id = glGetUniformLocation(cs->programs[idx], "u_" #name);
-				CS_UNIFORMS
-				#undef X
 			}
 		} break;
 		case BW_UPLOAD_BUFFER: {

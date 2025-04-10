@@ -1,10 +1,8 @@
-#version 430 core
-
+/* See LICENSE for license details. */
 layout(local_size_x = 32, local_size_y = 1, local_size_z = 32) in;
 
 layout(rg32f, binding = 0)           uniform image3D u_out_img;
 layout(rg32f, binding = 1) readonly  uniform image3D u_in_img;
-layout(location = 1)                 uniform float   u_sum_prescale = 1.0;
 
 void main()
 {
