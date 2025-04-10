@@ -1,5 +1,11 @@
 /* See LICENSE for license details. */
 
+/* TODO(rnp):
+ * [ ]: Have a method for the library caller to take ownership of a "compute context"
+ * [ ]: Upload previously exported data for display. maybe this is a UI thing but doing it
+ *      programatically would be nice.
+ */
+
 /* X(enumarant, number, shader file name, needs header, pretty name) */
 #define COMPUTE_SHADERS \
 	X(CUDA_DECODE,           0, "",         0, "CUDA Decoding")   \

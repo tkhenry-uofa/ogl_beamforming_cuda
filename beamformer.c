@@ -1,10 +1,15 @@
 /* See LICENSE for license details. */
 /* TODO(rnp):
- * - make channel_mapping, sparse_elements, focal_vectors into buffer backed textures.
- *   this way they can all use the same UPLOAD_SUBBUFFER command
- * - bake compute shader uniform indices (use push_compute_shader_header)
- * - reinvestigate ring buffer raw_data_ssbo ?
- * - START_COMPUTE command ?
+ * [ ]: bake compute shader uniform indices (use push_compute_shader_header)
+ * [ ]: refactor: BeamformGPUComputeContext
+ * [ ]: refactor: compute shader timers should be generated based on the pipeline stage limit
+ * [ ]: reinvestigate ring buffer raw_data_ssbo
+ *      - to minimize latency the main thread should manage the subbuffer upload so that the
+ *        compute thread can just keep computing. This way we can keep the copmute thread busy
+ *        with work while we image.
+ *      - In particular we will potentially need multiple GPUComputeContexts so that we
+ *        can overwrite one while the other is in use.
+ *      - make use of glFenceSync to guard buffer uploads
  */
 
 #include "beamformer.h"
@@ -30,14 +35,6 @@ typedef struct {
 	u32 cursor;
 	u32 needed_frames;
 } ComputeFrameIterator;
-
-static iz
-decoded_data_size(ComputeShaderCtx *cs)
-{
-	uv4 dim    = cs->dec_data_dim;
-	iz  result = 2 * sizeof(f32) * dim.x * dim.y * dim.z;
-	return result;
-}
 
 static uv3
 make_valid_test_dim(uv3 in)
@@ -110,14 +107,13 @@ alloc_beamform_frame(GLParams *gp, BeamformFrame *out, ComputeShaderStats *out_s
 	}
 }
 
-static void
-alloc_shader_storage(BeamformerCtx *ctx, Arena a)
+function void
+alloc_shader_storage(BeamformerCtx *ctx, u32 rf_raw_size, Arena a)
 {
-	ComputeShaderCtx *cs     = &ctx->csctx;
+	ComputeShaderCtx     *cs = &ctx->csctx;
 	BeamformerParameters *bp = &ctx->shared_memory->parameters;
 
 	uv4 dec_data_dim = bp->dec_data_dim;
-	u32 rf_raw_size  = ctx->shared_memory->raw_data_size;
 	cs->dec_data_dim = dec_data_dim;
 	cs->rf_raw_size  = rf_raw_size;
 
@@ -130,7 +126,7 @@ alloc_shader_storage(BeamformerCtx *ctx, Arena a)
 	glNamedBufferStorage(cs->raw_data_ssbo, rf_raw_size, 0, storage_flags);
 	LABEL_GL_OBJECT(GL_BUFFER, cs->raw_data_ssbo, s8("Raw_RF_SSBO"));
 
-	iz rf_decoded_size = decoded_data_size(cs);
+	iz rf_decoded_size = 2 * sizeof(f32) * cs->dec_data_dim.x * cs->dec_data_dim.y * cs->dec_data_dim.z;
 	Stream label = stream_alloc(&a, 256);
 	stream_append_s8(&label, s8("Decoded_RF_SSBO_"));
 	u32 s_widx = label.widx;
@@ -575,64 +571,55 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				#undef X
 			}
 		} break;
-		case BW_UPLOAD_CHANNEL_MAPPING: {
-			ASSERT(!atomic_load(&ctx->shared_memory->channel_mapping_sync));
-			if (!cs->channel_mapping_texture) {
-				glCreateTextures(GL_TEXTURE_1D, 1, &cs->channel_mapping_texture);
-				glTextureStorage1D(cs->channel_mapping_texture, 1, GL_R16I,
-				                   ARRAY_COUNT(sm->channel_mapping));
-				LABEL_GL_OBJECT(GL_TEXTURE, cs->channel_mapping_texture, s8("Channel_Mapping"));
-			}
-			glTextureSubImage1D(cs->channel_mapping_texture, 0, 0,
-			                    ARRAY_COUNT(sm->channel_mapping), GL_RED_INTEGER,
-			                    GL_SHORT, sm->channel_mapping);
-		} break;
-		case BW_UPLOAD_FOCAL_VECTORS: {
-			ASSERT(!atomic_load(&ctx->shared_memory->focal_vectors_sync));
-			if (!cs->focal_vectors_texture) {
-				glCreateTextures(GL_TEXTURE_1D, 1, &cs->focal_vectors_texture);
-				glTextureStorage1D(cs->focal_vectors_texture, 1, GL_RG32F,
-				                   ARRAY_COUNT(sm->focal_vectors));
-				LABEL_GL_OBJECT(GL_TEXTURE, cs->focal_vectors_texture, s8("Focal_Vectors"));
-			}
-			glTextureSubImage1D(cs->focal_vectors_texture, 0, 0,
-			                    ARRAY_COUNT(sm->focal_vectors), GL_RG,
-			                    GL_FLOAT, sm->focal_vectors);
-		} break;
-		case BW_UPLOAD_PARAMETERS:
-		case BW_UPLOAD_PARAMETERS_HEAD:
-		case BW_UPLOAD_PARAMETERS_UI: {
+		case BW_UPLOAD_BUFFER: {
 			ASSERT(!atomic_load((i32 *)(barrier_offset + work->completion_barrier)));
-			glNamedBufferSubData(cs->shared_ubo, 0, sizeof(ctx->shared_memory->parameters),
-				             &ctx->shared_memory->parameters);
-			ctx->ui_read_params = work->type != BW_UPLOAD_PARAMETERS_HEAD && !work->generic;
-		} break;
-		case BW_UPLOAD_RF_DATA: {
-			ASSERT(!atomic_load(&ctx->shared_memory->raw_data_sync));
-
-			if (cs->rf_raw_size != ctx->shared_memory->raw_data_size ||
-			    !uv4_equal(cs->dec_data_dim, bp->dec_data_dim))
-			{
-				alloc_shader_storage(ctx, arena);
+			BeamformerUploadContext *uc = &work->upload_context;
+			u32 tex_type, tex_format, tex_element_count, tex_1d = 0, buffer = 0;
+			switch (uc->kind) {
+			case BU_KIND_CHANNEL_MAPPING: {
+				tex_1d            = cs->channel_mapping_texture;
+				tex_type          = GL_SHORT;
+				tex_format        = GL_RED_INTEGER;
+				tex_element_count = ARRAY_COUNT(sm->channel_mapping);
+			} break;
+			case BU_KIND_FOCAL_VECTORS: {
+				tex_1d            = cs->focal_vectors_texture;
+				tex_type          = GL_FLOAT;
+				tex_format        = GL_RG;
+				tex_element_count = ARRAY_COUNT(sm->focal_vectors);
+			} break;
+			case BU_KIND_SPARSE_ELEMENTS: {
+				tex_1d            = cs->sparse_elements_texture;
+				tex_type          = GL_SHORT;
+				tex_format        = GL_RED_INTEGER;
+				tex_element_count = ARRAY_COUNT(sm->sparse_elements);
+			} break;
+			case BU_KIND_PARAMETERS: {
+				ctx->ui_read_params = barrier_offset != 0;
+				buffer = cs->shared_ubo;
+			} break;
+			case BU_KIND_RF_DATA: {
+				if (cs->rf_raw_size != uc->size ||
+				    !uv4_equal(cs->dec_data_dim, bp->dec_data_dim))
+				{
+					alloc_shader_storage(ctx, uc->size, arena);
+				}
+				buffer = cs->raw_data_ssbo;
+			} break;
+			default: INVALID_CODE_PATH; break;
 			}
 
-			glNamedBufferSubData(cs->raw_data_ssbo, 0, cs->rf_raw_size,
-			                     (u8 *)ctx->shared_memory + BEAMFORMER_RF_DATA_OFF);
-		} break;
-		case BW_UPLOAD_SPARSE_ELEMENTS: {
-			ASSERT(!atomic_load(&ctx->shared_memory->sparse_elements_sync));
-			if (!cs->sparse_elements_texture) {
-				glCreateTextures(GL_TEXTURE_1D, 1, &cs->sparse_elements_texture);
-				glTextureStorage1D(cs->sparse_elements_texture, 1, GL_R16I,
-				                   ARRAY_COUNT(sm->sparse_elements));
-				LABEL_GL_OBJECT(GL_TEXTURE, cs->sparse_elements_texture, s8("Sparse_Elements"));
+			if (tex_1d) {
+				glTextureSubImage1D(tex_1d, 0, 0, tex_element_count, tex_format,
+				                    tex_type, (u8 *)sm + uc->shared_memory_offset);
 			}
-			glTextureSubImage1D(cs->sparse_elements_texture, 0, 0,
-			                    ARRAY_COUNT(sm->sparse_elements), GL_RED_INTEGER,
-			                    GL_SHORT, sm->sparse_elements);
+
+			if (buffer) {
+				glNamedBufferSubData(buffer, 0, uc->size,
+				                     (u8 *)sm + uc->shared_memory_offset);
+			}
 		} break;
 		case BW_COMPUTE: {
-			BeamformerParameters *bp = &ctx->shared_memory->parameters;
 			atomic_store(&cs->processing_compute, 1);
 			start_renderdoc_capture(gl_context);
 
@@ -660,8 +647,8 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			frame->frame.compound_count = bp->dec_data_dim.z;
 
 			b32 did_sum_shader = 0;
-			u32 stage_count = ctx->shared_memory->compute_stages_count;
-			ComputeShaderID *stages = ctx->shared_memory->compute_stages;
+			u32 stage_count = sm->compute_stages_count;
+			ComputeShaderID *stages = sm->compute_stages;
 			for (u32 i = 0; i < stage_count; i++) {
 				did_sum_shader |= stages[i] == CS_SUM;
 				frame->stats.timer_active[stages[i]] = 1;
@@ -719,6 +706,28 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			work = beamform_work_queue_pop(q);
 		}
 	}
+}
+
+DEBUG_EXPORT BEAMFORMER_COMPUTE_SETUP_FN(beamformer_compute_setup)
+{
+	BeamformerCtx          *ctx = (BeamformerCtx *)user_context;
+	BeamformerSharedMemory *sm  = ctx->shared_memory;
+	ComputeShaderCtx       *cs  = &ctx->csctx;
+
+	glCreateBuffers(1, &cs->shared_ubo);
+	glNamedBufferStorage(cs->shared_ubo, sizeof(sm->parameters), 0, GL_DYNAMIC_STORAGE_BIT);
+
+	glCreateTextures(GL_TEXTURE_1D, 1, &cs->channel_mapping_texture);
+	glCreateTextures(GL_TEXTURE_1D, 1, &cs->sparse_elements_texture);
+	glCreateTextures(GL_TEXTURE_1D, 1, &cs->focal_vectors_texture);
+	glTextureStorage1D(cs->channel_mapping_texture, 1, GL_R16I,  ARRAY_COUNT(sm->channel_mapping));
+	glTextureStorage1D(cs->sparse_elements_texture, 1, GL_R16I,  ARRAY_COUNT(sm->sparse_elements));
+	glTextureStorage1D(cs->focal_vectors_texture,   1, GL_RG32F, ARRAY_COUNT(sm->focal_vectors));
+
+	LABEL_GL_OBJECT(GL_TEXTURE, cs->channel_mapping_texture, s8("Channel_Mapping"));
+	LABEL_GL_OBJECT(GL_TEXTURE, cs->focal_vectors_texture,   s8("Focal_Vectors"));
+	LABEL_GL_OBJECT(GL_TEXTURE, cs->sparse_elements_texture, s8("Sparse_Elements"));
+	LABEL_GL_OBJECT(GL_BUFFER,  cs->shared_ubo,              s8("Beamformer_Parameters"));
 }
 
 DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)

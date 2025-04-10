@@ -10,14 +10,23 @@ typedef enum {
 	BW_RELOAD_SHADER,
 	BW_SAVE_FRAME,
 	BW_SEND_FRAME,
-	BW_UPLOAD_CHANNEL_MAPPING,
-	BW_UPLOAD_FOCAL_VECTORS,
-	BW_UPLOAD_PARAMETERS,
-	BW_UPLOAD_PARAMETERS_HEAD,
-	BW_UPLOAD_PARAMETERS_UI,
-	BW_UPLOAD_RF_DATA,
-	BW_UPLOAD_SPARSE_ELEMENTS,
+	BW_UPLOAD_BUFFER,
 } BeamformWorkType;
+
+typedef enum {
+	BU_KIND_CHANNEL_MAPPING,
+	BU_KIND_FOCAL_VECTORS,
+	BU_KIND_PARAMETERS,
+	BU_KIND_RF_DATA,
+	BU_KIND_SPARSE_ELEMENTS,
+	BU_KIND_LAST,
+} BeamformerUploadKind;
+
+typedef struct {
+	i32 size;
+	i32 shared_memory_offset;
+	BeamformerUploadKind kind;
+} BeamformerUploadContext;
 
 typedef struct {
 	BeamformComputeFrame *frame;
@@ -28,6 +37,7 @@ typedef struct {
 typedef struct {
 	union {
 		BeamformComputeFrame       *frame;
+		BeamformerUploadContext     upload_context;
 		BeamformOutputFrameContext  output_frame_ctx;
 		ComputeShaderReloadContext *reload_shader_ctx;
 		void                       *generic;
@@ -80,13 +90,10 @@ typedef struct {
 	i32 parameters_sync;
 	i32 parameters_head_sync;
 	i32 parameters_ui_sync;
-
 	i32 focal_vectors_sync;
 	i32 channel_mapping_sync;
 	i32 sparse_elements_sync;
-
 	i32 raw_data_sync;
-	u32 raw_data_size;
 
 	i32           dispatch_compute_sync;
 	ImagePlaneTag current_image_plane;

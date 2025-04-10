@@ -10,6 +10,7 @@ static void *debug_lib;
 #define DEBUG_ENTRY_POINTS \
 	X(beamformer_frame_step)           \
 	X(beamformer_complete_compute)     \
+	X(beamformer_compute_setup)        \
 	X(beamform_work_queue_push)        \
 	X(beamform_work_queue_push_commit)
 
@@ -252,6 +253,8 @@ static OS_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
 	glfwMakeContextCurrent(ctx->window_handle);
 	ctx->gl_context = os_get_native_gl_context(ctx->window_handle);
 
+	beamformer_compute_setup(ctx->user_context, ctx->arena, ctx->gl_context);
+
 	for (;;) {
 		for (;;) {
 			i32 current = atomic_load(&ctx->sync_variable);
@@ -335,11 +338,6 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 #ifdef _DEBUG
 	glEnable(GL_DEBUG_OUTPUT);
 #endif
-
-	/* NOTE: allocate space for Uniform Buffer but don't send anything yet */
-	glCreateBuffers(1, &ctx->csctx.shared_ubo);
-	glNamedBufferStorage(ctx->csctx.shared_ubo, sizeof(BeamformerParameters), 0, GL_DYNAMIC_STORAGE_BIT);
-	LABEL_GL_OBJECT(GL_BUFFER, ctx->csctx.shared_ubo, s8("Beamformer_Parameters"));
 
 	#define X(e, sn, f, nh, pretty_name) do if (s8(f).len > 0) {                 \
 		ComputeShaderReloadContext *csr = push_struct(memory, typeof(*csr)); \

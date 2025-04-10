@@ -2449,11 +2449,13 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 		validate_ui_parameters(&ui->params);
 		BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
 		if (work && try_wait_sync(&ctx->shared_memory->parameters_sync, 0, ctx->os.wait_on_value)) {
-			work->generic            = (void *)1;
-			work->type               = BW_UPLOAD_PARAMETERS;
+			BeamformerUploadContext *uc = &work->upload_context;
+			uc->shared_memory_offset = offsetof(BeamformerSharedMemory, parameters);
+			uc->size = sizeof(ctx->shared_memory->parameters);
+			uc->kind = BU_KIND_PARAMETERS;
+			work->type = BW_UPLOAD_BUFFER;
 			work->completion_barrier = (iptr)&ctx->shared_memory->parameters_sync;
-			mem_copy(&ctx->shared_memory->parameters.output_min_coordinate,
-			         &ui->params, sizeof(ui->params));
+			mem_copy(&ctx->shared_memory->parameters_ui, &ui->params, sizeof(ui->params));
 			beamform_work_queue_push_commit(ctx->beamform_work_queue);
 			ui->flush_params   = 0;
 			ctx->start_compute = 1;

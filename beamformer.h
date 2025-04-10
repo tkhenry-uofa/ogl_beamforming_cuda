@@ -61,6 +61,7 @@ typedef struct {
 } FragmentShaderCtx;
 
 #include "beamformer_parameters.h"
+#include "beamformer_work_queue.h"
 
 #define CS_UNIFORMS \
 	X(CS_MIN_MAX, mips_level)   \
@@ -69,19 +70,18 @@ typedef struct {
 typedef struct {
 	u32 programs[CS_LAST];
 
-	u32 raw_data_ssbo;
-
 	/* NOTE: Decoded data is only relevant in the context of a single frame. We use two
 	 * buffers so that they can be swapped when chaining multiple compute stages */
 	u32 rf_data_ssbos[2];
 	u32 last_output_ssbo_index;
-	u32 hadamard_texture;
 
+	u32 raw_data_ssbo;
 	u32 shared_ubo;
 
 	u32 channel_mapping_texture;
 	u32 sparse_elements_texture;
 	u32 focal_vectors_texture;
+	u32 hadamard_texture;
 
 	f32 processing_progress;
 	b32 processing_compute;
@@ -134,8 +134,6 @@ struct BeamformComputeFrame {
 	b32 in_flight;
 	b32 ready_to_present;
 };
-
-#include "beamformer_work_queue.h"
 
 #define GL_PARAMETERS \
 	X(MAJOR_VERSION,                   version_major,                   "")      \
@@ -202,6 +200,9 @@ struct ComputeShaderReloadContext {
 #define BEAMFORMER_FRAME_STEP_FN(name) void name(BeamformerCtx *ctx, Arena *arena, \
                                                  BeamformerInput *input)
 typedef BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step_fn);
+
+#define BEAMFORMER_COMPUTE_SETUP_FN(name) void name(iptr user_context, Arena arena, iptr gl_context)
+typedef BEAMFORMER_COMPUTE_SETUP_FN(beamformer_compute_setup_fn);
 
 #define BEAMFORMER_COMPLETE_COMPUTE_FN(name) void name(iptr user_context, Arena arena, iptr gl_context)
 typedef BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute_fn);
