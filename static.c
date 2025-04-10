@@ -117,16 +117,11 @@ get_gl_params(GLParams *gl, Stream *err)
 		stream_append_s8(err, c_str_to_s8(vendor));
 		stream_append_byte(err, '\n');
 		os_fatal(stream_to_s8(err));
-		break;
 	}
 
-	glGetIntegerv(GL_MAJOR_VERSION,                 &gl->version_major);
-	glGetIntegerv(GL_MINOR_VERSION,                 &gl->version_minor);
-	glGetIntegerv(GL_MAX_TEXTURE_SIZE,              &gl->max_2d_texture_dim);
-	glGetIntegerv(GL_MAX_3D_TEXTURE_SIZE,           &gl->max_3d_texture_dim);
-	glGetIntegerv(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &gl->max_ssbo_size);
-	glGetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE,        &gl->max_ubo_size);
-	glGetIntegerv(GL_MAX_SERVER_WAIT_TIMEOUT,       &gl->max_server_wait_time);
+	#define X(glname, name, suffix) glGetIntegerv(GL_##glname, &gl->name);
+	GL_PARAMETERS
+	#undef X
 
 	/* NOTE(rnp): sometimes GL_MINOR_VERSION doesn't actually report the drivers
 	 * supported version. Since at this point GL has been fully loaded we can
@@ -157,29 +152,33 @@ dump_gl_params(GLParams *gl, Arena a, OS *os)
 {
 	(void)gl; (void)a;
 #ifdef _DEBUG
+	s8 vendor = s8("vendor:");
+	iz max_width = vendor.len;
+	#define X(glname, name, suffix) if (s8(#name).len > max_width) max_width = s8(#name ":").len;
+	GL_PARAMETERS
+	#undef X
+	max_width++;
+
 	Stream s = arena_stream(&a);
 	stream_append_s8(&s, s8("---- GL Parameters ----\n"));
+	stream_append_s8(&s, vendor);
+	stream_pad(&s, ' ', max_width - vendor.len);
 	switch (gl->vendor_id) {
-	case GL_VENDOR_AMD:    stream_append_s8(&s, s8("Vendor: AMD\n"));    break;
-	case GL_VENDOR_ARM:    stream_append_s8(&s, s8("Vendor: ARM\n"));    break;
-	case GL_VENDOR_INTEL:  stream_append_s8(&s, s8("Vendor: Intel\n"));  break;
-	case GL_VENDOR_NVIDIA: stream_append_s8(&s, s8("Vendor: nVidia\n")); break;
+	case GL_VENDOR_AMD:    stream_append_s8(&s, s8("AMD\n"));    break;
+	case GL_VENDOR_ARM:    stream_append_s8(&s, s8("ARM\n"));    break;
+	case GL_VENDOR_INTEL:  stream_append_s8(&s, s8("Intel\n"));  break;
+	case GL_VENDOR_NVIDIA: stream_append_s8(&s, s8("nVidia\n")); break;
 	}
-	stream_append_s8(&s, s8("Version: "));
-	stream_append_i64(&s, gl->version_major);
-	stream_append_byte(&s, '.');
-	stream_append_i64(&s, gl->version_minor);
-	stream_append_s8(&s, s8("\nMax 1D/2D Texture Dimension: "));
-	stream_append_i64(&s, gl->max_2d_texture_dim);
-	stream_append_s8(&s, s8("\nMax 3D Texture Dimension:    "));
-	stream_append_i64(&s, gl->max_3d_texture_dim);
-	stream_append_s8(&s, s8("\nMax SSBO Size:               "));
-	stream_append_i64(&s, gl->max_ssbo_size);
-	stream_append_s8(&s, s8("\nMax UBO Size:                "));
-	stream_append_i64(&s, gl->max_ubo_size);
-	stream_append_s8(&s, s8("\nMax Server Wait Time [ns]:   "));
-	stream_append_i64(&s, gl->max_server_wait_time);
-	stream_append_s8(&s, s8("\n-----------------------\n"));
+
+	#define X(glname, name, suffix) \
+		stream_append_s8(&s, s8(#name ":"));                \
+		stream_pad(&s, ' ', max_width - s8(#name ":").len); \
+		stream_append_i64(&s, gl->name);                    \
+		stream_append_s8(&s, s8(suffix));                   \
+		stream_append_byte(&s, '\n');
+	GL_PARAMETERS
+	#undef X
+	stream_append_s8(&s, s8("-----------------------\n"));
 	os->write_file(os->stderr, stream_to_s8(&s));
 #endif
 }

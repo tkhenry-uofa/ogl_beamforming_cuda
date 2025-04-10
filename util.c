@@ -252,6 +252,12 @@ stream_append_byte(Stream *s, u8 b)
 }
 
 static void
+stream_pad(Stream *s, u8 b, i32 n)
+{
+	while (n > 0) stream_append_byte(s, b), n--;
+}
+
+static void
 stream_append_s8(Stream *s, s8 str)
 {
 	stream_append(s, str.data, str.len);

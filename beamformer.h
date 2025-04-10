@@ -137,15 +137,22 @@ struct BeamformComputeFrame {
 
 #include "beamformer_work_queue.h"
 
+#define GL_PARAMETERS \
+	X(MAJOR_VERSION,                   version_major,                   "")      \
+	X(MINOR_VERSION,                   version_minor,                   "")      \
+	X(TEXTURE_BUFFER_OFFSET_ALIGNMENT, texture_buffer_offset_alignment, "")      \
+	X(MAX_TEXTURE_BUFFER_SIZE,         max_texture_buffer_size,         "")      \
+	X(MAX_TEXTURE_SIZE,                max_2d_texture_dim,              "")      \
+	X(MAX_3D_TEXTURE_SIZE,             max_3d_texture_dim,              "")      \
+	X(MAX_SHADER_STORAGE_BLOCK_SIZE,   max_ssbo_size,                   "")      \
+	X(MAX_UNIFORM_BLOCK_SIZE,          max_ubo_size,                    "")      \
+	X(MAX_SERVER_WAIT_TIMEOUT,         max_server_wait_time,            " [ns]")
+
 typedef struct {
 	enum gl_vendor_ids vendor_id;
-	i32  version_major;
-	i32  version_minor;
-	i32  max_2d_texture_dim;
-	i32  max_3d_texture_dim;
-	i32  max_ssbo_size;
-	i32  max_ubo_size;
-	i32  max_server_wait_time;
+	#define X(glname, name, suffix) i32 name;
+	GL_PARAMETERS
+	#undef X
 } GLParams;
 
 typedef struct {
