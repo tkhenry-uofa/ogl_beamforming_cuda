@@ -1609,9 +1609,6 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec tex
 	ASSERT(ui_view->type == VT_UI_VIEW);
 	UIView *view = &ui_view->u.view;
 
-	/* TODO(rnp): this should get moved up to draw_variable */
-	hover_var(ui, mouse, r, ui_view);
-
 	if (view->needed_height - r.size.h < view->offset)
 		view->offset = view->needed_height - r.size.h;
 
@@ -1839,6 +1836,7 @@ draw_layout_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 	BeginScissorMode(draw_rect.pos.x, draw_rect.pos.y, draw_rect.size.w, draw_rect.size.h);
 	switch (var->type) {
 	case VT_UI_VIEW: {
+		hover_var(ui, mouse, draw_rect, var);
 		TextSpec text_spec = {.font = &ui->font, .colour = NORMALIZED_FG_COLOUR, .flags = TF_LIMITED};
 		draw_ui_view(ui, var, draw_rect, mouse, text_spec);
 	} break;
@@ -2305,8 +2303,14 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 		((BeamformerFrameView *)frame_view->u.generic)->needs_update = 1;
 	}
 
-	is->type   = IT_NONE;
-	is->active = 0;
+	/* TODO(rnp): HACK: keep menu open when toggling a radio button */
+	if (is->active->flags & V_RADIO_BUTTON && is->active->parent->flags == V_MENU) {
+		is->type   = IT_MENU;
+		is->active = is->active->parent;
+	} else {
+		is->type   = IT_NONE;
+		is->active = 0;
+	}
 }
 
 static void
