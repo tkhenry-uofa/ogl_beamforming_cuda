@@ -1,5 +1,6 @@
 /* See LICENSE for license details. */
 /* TODO(rnp):
+ * [ ]: ui should be in its own thread and that thread should only be concerned with the ui
  * [ ]: scroll bar for views that don't have enough space
  * [ ]: compute times through same path as parameter list ?
  * [ ]: global menu
@@ -22,6 +23,13 @@
  * [ ]: bug: ruler needs to know which view is associated with it
  * [ ]: menu's need to support nested groups
  * [ ]: bug: ruler mark stays active when a frame is removed?
+ * [ ]: don't redraw on every refresh; instead redraw on mouse movement/event or when a new frame
+ *      arrives. For animations the ui can have a list of "timers" which while active will
+ *      do a redraw on every refresh until completed.
+ * [ ]: show full non-truncated string on hover
+ * [ ]: refactor: hovered element type and show hovered element in full even when truncated
+ * [ ]: visual indicator for broken shader stage gh#27
+ * [ ]: power/log scale render toggle gh#32
  */
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -339,16 +347,39 @@ typedef struct {
 	TextFlags flags;
 } TextSpec;
 
-static v2
+function v2
+measure_glyph(Font font, u32 glyph)
+{
+	ASSERT(glyph >= 0x20);
+	v2 result = {.y = font.baseSize};
+	/* NOTE: assumes font glyphs are ordered ASCII */
+	result.x = font.glyphs[glyph - 0x20].advanceX;
+	if (result.x == 0)
+		result.x = (font.recs[glyph - 0x20].width + font.glyphs[glyph - 0x20].offsetX);
+	return result;
+}
+
+function v2
 measure_text(Font font, s8 text)
 {
 	v2 result = {.y = font.baseSize};
+	for (iz i = 0; i < text.len; i++)
+		result.x += measure_glyph(font, text.data[i]).x;
+	return result;
+}
+
+function s8
+clamp_text_to_width(Font font, s8 text, f32 limit)
+{
+	s8  result = text;
+	f32 width  = 0;
 	for (iz i = 0; i < text.len; i++) {
-		/* NOTE: assumes font glyphs are ordered ASCII */
-		i32 idx   = (i32)text.data[i] - 0x20;
-		result.x += font.glyphs[idx].advanceX;
-		if (font.glyphs[idx].advanceX == 0)
-			result.x += (font.recs[idx].width + font.glyphs[idx].offsetX);
+		f32 next = measure_glyph(font, text.data[i]).w;
+		if (width + next > limit) {
+			result.len = i;
+			break;
+		}
+		width += next;
 	}
 	return result;
 }
@@ -1000,18 +1031,13 @@ draw_text(s8 text, v2 pos, TextSpec *ts)
 	}
 
 	v2 result   = measure_text(*ts->font, text);
+	/* TODO(rnp): the size of this should be stored for each font */
 	s8 ellipsis = s8("...");
 	b32 clamped = ts->flags & TF_LIMITED && result.w > ts->limits.size.w;
 	if (clamped) {
-		f32 elipsis_width = measure_text(*ts->font, ellipsis).x;
-		if (elipsis_width < ts->limits.size.w) {
-			/* TODO(rnp): there must be a better way */
-			while (text.len) {
-				text.len--;
-				f32 width = measure_text(*ts->font, text).x;
-				if (width + elipsis_width < ts->limits.size.w)
-					break;
-			}
+		f32 ellipsis_width = measure_text(*ts->font, ellipsis).x;
+		if (ellipsis_width < ts->limits.size.w) {
+			text = clamp_text_to_width(*ts->font, text, ts->limits.size.w - ellipsis_width);
 		} else {
 			text.len     = 0;
 			ellipsis.len = 0;
@@ -1567,10 +1593,10 @@ draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *sta
 	stream_reset(&buf, 0);
 	stream_append_f64_e(&buf, compute_time_sum);
 	stream_append_s8(&buf, s8(" [s]"));
-	v2 rpos = {.x = at.x + max_label_width + LISTING_ITEM_PAD, .y = at.y};
+	v2 rpos = {.x = r.pos.x + max_label_width + LISTING_ITEM_PAD, .y = at.y};
 	text_spec.limits.size.w = r.size.w;
 	draw_text(compute_total, at, &text_spec);
-	text_spec.limits.size.w -= LISTING_ITEM_PAD - max_label_width;
+	text_spec.limits.size.w -= LISTING_ITEM_PAD + max_label_width;
 	at.y -= draw_text(stream_to_s8(&buf), rpos, &text_spec).h;
 
 	v2 result = {.x = r.size.w, .y = at.y - r.pos.y};
