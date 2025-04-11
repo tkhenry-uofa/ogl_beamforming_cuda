@@ -30,6 +30,7 @@
  * [ ]: refactor: hovered element type and show hovered element in full even when truncated
  * [ ]: visual indicator for broken shader stage gh#27
  * [ ]: power/log scale render toggle gh#32
+ * [ ]: V_UP_HIERARCHY, V_DOWN_HIERARCHY - set active interaction to parent or child ?
  */
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -2034,11 +2035,10 @@ update_text_input(InputState *is, Variable *var)
 	var->hover_t  = CLAMP01(var->hover_t);
 
 	/* NOTE: handle multiple input keys on a single frame */
-	i32 key = GetCharPressed();
-	while (key > 0) {
-		if ((is->buf_len == ARRAY_COUNT(is->buf)) || (is->cursor == ARRAY_COUNT(is->buf) - 1))
-			break;
-
+	for (i32 key = GetCharPressed();
+	     is->cursor < ARRAY_COUNT(is->buf) && key > 0;
+	     key = GetCharPressed())
+	{
 		b32 allow_key = ((key >= '0' && key <= '9') || (key == '.') ||
 		                 (key == '-' && is->cursor == 0));
 		if (allow_key) {
@@ -2049,14 +2049,10 @@ update_text_input(InputState *is, Variable *var)
 			is->buf[is->cursor++] = key;
 			is->buf_len++;
 		}
-		key = GetCharPressed();
 	}
 
-	if ((IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) && is->cursor > 0)
-		is->cursor--;
-
-	if ((IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) && is->cursor < is->buf_len)
-		is->cursor++;
+	is->cursor -= (IsKeyPressed(KEY_LEFT)  || IsKeyPressedRepeat(KEY_LEFT))  && is->cursor > 0;
+	is->cursor += (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) && is->cursor < is->buf_len;
 
 	if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && is->cursor > 0) {
 		is->cursor--;
