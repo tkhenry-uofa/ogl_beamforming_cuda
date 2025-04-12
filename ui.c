@@ -31,6 +31,8 @@
  * [ ]: visual indicator for broken shader stage gh#27
  * [ ]: power/log scale render toggle gh#32
  * [ ]: V_UP_HIERARCHY, V_DOWN_HIERARCHY - set active interaction to parent or child ?
+ * [ ]: bug: cross-plane view with different dimensions for each plane
+ * [ ]: bug: vertical axis doesn't always fit in rect
  */
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -211,6 +213,7 @@ typedef enum {
 	V_TEXT           = 1 << 1,
 	V_RADIO_BUTTON   = 1 << 2,
 	V_MENU           = 1 << 3,
+	V_CLOSES_MENU    = 1 << 4,
 	V_CAUSES_COMPUTE = 1 << 29,
 	V_UPDATE_VIEW    = 1 << 30,
 } VariableFlags;
@@ -551,11 +554,9 @@ end_variable_group(Variable *group)
 
 static Variable *
 add_button(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, UIButtonID id,
-           b32 radio, Font font)
+           u32 flags, Font font)
 {
-	u32 flags = V_INPUT;
-	if (radio) flags |= V_RADIO_BUTTON;
-	Variable *result = add_variable(ui, group, arena, name, flags, VT_UI_BUTTON, font);
+	Variable *result = add_variable(ui, group, arena, name, V_INPUT|flags, VT_UI_BUTTON, font);
 	result->u.button = id;
 	return result;
 }
@@ -686,7 +687,7 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	                                                            VG_LIST, ui->small_font);
 	menu->flags  = V_MENU;
 	menu->parent = result;
-	#define X(id, text) add_button(ui, menu, arena, s8(text), UI_BID_ ##id, 0, ui->small_font);
+	#define X(id, text) add_button(ui, menu, arena, s8(text), UI_BID_ ##id, V_CLOSES_MENU, ui->small_font);
 	FRAME_VIEW_BUTTONS
 	#undef X
 
@@ -2287,9 +2288,10 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 	default: INVALID_CODE_PATH;
 	}
 
+	b32 menu_child = is->active->parent && is->active->parent->flags & V_MENU;
+
 	/* TODO(rnp): better way of clearing the state when the parent is a menu */
-	if (is->active->parent && is->active->parent->flags & V_MENU)
-		is->active->hover_t = 0;
+	if (menu_child) is->active->hover_t = 0;
 
 	if (is->active->flags & V_CAUSES_COMPUTE)
 		ui->flush_params = 1;
@@ -2299,8 +2301,7 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 		((BeamformerFrameView *)frame_view->u.generic)->needs_update = 1;
 	}
 
-	/* TODO(rnp): HACK: keep menu open when toggling a radio button */
-	if (is->active->flags & V_RADIO_BUTTON && is->active->parent->flags == V_MENU) {
+	if (menu_child && (is->active->flags & V_CLOSES_MENU) == 0) {
 		is->type   = IT_MENU;
 		is->active = is->active->parent;
 	} else {
