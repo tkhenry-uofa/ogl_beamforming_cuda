@@ -32,7 +32,6 @@
  * [ ]: power/log scale render toggle gh#32
  * [ ]: V_UP_HIERARCHY, V_DOWN_HIERARCHY - set active interaction to parent or child ?
  * [ ]: bug: cross-plane view with different dimensions for each plane
- * [ ]: bug: vertical axis doesn't always fit in rect
  */
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -1337,43 +1336,47 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	BeamformFrame *frame      = view->frame;
 
 	v2 txt_s = measure_text(ui->small_font, s8("-288.8 mm"));
-
-	f32  scale_bar_size = 1.2 * txt_s.x + RULER_TICK_LENGTH;
-	Rect vr             = display_rect;
-
-	v2 pad = {0};
-	if (view->axial_scale_bar_active->u.b32) {
-		vr.pos.x  += 0.5 * ui->small_font.baseSize;
-		vr.size.w  = MAX(0, display_rect.size.w - scale_bar_size);
-		vr.size.h -= ui->small_font.baseSize;
-		pad.x      = scale_bar_size;
-	}
-
-	if (view->lateral_scale_bar_active->u.b32) {
-		vr.pos.y  += 0.5 * ui->small_font.baseSize;
-		vr.size.h  = MAX(0, display_rect.size.h - scale_bar_size);
-		vr.size.w -= ui->small_font.baseSize;
-		pad.y      = scale_bar_size;
-	}
+	f32 scale_bar_size = 1.2 * txt_s.x + RULER_TICK_LENGTH;
 
 	v4 min = view->min_coordinate;
 	v4 max = view->max_coordinate;
+	v2 requested_dim = {.x = max.x - min.x, .y = max.z - min.z};
+	f32 aspect = requested_dim.w / requested_dim.h;
+
+	Rect vr = display_rect;
+	v2 scale_bar_area = {0};
+	if (view->axial_scale_bar_active->u.b32) {
+		vr.pos.y         += 0.5 * ui->small_font.baseSize;
+		scale_bar_area.x += scale_bar_size;
+		scale_bar_area.y += ui->small_font.baseSize;
+	}
+
+	if (view->lateral_scale_bar_active->u.b32) {
+		vr.pos.x         += 0.5 * ui->small_font.baseSize;
+		scale_bar_area.x += ui->small_font.baseSize;
+		scale_bar_area.y += scale_bar_size;
+	}
+
+	vr.size = sub_v2(vr.size, scale_bar_area);
+	if (aspect > 1) vr.size.h = vr.size.w / aspect;
+	else            vr.size.w = vr.size.h * aspect;
+
+	v2 occupied = add_v2(vr.size, scale_bar_area);
+	if (occupied.w > display_rect.size.w) {
+		vr.size.w -= (occupied.w - display_rect.size.w);
+		vr.size.h  = vr.size.w / aspect;
+	} else if (occupied.h > display_rect.size.h) {
+		vr.size.h -= (occupied.h - display_rect.size.h);
+		vr.size.w  = vr.size.h * aspect;
+	}
+	occupied = add_v2(vr.size, scale_bar_area);
+	vr.pos   = add_v2(vr.pos, scale_v2(sub_v2(display_rect.size, occupied), 0.5));
 
 	/* TODO(rnp): make this depend on the requested draw orientation (x-z or y-z or x-y) */
 	v2 output_dim = {
 		.x = frame->max_coordinate.x - frame->min_coordinate.x,
 		.y = frame->max_coordinate.z - frame->min_coordinate.z,
 	};
-	v2 requested_dim = {.x = max.x - min.x, .y = max.z - min.z};
-
-	f32 aspect = requested_dim.h / requested_dim.w;
-	if (display_rect.size.h < (vr.size.w * aspect) + pad.y) {
-		vr.size.w = vr.size.h / aspect;
-	} else {
-		vr.size.h = vr.size.w * aspect;
-	}
-	vr.pos.x += (display_rect.size.w - (vr.size.w + pad.x)) / 2;
-	vr.pos.y += (display_rect.size.h - (vr.size.h + pad.y)) / 2;
 
 	Texture *output = &view->rendered_view.texture;
 	v2 pixels_per_meter = {
