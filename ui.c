@@ -132,7 +132,9 @@ typedef enum {
 	VT_B32,
 	VT_F32,
 	VT_I32,
+	VT_U32,
 	VT_GROUP,
+	VT_CYCLER,
 	VT_BEAMFORMER_VARIABLE,
 	VT_BEAMFORMER_FRAME_VIEW,
 	VT_COMPUTE_STATS_VIEW,
@@ -174,16 +176,10 @@ typedef struct {
 	UIViewFlags    flags;
 } UIView;
 
-/* TODO(rnp): opening split for different live views should go in global menu not here */
 /* X(id, text) */
 #define FRAME_VIEW_BUTTONS \
-	X(FV_COPY_HORIZONTAL,     "Copy Horizontal")                \
-	X(FV_COPY_VERTICAL,       "Copy Vertical")                  \
-	X(FV_LIVE_VIEW,           "Show Latest Frame")              \
-	X(FV_XZ_LIVE_VIEW,        "Show XZ Live View")              \
-	X(FV_YZ_LIVE_VIEW,        "Show YZ Live View")              \
-	X(FV_XY_LIVE_VIEW,        "Show XY Live View")              \
-	X(FV_ARBITRARY_LIVE_VIEW, "Show Arbitrary Plane Live View")
+	X(FV_COPY_HORIZONTAL, "Copy Horizontal") \
+	X(FV_COPY_VERTICAL,   "Copy Vertical")
 
 #define X(id, text) UI_BID_ ##id,
 typedef enum {
@@ -191,6 +187,12 @@ typedef enum {
 	FRAME_VIEW_BUTTONS
 } UIButtonID;
 #undef X
+
+typedef struct {
+	s8 *labels;
+	u32 cycle_length;
+	u32 state;
+} VariableCycler;
 
 typedef struct {
 	s8       suffix;
@@ -227,9 +229,11 @@ struct Variable {
 		RegionSplit         region_split;
 		UIButtonID          button;
 		UIView              view;
+		VariableCycler      cycler;
 		VariableGroup       group;
 		b32                 b32;
 		i32                 i32;
+		u32                 u32;
 		f32                 f32;
 	} u;
 	Variable *next;
@@ -260,9 +264,6 @@ typedef struct {
 
 typedef enum {
 	FVT_LATEST,
-	#define X(type, id, pretty) FVT_LATEST_ ##type,
-	IMAGE_PLANE_TAGS
-	#undef X
 	FVT_INDEXED,
 	FVT_COPY,
 } BeamformerFrameViewType;
@@ -275,6 +276,10 @@ typedef struct BeamformerFrameView {
 
 	v4 min_coordinate;
 	v4 max_coordinate;
+
+	/* NOTE(rnp): if type is LATEST  selects which type of latest to use
+	 *            if typs is INDEXED selects the index */
+	Variable *cycler;
 
 	Variable threshold;
 	Variable dynamic_range;
@@ -321,14 +326,11 @@ struct BeamformerUI {
 	v2  ruler_stop_p;
 	u32 ruler_state;
 
-	BeamformFrame      *latest_frame;
-	BeamformFrame      *latest_plane[IPT_LAST];
+	BeamformFrame      *latest_plane[IPT_LAST + 1];
 	ComputeShaderStats *latest_compute_stats;
 
 	BeamformerUIParameters params;
 	b32                    flush_params;
-
-	iptr                   last_displayed_frame;
 
 	OS *os;
 };
@@ -409,6 +411,7 @@ stream_append_variable(Stream *s, Variable *var)
 	switch (var->type) {
 	case VT_UI_BUTTON:
 	case VT_GROUP: stream_append_s8(s, var->name); break;
+	case VT_B32:   stream_append_s8(s, var->u.b32 ? s8("True") : s8("False")); break;
 	case VT_BEAMFORMER_VARIABLE: {
 		BeamformerVariable *bv = &var->u.beamformer_variable;
 		switch (bv->store_type) {
@@ -421,9 +424,10 @@ stream_append_variable(Stream *s, Variable *var)
 		default: INVALID_CODE_PATH;
 		}
 	} break;
-	case VT_B32: {
-		s8 texts[] = {s8("False"), s8("True")};
-		stream_append_variable_base(s, VT_B32, texts, &var->u.b32);
+	case VT_CYCLER: {
+		u32 index = var->u.cycler.state % var->u.cycler.cycle_length;
+		if (var->u.cycler.labels) stream_append_s8(s, var->u.cycler.labels[index]);
+		else                      stream_append_u64(s, index);
 	} break;
 	case VT_F32: {
 		f32 scale = 1;
@@ -549,6 +553,20 @@ end_variable_group(Variable *group)
 {
 	ASSERT(group->type == VT_GROUP);
 	return group->parent;
+}
+
+function Variable *
+add_variable_cycler(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, Font font,
+                    s8 *labels, u32 label_count)
+{
+	Variable *result = add_variable(ui, group, arena, name, V_INPUT, VT_CYCLER, font);
+	result->u.cycler.cycle_length = label_count;
+	if (labels) {
+		result->u.cycler.labels = alloc(arena, s8, label_count);
+		for (u32 i = 0; i < label_count; i++)
+			result->u.cycler.labels[i] = labels[i];
+	}
+	return result;
 }
 
 static Variable *
@@ -709,6 +727,22 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	bv->dynamic_range.u.f32 = -50.0f;
 	bv->threshold.u.f32     =  40.0f;
 
+	switch (type) {
+	case FVT_LATEST: {
+		#define X(_type, _id, pretty) s8(pretty),
+		local_persist s8 labels[] = { IMAGE_PLANE_TAGS s8("Any") };
+		#undef X
+		bv->cycler = add_variable_cycler(ui, menu, arena, s8("Live: "), ui->small_font,
+		                                 labels, countof(labels));
+		bv->cycler->u.cycler.state = IPT_LAST;
+	} break;
+	case FVT_INDEXED: {
+		bv->cycler = add_variable_cycler(ui, menu, arena, s8("Index: "), ui->small_font,
+		                                 0, MAX_BEAMFORMED_SAVED_FRAMES);
+	} break;
+	default: break;
+	}
+
 	bv->axial_scale_bar_active   = add_variable(ui, menu, arena, s8("Axial Scale Bar"),
 	                                            V_INPUT|V_RADIO_BUTTON, VT_B32, ui->small_font);
 	bv->lateral_scale_bar_active = add_variable(ui, menu, arena, s8("Lateral Scale Bar"),
@@ -801,61 +835,22 @@ ui_copy_frame(BeamformerUI *ui, Variable *button, RegionSplitDirection direction
 	resize_frame_view(bv, (uv2){.x = bv->frame->dim.x, .y = bv->frame->dim.z});
 }
 
-static void
-ui_set_view_type(BeamformerUI *ui, Variable *view, BeamformerFrameViewType type)
-{
-	ASSERT(view->type == VT_UI_VIEW);
-	ASSERT(type != FVT_COPY);
-
-	BeamformerFrameView *bv = view->u.group.first->u.generic;
-	if (bv->type == FVT_COPY) {
-		glDeleteTextures(1, &bv->frame->texture);
-		SLLPush(bv->frame, ui->frame_freelist);
-	}
-
-	#define X(type, id, pretty) \
-		case FVT_LATEST_ ##type: bv->frame = ui->latest_plane[IPT_ ##type]; break;
-	switch (type) {
-	IMAGE_PLANE_TAGS
-	case FVT_LATEST: bv->frame = ui->latest_frame; break;
-	default:         INVALID_CODE_PATH;            break;
-	}
-	#undef X
-	bv->type         = type;
-	bv->needs_update = 1;
-}
-
 static b32
 view_update(BeamformerUI *ui, BeamformerFrameView *view)
 {
 	b32 needs_resize = 0;
 	uv2 current = {.w = view->rendered_view.texture.width, .h = view->rendered_view.texture.height};
-	uv2 target;
-
-	switch (view->type) {
-	#define X(type, id, pretty) \
-		case FVT_LATEST_ ##type: if (ui->latest_plane[IPT_ ##type]) { \
-			view->needs_update   |= view->frame != ui->latest_plane[IPT_ ##type]; \
-			view->frame           = ui->latest_plane[IPT_ ##type];                \
-			view->min_coordinate  = ui->params.output_min_coordinate;             \
-			view->max_coordinate  = ui->params.output_max_coordinate;             \
-		} break;
-	IMAGE_PLANE_TAGS
-	#undef X
-	case FVT_LATEST: {
-		if (ui->latest_frame) {
-			view->needs_update   |= view->frame != ui->latest_frame;
-			view->frame           = ui->latest_frame;
-			view->min_coordinate  = ui->params.output_min_coordinate;
-			view->max_coordinate  = ui->params.output_max_coordinate;
-		}
-	} break;
-	default: break;
+	if (view->type == FVT_LATEST) {
+		u32 index = view->cycler->u.cycler.state % (IPT_LAST + 1);
+		view->needs_update   |= view->frame != ui->latest_plane[index];
+		view->frame           = ui->latest_plane[index];
+		view->min_coordinate  = ui->params.output_min_coordinate;
+		view->max_coordinate  = ui->params.output_max_coordinate;
 	}
 
 	/* TODO(rnp): x-z or y-z */
 	/* TODO(rnp): add method of setting a target size in frame view */
-	target = (uv2){.w = ui->params.output_points.x, .h = ui->params.output_points.z};
+	uv2 target = {.w = ui->params.output_points.x, .h = ui->params.output_points.z};
 	needs_resize = !uv2_equal(current, target) && !uv2_equal(target, (uv2){0});
 
 	if (needs_resize) {
@@ -961,13 +956,18 @@ push_custom_view_title(Stream *s, Variable *var)
 		BeamformerFrameView *bv = var->u.generic;
 		stream_append_s8(s, s8("Frame View"));
 		switch (bv->type) {
-		case FVT_LATEST:  stream_append_s8(s, s8(": Live [")); break;
-		case FVT_COPY:    stream_append_s8(s, s8(": Copy [")); break;
-		case FVT_INDEXED: stream_append_s8(s, s8(": ["));      break;
-		#define X(plane, id, pretty) \
-			case FVT_LATEST_ ##plane: stream_append_s8(s, s8(": " pretty " [")); break;
-		IMAGE_PLANE_TAGS
-		#undef X
+		case FVT_COPY: stream_append_s8(s, s8(": Copy [")); break;
+		case FVT_LATEST: {
+			#define X(plane, id, pretty) s8(": " pretty " ["),
+			local_persist s8 labels[IPT_LAST + 1] = { IMAGE_PLANE_TAGS s8(": Live [") };
+			#undef X
+			stream_append_s8(s, labels[bv->cycler->u.cycler.state % (IPT_LAST + 1)]);
+		} break;
+		case FVT_INDEXED: {
+			stream_append_s8(s, s8(": Index {"));
+			stream_append_u64(s, bv->cycler->u.cycler.state % MAX_BEAMFORMED_SAVED_FRAMES);
+			stream_append_s8(s, s8("} ["));
+		} break;
 		}
 		stream_append_hex_u64(s, bv->frame? bv->frame->id : 0);
 		stream_append_byte(s, ']');
@@ -1814,7 +1814,9 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 	at = start;
 	while (item) {
 		at.x = start.x;
-		if (item->flags & V_RADIO_BUTTON) {
+		if (item->type == VT_CYCLER) {
+			at.x += draw_text(item->name, at, &text_spec).x;
+		} else if (item->flags & V_RADIO_BUTTON) {
 			draw_text(item->name, at, &text_spec);
 			at.x += max_label_width + 8;
 		}
@@ -1960,6 +1962,7 @@ scroll_interaction_base(VariableType type, void *store, f32 delta)
 	case VT_B32: { *(b32 *)store  = !*(b32 *)store; } break;
 	case VT_F32: { *(f32 *)store += delta;          } break;
 	case VT_I32: { *(i32 *)store += delta;          } break;
+	case VT_U32: { *(u32 *)store += delta;          } break;
 	default: INVALID_CODE_PATH;
 	}
 }
@@ -1972,6 +1975,9 @@ scroll_interaction(Variable *var, f32 delta)
 		BeamformerVariable *bv = &var->u.beamformer_variable;
 		scroll_interaction_base(bv->store_type, bv->store, delta * bv->params.scroll_scale);
 		ui_store_variable(var, bv->store);
+	} break;
+	case VT_CYCLER: {
+		scroll_interaction_base(VT_U32, &var->u.cycler.state, delta > 0? 1 : -1);
 	} break;
 	case VT_UI_VIEW: {
 		scroll_interaction_base(VT_F32, &var->u.view.offset, UI_SCROLL_SPEED * delta);
@@ -2182,12 +2188,6 @@ ui_button_interaction(BeamformerUI *ui, Variable *button)
 	switch (button->u.button) {
 	case UI_BID_FV_COPY_HORIZONTAL: ui_copy_frame(ui, button, RSD_HORIZONTAL);  break;
 	case UI_BID_FV_COPY_VERTICAL:   ui_copy_frame(ui, button, RSD_VERTICAL);    break;
-	case UI_BID_FV_LIVE_VIEW:       ui_set_view_type(ui, button->parent->parent, FVT_LATEST); break;
-	#define X(plane, id, pretty) \
-		case UI_BID_FV_ ##plane ##_LIVE_VIEW: ui_set_view_type(ui, button->parent->parent, \
-		                                                       FVT_LATEST_ ##plane); break;
-	IMAGE_PLANE_TAGS
-	#undef X
 	case UI_BID_CLOSE_VIEW: {
 		Variable *view   = button->parent;
 		Variable *region = view->parent;
@@ -2225,6 +2225,10 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mous
 		case VT_UI_REGION_SPLIT: { is->type = IT_DRAG; }                 break;
 		case VT_UI_VIEW:         { if (scroll) is->type = IT_SCROLL; }   break;
 		case VT_UI_BUTTON:       { ui_button_interaction(ui, is->hot); } break;
+		case VT_CYCLER: {
+			if (scroll) is->type = IT_SCROLL;
+			else        is->type = IT_SET;
+		} break;
 		case VT_GROUP: {
 			if (mouse_left_pressed && is->hot->flags & V_MENU) {
 				is->type = IT_MENU;
@@ -2271,9 +2275,8 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 		case VT_GROUP: {
 			is->active->u.group.expanded = !is->active->u.group.expanded;
 		} break;
-		case VT_B32: {
-			is->active->u.b32 = !is->active->u.b32;
-		} break;
+		case VT_CYCLER: { is->active->u.cycler.state++;           } break;
+		case VT_B32:    { is->active->u.b32 = !is->active->u.b32; } break;
 		case VT_BEAMFORMER_VARIABLE: {
 			ASSERT(is->active->u.beamformer_variable.store_type == VT_B32);
 			b32 *val = is->active->u.beamformer_variable.store;
@@ -2460,7 +2463,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 {
 	BeamformerUI *ui = ctx->ui;
 
-	ui->latest_frame              = frame_to_draw;
+	ui->latest_plane[IPT_LAST]    = frame_to_draw;
 	ui->latest_plane[frame_plane] = frame_to_draw;
 	ui->latest_compute_stats      = latest_compute_stats;
 

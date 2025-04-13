@@ -47,6 +47,7 @@
 #define str_(x) #x
 #define str(x) str_(x)
 
+#define countof(a)       (sizeof(a) / sizeof(*a))
 #define ARRAY_COUNT(a)   (sizeof(a) / sizeof(*a))
 #define ABS(x)           ((x) < 0 ? (-x) : (x))
 #define BETWEEN(x, a, b) ((x) >= (a) && (x) <= (b))
