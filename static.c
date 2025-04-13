@@ -195,6 +195,8 @@ static FILE_WATCH_CALLBACK_FN(reload_render_shader)
 		ctx->shader       = updated_fs;
 		ctx->db_cutoff_id = GetShaderLocation(updated_fs, "u_db_cutoff");
 		ctx->threshold_id = GetShaderLocation(updated_fs, "u_threshold");
+		ctx->gamma_id     = GetShaderLocation(updated_fs, "u_gamma");
+		ctx->log_scale_id = GetShaderLocation(updated_fs, "u_log_scale");
 		ctx->updated      = 1;
 	}
 

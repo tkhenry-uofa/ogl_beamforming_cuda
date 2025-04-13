@@ -56,8 +56,11 @@ typedef struct {
 typedef struct {
 	Shader shader;
 	b32    updated;
+	/* TODO(rnp): cleanup! */
 	i32    db_cutoff_id;
 	i32    threshold_id;
+	i32    gamma_id;
+	i32    log_scale_id;
 } FragmentShaderCtx;
 
 #include "beamformer_parameters.h"

@@ -28,7 +28,6 @@
  * [ ]: show full non-truncated string on hover
  * [ ]: refactor: hovered element type and show hovered element in full even when truncated
  * [ ]: visual indicator for broken shader stage gh#27
- * [ ]: power/log scale render toggle gh#32
  * [ ]: V_UP_HIERARCHY, V_DOWN_HIERARCHY - set active interaction to parent or child ?
  * [ ]: bug: cross-plane view with different dimensions for each plane
  */
@@ -98,6 +97,8 @@ typedef struct v2_sll {
 	v2             v;
 } v2_sll;
 
+typedef struct { f32 val, scale; } scaled_f32;
+
 typedef struct BeamformerUI BeamformerUI;
 typedef struct Variable Variable;
 
@@ -134,6 +135,7 @@ typedef enum {
 	VT_U32,
 	VT_GROUP,
 	VT_CYCLER,
+	VT_SCALED_F32,
 	VT_BEAMFORMER_VARIABLE,
 	VT_BEAMFORMER_FRAME_VIEW,
 	VT_COMPUTE_STATS_VIEW,
@@ -235,6 +237,7 @@ struct Variable {
 		UIView              view;
 		VariableCycler      cycler;
 		VariableGroup       group;
+		scaled_f32          scaled_f32;
 		b32                 b32;
 		i32                 i32;
 		u32                 u32;
@@ -275,18 +278,22 @@ typedef enum {
 typedef struct BeamformerFrameView {
 	ScaleBar lateral_scale_bar;
 	ScaleBar axial_scale_bar;
+
+	/* NOTE(rnp): these are pointers because they are added to the menu and will
+	 * be put onto the freelist if the view is closed */
 	Variable *lateral_scale_bar_active;
 	Variable *axial_scale_bar_active;
+	Variable *log_scale;
+	/* NOTE(rnp): if type is LATEST  selects which type of latest to use
+	 *            if type is INDEXED selects the index */
+	Variable *cycler;
 
 	v4 min_coordinate;
 	v4 max_coordinate;
 
-	/* NOTE(rnp): if type is LATEST  selects which type of latest to use
-	 *            if typs is INDEXED selects the index */
-	Variable *cycler;
-
 	Variable threshold;
 	Variable dynamic_range;
+	Variable gamma;
 
 	FragmentShaderCtx *ctx;
 	BeamformFrame     *frame;
@@ -416,7 +423,9 @@ stream_append_variable(Stream *s, Variable *var)
 	switch (var->type) {
 	case VT_UI_BUTTON:
 	case VT_GROUP: stream_append_s8(s, var->name); break;
+	case VT_F32:   stream_append_f64(s, var->u.f32, 100); break;
 	case VT_B32:   stream_append_s8(s, var->u.b32 ? s8("True") : s8("False")); break;
+	case VT_SCALED_F32: stream_append_f64(s, var->u.scaled_f32.val, 100); break;
 	case VT_BEAMFORMER_VARIABLE: {
 		BeamformerVariable *bv = &var->u.beamformer_variable;
 		switch (bv->store_type) {
@@ -433,10 +442,6 @@ stream_append_variable(Stream *s, Variable *var)
 		u32 index = var->u.cycler.state % var->u.cycler.cycle_length;
 		if (var->u.cycler.labels) stream_append_s8(s, var->u.cycler.labels[index]);
 		else                      stream_append_u64(s, index);
-	} break;
-	case VT_F32: {
-		f32 scale = 1;
-		stream_append_variable_base(s, VT_F32, &var->u.f32, &scale);
 	} break;
 	default: INVALID_CODE_PATH;
 	}
@@ -728,15 +733,19 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	DLLPushDown(bv, ui->views);
 
 	var->u.generic = bv;
+	bv->type       = type;
 
 	fill_variable(&bv->dynamic_range, var, s8("Dynamic Range:"), V_INPUT|V_TEXT|V_UPDATE_VIEW,
 	              VT_F32, ui->small_font);
 	fill_variable(&bv->threshold, var, s8("Threshold:"), V_INPUT|V_TEXT|V_UPDATE_VIEW,
 	              VT_F32, ui->small_font);
+	fill_variable(&bv->gamma, var, s8("Gamma:"), V_INPUT|V_TEXT|V_UPDATE_VIEW,
+	              VT_SCALED_F32, ui->small_font);
 
-	bv->type                = type;
-	bv->dynamic_range.u.f32 = -50.0f;
-	bv->threshold.u.f32     =  40.0f;
+	bv->dynamic_range.u.f32      = 50.0f;
+	bv->threshold.u.f32          = 55.0f;
+	bv->gamma.u.scaled_f32.val   = 1.0f;
+	bv->gamma.u.scaled_f32.scale = 0.05f;
 
 	bv->lateral_scale_bar.limits              = (v2){.x = -1, .y = 1};
 	bv->axial_scale_bar.limits                = (v2){.x =  0, .y = 1};
@@ -771,6 +780,9 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	default: break;
 	}
 
+	bv->log_scale                = add_variable(ui, menu, arena, s8("Log Scale"),
+	                                            V_INPUT|V_UPDATE_VIEW|V_RADIO_BUTTON, VT_B32,
+	                                            ui->small_font);
 	bv->axial_scale_bar_active   = add_variable(ui, menu, arena, s8("Axial Scale Bar"),
 	                                            V_INPUT|V_RADIO_BUTTON, VT_B32, ui->small_font);
 	bv->lateral_scale_bar_active = add_variable(ui, menu, arena, s8("Lateral Scale Bar"),
@@ -927,8 +939,10 @@ update_frame_views(BeamformerUI *ui)
 				BeginShaderMode(view->ctx->shader);
 					glUseProgram(view->ctx->shader.id);
 					glBindTextureUnit(0, frame->texture);
-					glUniform1f(view->ctx->db_cutoff_id, view->dynamic_range.u.f32);
-					glUniform1f(view->ctx->threshold_id, view->threshold.u.f32);
+					glUniform1f(view->ctx->db_cutoff_id,  view->dynamic_range.u.f32);
+					glUniform1f(view->ctx->threshold_id,  view->threshold.u.f32);
+					glUniform1f(view->ctx->gamma_id,      view->gamma.u.scaled_f32.val);
+					glUniform1ui(view->ctx->log_scale_id, view->log_scale->u.b32);
 					DrawTexture(view->rendered_view.texture, 0, 0, WHITE);
 				EndShaderMode();
 			EndTextureMode();
@@ -1161,10 +1175,13 @@ hover_rect(v2 mouse, Rect rect, f32 *hover_t)
 static b32
 hover_var(BeamformerUI *ui, v2 mouse, Rect rect, Variable *var)
 {
-	b32 result = hover_rect(mouse, rect, &var->hover_t);
-	if (result) {
-		ui->interaction.hot_type = IT_NONE;
-		ui->interaction.hot      = var;
+	b32 result = 0;
+	if (ui->interaction.type != IT_DRAG || ui->interaction.active == var) {
+		result = hover_rect(mouse, rect, &var->hover_t);
+		if (result) {
+			ui->interaction.hot_type = IT_NONE;
+			ui->interaction.hot      = var;
+		}
 	}
 	return result;
 }
@@ -1485,8 +1502,8 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	b32 drew_coordinates = 0;
 	f32 remaining_width  = vr.size.w;
 	if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
-		is->hot_type  = IT_DISPLAY;
-		is->hot       = var;
+		is->hot_type = IT_DISPLAY;
+		is->hot      = var;
 
 		v2 relative_mouse = sub_v2(mouse, vr.pos);
 		v2 mm = mul_v2(relative_mouse, pixels_to_mm);
@@ -1552,25 +1569,32 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		draw_text(stream_to_s8(&buf), txt_p, &text_spec);
 	}
 
+	/* TODO(rnp): cleanup this whole mess with a table */
 	if (remaining_width > view->dynamic_range.name_width || !drew_coordinates) {
 		f32 max_prefix_width = MAX(view->threshold.name_width, view->dynamic_range.name_width);
 
+		b32 log_scale = view->log_scale->u.b32;
+		f32 items   = log_scale ? 2 : 3;
 		v2  end     = add_v2(vr.pos, vr.size);
-		f32 start_y = MAX(end.y - 4 - 2 * text_spec.font->baseSize, vr.pos.y);
+		f32 start_y = MAX(end.y - 4 - items * text_spec.font->baseSize, vr.pos.y);
 		end.y -= text_spec.font->baseSize;
 		v2 at = {.x = vr.pos.x + 4, .y = start_y};
 
-		at.y += draw_text(view->dynamic_range.name, at, &text_spec).y;
+		if (!log_scale && at.y < end.y) at.y += draw_text(view->gamma.name, at, &text_spec).y;
 		if (at.y < end.y) at.y += draw_text(view->threshold.name, at, &text_spec).y;
+		if (at.y < end.y) at.y += draw_text(view->dynamic_range.name, at, &text_spec).y;
 
 		at.y  = start_y;
 		at.x += max_prefix_width + 8;
 		text_spec.limits.size.x = end.x - at.x;
 
-		v2 size = draw_variable(ui, a, &view->dynamic_range, at, mouse, RULER_COLOUR, text_spec);
-
-		f32 max_center_width = size.w;
-		at.y += size.h;
+		v2  size;
+		f32 max_center_width = 0;
+		if (!log_scale && at.y < end.y) {
+			size = draw_variable(ui, a, &view->gamma, at, mouse, RULER_COLOUR, text_spec);
+			max_center_width = MAX(size.w, max_center_width);
+			at.y += size.h;
+		}
 
 		if (at.y < end.y) {
 			size = draw_variable(ui, a, &view->threshold, at, mouse, RULER_COLOUR, text_spec);
@@ -1578,10 +1602,15 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 			at.y += size.h;
 		}
 
-		at.y  = start_y;
-		at.x += max_center_width + 8;
-		text_spec.limits.size.x = end.x - at.x;
-		draw_text(s8(" [dB]"), at, &text_spec);
+		if (at.y < end.y) {
+			size = draw_variable(ui, a, &view->dynamic_range, at, mouse, RULER_COLOUR, text_spec);
+			max_center_width = MAX(size.w, max_center_width);
+			at.x += max_center_width + 8;
+			text_spec.limits.size.x = end.x - at.x;
+			draw_text(s8(" [dB]"), at, &text_spec);
+			at.x -= max_center_width + 8;
+			at.y += size.h;
+		}
 	}
 }
 
@@ -1794,7 +1823,7 @@ draw_active_text_box(BeamformerUI *ui, Variable *var)
 	v2 text_size     = measure_text(*is->font, text);
 	v2 text_position = {.x = box.pos.x, .y = box.pos.y + (box.size.h - text_size.h) / 2};
 
-	f32 cursor_width   = (is->cursor == is->buf_len) ? 16 : 4;
+	f32 cursor_width   = (is->cursor == is->buf_len) ? 0.55 * is->font->baseSize : 4;
 	f32 cursor_offset  = measure_text(*is->font, (s8){.data = text.data, .len = is->cursor}).w;
 	cursor_offset     += text_position.x;
 
@@ -1997,6 +2026,10 @@ static void
 ui_store_variable(Variable *var, void *new_value)
 {
 	switch (var->type) {
+	case VT_SCALED_F32: {
+		v2 limits = {.x = -F32_INFINITY, .y = F32_INFINITY};
+		ui_store_variable_base(VT_F32, &var->u.scaled_f32.val, new_value, &limits);
+	} break;
 	case VT_F32: {
 		v2 limits = {.x = -F32_INFINITY, .y = F32_INFINITY};
 		ui_store_variable_base(VT_F32, &var->u.f32, new_value, &limits);
@@ -2025,6 +2058,7 @@ static void
 scroll_interaction(Variable *var, f32 delta)
 {
 	switch (var->type) {
+	case VT_SCALED_F32: var->u.scaled_f32.val += delta * var->u.scaled_f32.scale; break;
 	case VT_BEAMFORMER_VARIABLE: {
 		BeamformerVariable *bv = &var->u.beamformer_variable;
 		scroll_interaction_base(bv->store_type, bv->store, delta * bv->params.scroll_scale);
@@ -2157,7 +2191,11 @@ display_interaction(BeamformerUI *ui, v2 mouse, f32 scroll)
 	if (scroll) {
 		ASSERT(ui->interaction.active->type == VT_BEAMFORMER_FRAME_VIEW);
 		BeamformerFrameView *bv = ui->interaction.active->u.generic;
-		bv->threshold.u.f32 += scroll;
+		if (bv->log_scale->u.b32) {
+			bv->threshold.u.f32 += scroll;
+		} else {
+			bv->gamma.u.scaled_f32.val += scroll * bv->gamma.u.scaled_f32.scale;
+		}
 		bv->needs_update = 1;
 	}
 
@@ -2307,6 +2345,7 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mous
 				break;
 			}
 		} /* FALLTHROUGH */
+		case VT_SCALED_F32:
 		case VT_F32: {
 			if (scroll) {
 				is->type = IT_SCROLL;
@@ -2366,9 +2405,17 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 	if (is->active->flags & V_CAUSES_COMPUTE)
 		ui->flush_params = 1;
 	if (is->active->flags & V_UPDATE_VIEW) {
-		Variable *frame_view = is->active->parent;
-		ASSERT(frame_view && frame_view->type == VT_BEAMFORMER_FRAME_VIEW);
-		((BeamformerFrameView *)frame_view->u.generic)->needs_update = 1;
+		Variable *parent = is->active->parent;
+		BeamformerFrameView *frame;
+		/* TODO(rnp): more straight forward way of achieving this */
+		if (parent->type == VT_BEAMFORMER_FRAME_VIEW) {
+			frame = parent->u.generic;
+		} else {
+			ASSERT(parent->flags & V_MENU);
+			ASSERT(parent->parent->u.group.first->type == VT_BEAMFORMER_FRAME_VIEW);
+			frame = parent->parent->u.group.first->u.generic;
+		}
+		frame->needs_update = 1;
 	}
 
 	if (menu_child && (is->active->flags & V_CLOSES_MENU) == 0) {
@@ -2430,11 +2477,6 @@ ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
 				rs->fraction = CLAMP(rs->fraction, min_fraction, 1 - min_fraction);
 			} break;
 			default: break;
-			}
-
-			if (is->active != is->hot) {
-				is->active->hover_t += HOVER_SPEED * dt_for_frame;
-				is->active->hover_t  = CLAMP01(is->active->hover_t);
 			}
 		}
 	} break;
