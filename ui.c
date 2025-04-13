@@ -3,7 +3,6 @@
  * [ ]: ui should be in its own thread and that thread should only be concerned with the ui
  * [ ]: scroll bar for views that don't have enough space
  * [ ]: compute times through same path as parameter list ?
- * [ ]: global menu
  * [ ]: allow views to collapse to just their title bar
  *      - title bar struct with expanded. Check when pushing onto draw stack; if expanded
  *        do normal behaviour else make size title bar size and ignore the splits fraction.
@@ -181,9 +180,14 @@ typedef struct {
 	X(FV_COPY_HORIZONTAL, "Copy Horizontal") \
 	X(FV_COPY_VERTICAL,   "Copy Vertical")
 
+#define GLOBAL_MENU_BUTTONS \
+	X(GM_OPEN_LIVE_VIEW_RIGHT, "Open Live View Right") \
+	X(GM_OPEN_LIVE_VIEW_BELOW, "Open Live View Below")
+
 #define X(id, text) UI_BID_ ##id,
 typedef enum {
 	UI_BID_CLOSE_VIEW,
+	GLOBAL_MENU_BUTTONS
 	FRAME_VIEW_BUTTONS
 } UIButtonID;
 #undef X
@@ -332,6 +336,7 @@ struct BeamformerUI {
 	BeamformerUIParameters params;
 	b32                    flush_params;
 
+	FragmentShaderCtx *fsctx;
 	OS *os;
 };
 
@@ -479,13 +484,13 @@ ui_variable_free(BeamformerUI *ui, Variable *var)
 					if (bv->type == FVT_COPY) {
 						glDeleteTextures(1, &bv->frame->texture);
 						bv->frame->texture = 0;
+						SLLPush(bv->frame, ui->frame_freelist);
 					}
 					DLLRemove(bv);
 					/* TODO(rnp): hack; use a sentinal */
 					if (bv == ui->views)
 						ui->views = bv->next;
-					SLLPush(bv->frame, ui->frame_freelist);
-					SLLPush(bv,        ui->view_freelist);
+					SLLPush(bv, ui->view_freelist);
 				}
 
 				Variable *next = SLLPush(var, ui->variable_freelist);
@@ -588,6 +593,19 @@ add_ui_split(BeamformerUI *ui, Variable *parent, Arena *arena, s8 name, f32 frac
 	return result;
 }
 
+function Variable *
+add_global_menu(BeamformerUI *ui, Arena *arena, Variable *parent)
+{
+	Variable *result = add_variable_group(ui, 0, &ui->arena, s8(""), VG_LIST, ui->small_font);
+	result->parent = parent;
+	result->flags  = V_MENU;
+	#define X(id, text) add_button(ui, result, &ui->arena, s8(text), UI_BID_ ##id, \
+	                               V_CLOSES_MENU, ui->small_font);
+	GLOBAL_MENU_BUTTONS
+	#undef X
+	return result;
+}
+
 static Variable *
 add_ui_view(BeamformerUI *ui, Variable *parent, Arena *arena, s8 name, u32 view_flags, b32 closable)
 {
@@ -595,6 +613,7 @@ add_ui_view(BeamformerUI *ui, Variable *parent, Arena *arena, s8 name, u32 view_
 	UIView   *view   = &result->u.view;
 	view->group.type = VG_LIST;
 	view->flags      = view_flags;
+	view->menu       = add_global_menu(ui, arena, result);
 	if (closable) {
 		view->close = add_button(ui, 0, arena, s8(""), UI_BID_CLOSE_VIEW, 0, ui->small_font);
 		/* NOTE(rnp): we do this explicitly so that close doesn't end up in the view group */
@@ -700,14 +719,6 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 {
 	/* TODO(rnp): this can be always closable once we have a way of opening new views */
 	Variable *result = add_ui_view(ui, parent, arena, s8(""), UI_VIEW_CUSTOM_TEXT, closable);
-	Variable *menu   = result->u.view.menu = add_variable_group(ui, 0, arena, s8(""),
-	                                                            VG_LIST, ui->small_font);
-	menu->flags  = V_MENU;
-	menu->parent = result;
-	#define X(id, text) add_button(ui, menu, arena, s8(text), UI_BID_ ##id, V_CLOSES_MENU, ui->small_font);
-	FRAME_VIEW_BUTTONS
-	#undef X
-
 	Variable *var = add_variable(ui, result, arena, s8(""), 0, VT_BEAMFORMER_FRAME_VIEW,
 	                             ui->small_font);
 
@@ -726,6 +737,23 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	bv->type                = type;
 	bv->dynamic_range.u.f32 = -50.0f;
 	bv->threshold.u.f32     =  40.0f;
+
+	bv->lateral_scale_bar.limits              = (v2){.x = -1, .y = 1};
+	bv->axial_scale_bar.limits                = (v2){.x =  0, .y = 1};
+	bv->lateral_scale_bar.scroll_scale        = (v2){.x = -0.5e-3, .y = 0.5e-3};
+	bv->axial_scale_bar.scroll_scale          = (v2){.x =  0,      .y = 1e-3};
+	bv->lateral_scale_bar.zoom_starting_point = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
+	bv->axial_scale_bar.zoom_starting_point   = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
+
+	Variable *menu = result->u.view.menu;
+	/* TODO(rnp): push to head of list? */
+	Variable *old_menu_first = menu->u.group.first;
+	Variable *old_menu_last  = menu->u.group.last;
+	menu->u.group.first = menu->u.group.last = 0;
+
+	#define X(id, text) add_button(ui, menu, arena, s8(text), UI_BID_ ##id, V_CLOSES_MENU, ui->small_font);
+	FRAME_VIEW_BUTTONS
+	#undef X
 
 	switch (type) {
 	case FVT_LATEST: {
@@ -748,12 +776,8 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	bv->lateral_scale_bar_active = add_variable(ui, menu, arena, s8("Lateral Scale Bar"),
 	                                            V_INPUT|V_RADIO_BUTTON, VT_B32, ui->small_font);
 
-	bv->lateral_scale_bar.limits              = (v2){.x = -1, .y = 1};
-	bv->axial_scale_bar.limits                = (v2){.x =  0, .y = 1};
-	bv->lateral_scale_bar.scroll_scale        = (v2){.x = -0.5e-3, .y = 0.5e-3};
-	bv->axial_scale_bar.scroll_scale          = (v2){.x =  0,      .y = 1e-3};
-	bv->lateral_scale_bar.zoom_starting_point = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
-	bv->axial_scale_bar.zoom_starting_point   = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
+	menu->u.group.last->next = old_menu_first;
+	menu->u.group.last       = old_menu_last;
 
 	return result;
 }
@@ -781,11 +805,50 @@ add_compute_stats_view(BeamformerUI *ui, Variable *parent, Arena *arena, Variabl
 	return result;
 }
 
-static void
-ui_copy_frame(BeamformerUI *ui, Variable *button, RegionSplitDirection direction)
+function Variable *
+ui_split_region(BeamformerUI *ui, Variable *region, Variable *split_side, RegionSplitDirection direction)
 {
-	Variable *menu   = button->parent;
-	Variable *view   = menu->parent;
+	Variable *result = add_ui_split(ui, region, &ui->arena, s8(""), 0.5, direction, ui->small_font);
+	if (split_side == region->u.region_split.left) {
+		region->u.region_split.left  = result;
+	} else {
+		region->u.region_split.right = result;
+	}
+	split_side->parent = result;
+	result->u.region_split.left = split_side;
+	return result;
+}
+
+function void
+ui_fill_live_frame_view(BeamformerUI *ui, BeamformerFrameView *bv)
+{
+	bv->lateral_scale_bar.min_value = &ui->params.output_min_coordinate.x;
+	bv->lateral_scale_bar.max_value = &ui->params.output_max_coordinate.x;
+	bv->axial_scale_bar.min_value   = &ui->params.output_min_coordinate.z;
+	bv->axial_scale_bar.max_value   = &ui->params.output_max_coordinate.z;
+	bv->axial_scale_bar.causes_compute   = 1;
+	bv->lateral_scale_bar.causes_compute = 1;
+	bv->axial_scale_bar_active->u.b32    = 1;
+	bv->lateral_scale_bar_active->u.b32  = 1;
+	bv->ctx = ui->fsctx;
+}
+
+function void
+ui_add_live_frame_view(BeamformerUI *ui, Variable *view, RegionSplitDirection direction)
+{
+	Variable *region = view->parent;
+	ASSERT(region->type == VT_UI_REGION_SPLIT);
+	ASSERT(view->type   == VT_UI_VIEW);
+
+	Variable *new_region = ui_split_region(ui, region, view, direction);
+	new_region->u.region_split.right = add_beamformer_frame_view(ui, new_region, &ui->arena, FVT_LATEST, 1);
+
+	ui_fill_live_frame_view(ui, new_region->u.region_split.right->u.group.first->u.generic);
+}
+
+function void
+ui_copy_frame(BeamformerUI *ui, Variable *view, RegionSplitDirection direction)
+{
 	Variable *region = view->parent;
 	ASSERT(region->type == VT_UI_REGION_SPLIT);
 	ASSERT(view->type   == VT_UI_VIEW);
@@ -795,15 +858,7 @@ ui_copy_frame(BeamformerUI *ui, Variable *button, RegionSplitDirection direction
 	if (!old->frame)
 		return;
 
-	Variable *new_region = add_ui_split(ui, region, &ui->arena, s8(""), 0.5, direction, ui->small_font);
-
-	if (view == region->u.region_split.left) {
-		region->u.region_split.left  = new_region;
-	} else {
-		region->u.region_split.right = new_region;
-	}
-	view->parent = new_region;
-	new_region->u.region_split.left  = view;
+	Variable *new_region = ui_split_region(ui, region, view, direction);
 	new_region->u.region_split.right = add_beamformer_frame_view(ui, new_region, &ui->arena, FVT_COPY, 1);
 
 	BeamformerFrameView *bv = new_region->u.region_split.right->u.group.first->u.generic;
@@ -1162,7 +1217,6 @@ draw_title_bar(BeamformerUI *ui, Arena arena, Variable *ui_view, Rect r, v2 mous
 		           add_v2(menu.pos, (v2){.x = menu.size.w, .y = menu.size.h / 2}).rl, 4, colour);
 	}
 
-	/* TODO(rnp): hover the title text rect and use it to access the global menu */
 	v2 title_pos = title_rect.pos;
 	title_pos.y += 0.5 * TITLE_BAR_PAD;
 	TextSpec text_spec = {.font = &ui->small_font, .flags = TF_LIMITED,
@@ -2186,8 +2240,18 @@ ui_button_interaction(BeamformerUI *ui, Variable *button)
 {
 	ASSERT(button->type == VT_UI_BUTTON);
 	switch (button->u.button) {
-	case UI_BID_FV_COPY_HORIZONTAL: ui_copy_frame(ui, button, RSD_HORIZONTAL);  break;
-	case UI_BID_FV_COPY_VERTICAL:   ui_copy_frame(ui, button, RSD_VERTICAL);    break;
+	case UI_BID_FV_COPY_HORIZONTAL: {
+		ui_copy_frame(ui, button->parent->parent, RSD_HORIZONTAL);
+	} break;
+	case UI_BID_FV_COPY_VERTICAL: {
+		ui_copy_frame(ui, button->parent->parent, RSD_VERTICAL);
+	} break;
+	case UI_BID_GM_OPEN_LIVE_VIEW_RIGHT: {
+		ui_add_live_frame_view(ui, button->parent->parent, RSD_HORIZONTAL);
+	} break;
+	case UI_BID_GM_OPEN_LIVE_VIEW_BELOW: {
+		ui_add_live_frame_view(ui, button->parent->parent, RSD_VERTICAL);
+	} break;
 	case UI_BID_CLOSE_VIEW: {
 		Variable *view   = button->parent;
 		Variable *region = view->parent;
@@ -2404,8 +2468,11 @@ ui_init(BeamformerCtx *ctx, Arena store)
 				UnloadRenderTexture(view->rendered_view);
 	}
 
+	DEBUG_DECL(u8 *arena_start = store.beg);
+
 	ui = ctx->ui = push_struct(&store, typeof(*ui));
 	ui->os    = &ctx->os;
+	ui->fsctx = &ctx->fsctx;
 	ui->arena = store;
 
 	/* TODO: build these into the binary */
@@ -2414,22 +2481,13 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	ui->small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 20, 0, 0);
 
 	ui->scratch_variable = ui->scratch_variables + 0;
-	Variable *split = ui->regions   = add_ui_split(ui, 0, &ui->arena, s8("UI Root"), 0.4,
-	                                               RSD_HORIZONTAL, ui->font);
-	split->u.region_split.left      = add_ui_split(ui, split, &ui->arena, s8(""), 0.475,
-	                                               RSD_VERTICAL, ui->font);
-	split->u.region_split.right     = add_beamformer_frame_view(ui, split, &ui->arena, FVT_LATEST, 0);
+	Variable *split = ui->regions = add_ui_split(ui, 0, &ui->arena, s8("UI Root"), 0.4,
+	                                             RSD_HORIZONTAL, ui->font);
+	split->u.region_split.left    = add_ui_split(ui, split, &ui->arena, s8(""), 0.475,
+	                                             RSD_VERTICAL, ui->font);
+	split->u.region_split.right   = add_beamformer_frame_view(ui, split, &ui->arena, FVT_LATEST, 0);
 
-	BeamformerFrameView *bv         = split->u.region_split.right->u.group.first->u.generic;
-	bv->lateral_scale_bar.min_value = &ui->params.output_min_coordinate.x;
-	bv->lateral_scale_bar.max_value = &ui->params.output_max_coordinate.x;
-	bv->axial_scale_bar.min_value   = &ui->params.output_min_coordinate.z;
-	bv->axial_scale_bar.max_value   = &ui->params.output_max_coordinate.z;
-	bv->axial_scale_bar.causes_compute   = 1;
-	bv->lateral_scale_bar.causes_compute = 1;
-	bv->axial_scale_bar_active->u.b32    = 1;
-	bv->lateral_scale_bar_active->u.b32  = 1;
-	bv->ctx = &ctx->fsctx;
+	ui_fill_live_frame_view(ui, split->u.region_split.right->u.group.first->u.generic);
 
 	split = split->u.region_split.left;
 	split->u.region_split.left  = add_beamformer_parameters_view(split, ctx);
@@ -2446,6 +2504,9 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	compute_stats->stats = &ui->latest_compute_stats;
 
 	ctx->ui_read_params = 1;
+
+	/* NOTE(rnp): shrink variable size once this fires */
+	ASSERT(ui->arena.beg - arena_start < KB(64));
 }
 
 static void
