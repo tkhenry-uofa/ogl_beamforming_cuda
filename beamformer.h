@@ -9,6 +9,7 @@
 #include <rlgl.h>
 
 #include "util.h"
+#include "util_gl.c"
 
 enum gl_vendor_ids {
 	GL_VENDOR_AMD,
