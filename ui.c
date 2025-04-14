@@ -1,13 +1,24 @@
 /* See LICENSE for license details. */
 /* TODO(rnp):
- * [ ]: ui should be in its own thread and that thread should only be concerned with the ui
+ * [ ]: refactor: ui should be in its own thread and that thread should only be concerned with the ui
+ * [ ]: refactor: ui shouldn't fully destroy itself on hot reload
+ * [ ]: refactor: move remaining fragment shader stuff into ui
+ * [ ]: refactor: re-add next_hot variable. this will simplify the code and number of checks
+ *      being performed inline. example:
+ *      if (hovering)
+ *      	next_hot = var;
+ *      draw_text(..., var->hover_t);
+ *      // elsewhere in code
+ *      if (!is->active)
+ *      	hot = next_hot ....
+ *
+ *      hot->hover_t += hover_speed * dt_for_frame
  * [ ]: scroll bar for views that don't have enough space
  * [ ]: compute times through same path as parameter list ?
  * [ ]: allow views to collapse to just their title bar
  *      - title bar struct with expanded. Check when pushing onto draw stack; if expanded
  *        do normal behaviour else make size title bar size and ignore the splits fraction.
  * [ ]: enforce a minimum region size or allow regions themselves to scroll
- * [ ]: move remaining fragment shader stuff into ui
  * [ ]: refactor: draw_left_aligned_list()
  * [ ]: refactor: draw_variable_table()
  * [ ]: refactor: add_variable_no_link()
@@ -295,11 +306,14 @@ typedef struct BeamformerFrameView {
 	Variable dynamic_range;
 	Variable gamma;
 
-	FragmentShaderCtx *ctx;
-	BeamformFrame     *frame;
+	FrameViewRenderContext *ctx;
+	BeamformFrame          *frame;
 	struct BeamformerFrameView *prev, *next;
 
-	RenderTexture2D rendered_view;
+	uv2 texture_dim;
+	u32 texture_mipmaps;
+	u32 texture;
+
 	BeamformerFrameViewType type;
 	b32 needs_update;
 } BeamformerFrameView;
@@ -343,7 +357,7 @@ struct BeamformerUI {
 	BeamformerUIParameters params;
 	b32                    flush_params;
 
-	FragmentShaderCtx *fsctx;
+	FrameViewRenderContext *frame_view_render_context;
 	OS *os;
 };
 
@@ -401,6 +415,18 @@ clamp_text_to_width(Font font, s8 text, f32 limit)
 	return result;
 }
 
+function Texture
+make_raylib_texture(BeamformerFrameView *v)
+{
+	Texture result;
+	result.id      = v->texture;
+	result.width   = v->texture_dim.w;
+	result.height  = v->texture_dim.h;
+	result.mipmaps = v->texture_mipmaps;
+	result.format  = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+	return result;
+}
+
 static void
 stream_append_variable_base(Stream *s, VariableType type, void *var, void *scale)
 {
@@ -447,31 +473,27 @@ stream_append_variable(Stream *s, Variable *var)
 	}
 }
 
-static void
+function void
 resize_frame_view(BeamformerFrameView *view, uv2 dim)
 {
-	UnloadRenderTexture(view->rendered_view);
-	/* TODO(rnp): sometimes when accepting data on w32 something happens
-	* and the program will stall in vprintf in TraceLog(...) here.
-	* for now do this to avoid the problem */
-	//SetTraceLogLevel(LOG_NONE);
-	view->rendered_view = LoadRenderTexture(dim.x, dim.y);
-	//SetTraceLogLevel(LOG_INFO);
+	glDeleteTextures(1, &view->texture);
+	glCreateTextures(GL_TEXTURE_2D, 1, &view->texture);
 
-	/* TODO(rnp): add some ID for the specific view here */
-	LABEL_GL_OBJECT(GL_FRAMEBUFFER, view->rendered_view.id,         s8("Frame View"));
-	LABEL_GL_OBJECT(GL_TEXTURE,     view->rendered_view.texture.id, s8("Frame View Texture"));
-	glGenerateTextureMipmap(view->rendered_view.texture.id);
-
-	//SetTextureFilter(view->rendered_view.texture, TEXTURE_FILTER_ANISOTROPIC_8X);
-	//SetTextureFilter(view->rendered_view.texture, TEXTURE_FILTER_TRILINEAR);
-	//SetTextureFilter(view->rendered_view.texture, TEXTURE_FILTER_BILINEAR);
+	view->texture_dim     = dim;
+	view->texture_mipmaps = ctz_u32(MAX(dim.x, dim.y)) + 1;
+	/* TODO(rnp): HDR? */
+	glTextureStorage2D(view->texture, view->texture_mipmaps, GL_RGBA8, dim.x, dim.y);
+	glGenerateTextureMipmap(view->texture);
 
 	/* NOTE(rnp): work around raylib's janky texture sampling */
-	i32 id = view->rendered_view.texture.id;
-	glTextureParameteri(id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-	glTextureParameteri(id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-	glTextureParameterfv(id, GL_TEXTURE_BORDER_COLOR, (f32 []){0, 0, 0, 1});
+	glTextureParameteri(view->texture, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTextureParameteri(view->texture, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	glTextureParameterfv(view->texture, GL_TEXTURE_BORDER_COLOR, (f32 []){0, 0, 0, 1});
+	glTextureParameteri(view->texture, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTextureParameteri(view->texture, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	/* TODO(rnp): add some ID for the specific view here */
+	LABEL_GL_OBJECT(GL_TEXTURE, view->texture, s8("Frame View Texture"));
 }
 
 static void
@@ -842,7 +864,7 @@ ui_fill_live_frame_view(BeamformerUI *ui, BeamformerFrameView *bv)
 	bv->lateral_scale_bar.causes_compute = 1;
 	bv->axial_scale_bar_active->u.b32    = 1;
 	bv->lateral_scale_bar_active->u.b32  = 1;
-	bv->ctx = ui->fsctx;
+	bv->ctx = ui->frame_view_render_context;
 }
 
 function void
@@ -906,7 +928,7 @@ static b32
 view_update(BeamformerUI *ui, BeamformerFrameView *view)
 {
 	b32 needs_resize = 0;
-	uv2 current = {.w = view->rendered_view.texture.width, .h = view->rendered_view.texture.height};
+	uv2 current = view->texture_dim;
 	if (view->type == FVT_LATEST) {
 		u32 index = view->cycler->u.cycler.state % (IPT_LAST + 1);
 		view->needs_update   |= view->frame != ui->latest_plane[index];
@@ -928,36 +950,46 @@ view_update(BeamformerUI *ui, BeamformerFrameView *view)
 	return (view->ctx->updated || view->needs_update) && view->frame;
 }
 
-static void
-update_frame_views(BeamformerUI *ui)
+function void
+update_frame_views(BeamformerUI *ui, Rect window)
 {
+	b32 fbo_bound = 0;
 	for (BeamformerFrameView *view = ui->views; view; view = view->next) {
 		if (view_update(ui, view)) {
-			BeamformFrame *frame = view->frame;
-			BeginTextureMode(view->rendered_view);
-				ClearBackground(PINK);
-				BeginShaderMode(view->ctx->shader);
-					glUseProgram(view->ctx->shader.id);
-					glBindTextureUnit(0, frame->texture);
-					glUniform1f(view->ctx->db_cutoff_id,  view->dynamic_range.u.f32);
-					glUniform1f(view->ctx->threshold_id,  view->threshold.u.f32);
-					glUniform1f(view->ctx->gamma_id,      view->gamma.u.scaled_f32.val);
-					glUniform1ui(view->ctx->log_scale_id, view->log_scale->u.b32);
-					DrawTexture(view->rendered_view.texture, 0, 0, WHITE);
-				EndShaderMode();
-			EndTextureMode();
-			glGenerateTextureMipmap(view->rendered_view.texture.id);
+			if (!fbo_bound) {
+				fbo_bound = 1;
+				glBindFramebuffer(GL_FRAMEBUFFER, view->ctx->framebuffer);
+				glUseProgram(view->ctx->shader);
+				glBindVertexArray(view->ctx->vao);
+				glViewport(0, 0, view->texture_dim.w, view->texture_dim.h);
+				glClearColor(0.79, 0.46, 0.77, 1);
+			}
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+			                       GL_TEXTURE_2D, view->texture, 0);
+			glClear(GL_COLOR_BUFFER_BIT);
+			glBindTextureUnit(0, view->frame->texture);
+			glUniform1f(FRAME_VIEW_RENDER_DYNAMIC_RANGE_LOC, view->dynamic_range.u.f32);
+			glUniform1f(FRAME_VIEW_RENDER_THRESHOLD_LOC,     view->threshold.u.f32);
+			glUniform1f(FRAME_VIEW_RENDER_GAMMA_LOC,         view->gamma.u.scaled_f32.val);
+			glUniform1ui(FRAME_VIEW_RENDER_LOG_SCALE_LOC,    view->log_scale->u.b32);
+
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			glGenerateTextureMipmap(view->texture);
 			view->needs_update = 0;
 		}
 	}
+	if (fbo_bound) {
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glViewport(window.pos.x, window.pos.y, window.size.w, window.size.h);
+		/* NOTE(rnp): I don't trust raylib to not mess with us */
+		glBindVertexArray(0);
+	}
 }
 
-static b32
+function b32
 frame_view_ready_to_present(BeamformerFrameView *view)
 {
-	uv2 render_size = {.w = view->rendered_view.texture.width,
-	                   .h = view->rendered_view.texture.height};
-	return !uv2_equal((uv2){0}, render_size) && view->frame;
+	return !uv2_equal((uv2){0}, view->texture_dim) && view->frame;
 }
 
 static Color
@@ -1449,10 +1481,9 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		.y = frame->max_coordinate.z - frame->min_coordinate.z,
 	};
 
-	Texture *output = &view->rendered_view.texture;
 	v2 pixels_per_meter = {
-		.w = (f32)output->width  / output_dim.w,
-		.h = (f32)output->height / output_dim.h,
+		.w = (f32)view->texture_dim.w / output_dim.w,
+		.h = (f32)view->texture_dim.h / output_dim.h,
 	};
 
 	v2 texture_points  = mul_v2(pixels_per_meter, requested_dim);
@@ -1464,7 +1495,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 
 	Rectangle  tex_r  = {texture_start.x, texture_start.y, texture_points.x, -texture_points.y};
 	NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
-	DrawTextureNPatch(*output, tex_np, vr.rl, (Vector2){0}, 0, WHITE);
+	DrawTextureNPatch(make_raylib_texture(view), tex_np, vr.rl, (Vector2){0}, 0, WHITE);
 
 	v2 start_pos  = vr.pos;
 	start_pos.y  += vr.size.y;
@@ -2506,16 +2537,16 @@ ui_init(BeamformerCtx *ctx, Arena store)
 		UnloadFont(ui->small_font);
 
 		for (BeamformerFrameView *view = ui->views; view; view = view->next)
-			if (view->rendered_view.id)
-				UnloadRenderTexture(view->rendered_view);
+			if (view->texture)
+				glDeleteTextures(1, &view->texture);
 	}
 
 	DEBUG_DECL(u8 *arena_start = store.beg);
 
 	ui = ctx->ui = push_struct(&store, typeof(*ui));
 	ui->os    = &ctx->os;
-	ui->fsctx = &ctx->fsctx;
 	ui->arena = store;
+	ui->frame_view_render_context = &ctx->frame_view_render_context;
 
 	/* TODO: build these into the binary */
 	/* TODO(rnp): better font, this one is jank at small sizes */
@@ -2599,18 +2630,16 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 	}
 
 	/* NOTE(rnp): can't render to a different framebuffer in the middle of BeginDrawing()... */
-	update_frame_views(ui);
+	Rect window_rect = {.size = {.w = ctx->window_size.w, .h = ctx->window_size.h}};
+	update_frame_views(ui, window_rect);
 
 	BeginDrawing();
 		ClearBackground(colour_from_normalized(BG_COLOUR));
 
-		v2 mouse         = input->mouse;
-		Rect window_rect = {.size = {.w = ctx->window_size.w, .h = ctx->window_size.h}};
-
-		draw_ui_regions(ui, window_rect, mouse);
+		draw_ui_regions(ui, window_rect, input->mouse);
 		if (ui->interaction.type == IT_TEXT)
 			draw_active_text_box(ui, ui->interaction.active);
 		if (ui->interaction.type == IT_MENU)
-			draw_active_menu(ui, ui->arena, ui->interaction.active, mouse, window_rect);
+			draw_active_menu(ui, ui->arena, ui->interaction.active, input->mouse, window_rect);
 	EndDrawing();
 }

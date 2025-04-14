@@ -311,6 +311,8 @@ struct OS {
 	DEBUG_DECL(renderdoc_end_frame_capture_fn   *end_frame_capture);
 };
 
+#define LABEL_GL_OBJECT(type, id, s) {s8 _s = (s); glObjectLabel(type, id, _s.len, (c8 *)_s.data);}
+
 #include "util.c"
 
 #endif /* _UTIL_H_ */

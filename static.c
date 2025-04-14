@@ -184,20 +184,45 @@ dump_gl_params(GLParams *gl, Arena a, OS *os)
 #endif
 }
 
-static FILE_WATCH_CALLBACK_FN(reload_render_shader)
+function FILE_WATCH_CALLBACK_FN(reload_render_shader)
 {
-	FragmentShaderCtx *ctx = (FragmentShaderCtx *)user_data;
-	Shader updated_fs      = LoadShader(0, (c8 *)path.data);
+	FrameViewRenderContext *ctx = (typeof(ctx))user_data;
 
-	if (updated_fs.id) {
-		UnloadShader(ctx->shader);
-		LABEL_GL_OBJECT(GL_PROGRAM, updated_fs.id, s8("Render Shader"));
-		ctx->shader       = updated_fs;
-		ctx->db_cutoff_id = GetShaderLocation(updated_fs, "u_db_cutoff");
-		ctx->threshold_id = GetShaderLocation(updated_fs, "u_threshold");
-		ctx->gamma_id     = GetShaderLocation(updated_fs, "u_gamma");
-		ctx->log_scale_id = GetShaderLocation(updated_fs, "u_log_scale");
-		ctx->updated      = 1;
+	local_persist s8 vertex = s8(""
+	"#version 460 core\n"
+	"\n"
+	"layout(location = 0) in vec2 vertex_position;\n"
+	"layout(location = 1) in vec2 vertex_texture_coordinate;\n"
+	"\n"
+	"layout(location = 0) out vec2 fragment_texture_coordinate;\n"
+	"\n"
+	"void main()\n"
+	"{\n"
+	"\tfragment_texture_coordinate = vertex_texture_coordinate;\n"
+	"\tgl_Position = vec4(vertex_position, 0, 1);\n"
+	"}\n");
+
+	Arena *a = &tmp;
+	s8 header = {.data = a->beg};
+	push_s8(a, s8("#version 460 core\n\n"));
+	push_s8(a, s8("layout(location = 0) in  vec2 fragment_texture_coordinate;\n"));
+	push_s8(a, s8("layout(location = 0) out vec4 v_out_colour;\n\n"));
+	push_s8(a, s8("layout(location = " str(FRAME_VIEW_RENDER_DYNAMIC_RANGE_LOC) ") uniform float u_db_cutoff = 60;\n"));
+	push_s8(a, s8("layout(location = " str(FRAME_VIEW_RENDER_THRESHOLD_LOC)     ") uniform float u_threshold = 40;\n"));
+	push_s8(a, s8("layout(location = " str(FRAME_VIEW_RENDER_GAMMA_LOC)         ") uniform float u_gamma     = 1;\n"));
+	push_s8(a, s8("layout(location = " str(FRAME_VIEW_RENDER_LOG_SCALE_LOC)     ") uniform bool  u_log_scale;\n"));
+	push_s8(a, s8("\n#line 1\n"));
+	header.len = a->beg - header.data;
+
+	s8 fragment    = os->read_whole_file(a, (c8 *)path.data);
+	fragment.data -= header.len;
+	fragment.len  += header.len;
+	ASSERT(fragment.data == header.data);
+	u32 new_program = load_shader(os, tmp, 0, vertex, fragment, (s8){0}, path, s8("Render Shader"));
+	if (new_program) {
+		glDeleteProgram(ctx->shader);
+		ctx->shader  = new_program;
+		ctx->updated = 1;
 	}
 
 	return 1;
@@ -355,7 +380,29 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	#undef X
 	os_wake_waiters(&worker->sync_variable);
 
+	FrameViewRenderContext *fvr = &ctx->frame_view_render_context;
+	glGenFramebuffers(1, &fvr->framebuffer);
+	LABEL_GL_OBJECT(GL_FRAMEBUFFER, fvr->framebuffer, s8("Frame View Render Framebuffer"));
+	f32 vertices[] = {
+		-1,  1, 0, 0,
+		-1, -1, 0, 1,
+		 1, -1, 1, 1,
+		-1,  1, 0, 0,
+		 1, -1, 1, 1,
+		 1,  1, 1, 0,
+	};
+	glGenVertexArrays(1, &fvr->vao);
+	glBindVertexArray(fvr->vao);
+	glGenBuffers(1, &fvr->vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, fvr->vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 2, GL_FLOAT, 0, 4 * sizeof(f32), 0);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(1, 2, GL_FLOAT, 0, 4 * sizeof(f32), (void *)(2 * sizeof(f32)));
+	glEnableVertexAttribArray(1);
+	glBindVertexArray(0);
+
 	s8 render = s8(static_path_join("shaders", "render.glsl"));
-	reload_render_shader(&ctx->os, render, (iptr)&ctx->fsctx, *memory);
-	os_add_file_watch(&ctx->os, memory, render, reload_render_shader, (iptr)&ctx->fsctx);
+	reload_render_shader(&ctx->os, render, (iptr)fvr, *memory);
+	os_add_file_watch(&ctx->os, memory, render, reload_render_shader, (iptr)fvr);
 }

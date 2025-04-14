@@ -53,15 +53,18 @@ typedef struct {
 	#undef X
 } CudaLib;
 
+#define FRAME_VIEW_RENDER_DYNAMIC_RANGE_LOC 1
+#define FRAME_VIEW_RENDER_THRESHOLD_LOC     2
+#define FRAME_VIEW_RENDER_GAMMA_LOC         3
+#define FRAME_VIEW_RENDER_LOG_SCALE_LOC     4
+
 typedef struct {
-	Shader shader;
-	b32    updated;
-	/* TODO(rnp): cleanup! */
-	i32    db_cutoff_id;
-	i32    threshold_id;
-	i32    gamma_id;
-	i32    log_scale_id;
-} FragmentShaderCtx;
+	u32 shader;
+	u32 framebuffer;
+	u32 vao;
+	u32 vbo;
+	b32 updated;
+} FrameViewRenderContext;
 
 #include "beamformer_parameters.h"
 #include "beamformer_work_queue.h"
@@ -172,7 +175,10 @@ typedef struct {
 	BeamformComputeFrame averaged_frames[2];
 
 	ComputeShaderCtx  csctx;
-	FragmentShaderCtx fsctx;
+
+	/* TODO(rnp): ideally this would go in the UI but its hard to manage with the UI
+	 * destroying itself on hot-reload */
+	FrameViewRenderContext frame_view_render_context;
 
 	Arena export_buffer;
 
@@ -192,8 +198,6 @@ struct ComputeShaderReloadContext {
 	ComputeShaderID shader;
 	b32   needs_header;
 };
-
-#define LABEL_GL_OBJECT(type, id, s) {s8 _s = (s); glObjectLabel(type, id, _s.len, (c8 *)_s.data);}
 
 #define BEAMFORMER_FRAME_STEP_FN(name) void name(BeamformerCtx *ctx, Arena *arena, \
                                                  BeamformerInput *input)

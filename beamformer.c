@@ -391,56 +391,6 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 	}
 }
 
-static u32
-compile_shader(OS *os, Arena a, u32 type, s8 shader, s8 name)
-{
-	u32 sid = glCreateShader(type);
-	glShaderSource(sid, 1, (const char **)&shader.data, (int *)&shader.len);
-	glCompileShader(sid);
-
-	i32 res = 0;
-	glGetShaderiv(sid, GL_COMPILE_STATUS, &res);
-
-	if (res == GL_FALSE) {
-		Stream buf = arena_stream(&a);
-		stream_append_s8(&buf, name);
-		stream_append_s8(&buf, s8(": failed to compile\n"));
-
-		i32 len = 0, out_len = 0;
-		glGetShaderiv(sid, GL_INFO_LOG_LENGTH, &len);
-		glGetShaderInfoLog(sid, len, &out_len, (char *)(buf.data + buf.widx));
-		stream_commit(&buf, out_len);
-		glDeleteShader(sid);
-		os->write_file(os->stderr, stream_to_s8(&buf));
-
-		sid = 0;
-	}
-
-	return sid;
-}
-
-static u32
-link_program(OS *os, Arena a, u32 shader_id)
-{
-	i32 success = 0;
-	u32 result  = glCreateProgram();
-	glAttachShader(result, shader_id);
-	glLinkProgram(result);
-	glGetProgramiv(result, GL_LINK_STATUS, &success);
-	if (success == GL_FALSE) {
-		i32 len    = 0;
-		Stream buf = arena_stream(&a);
-		stream_append_s8(&buf, s8("shader link error: "));
-		glGetProgramInfoLog(result, buf.cap - buf.widx, &len, (c8 *)(buf.data + buf.widx));
-		stream_reset(&buf, len);
-		stream_append_byte(&buf, '\n');
-		os->write_file(os->stderr, stream_to_s8(&buf));
-		glDeleteProgram(result);
-		result = 0;
-	}
-	return result;
-}
-
 function s8
 push_compute_shader_header(Arena *a, b32 parameters, ComputeShaderID shader)
 {
@@ -510,24 +460,17 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, s8 extra, ComputeShaderReload
 	shader_text.len  += header.len;
 
 	if (shader_text.data == header.data) {
-		u32 shader_id  = compile_shader(&ctx->os, tmp, GL_COMPUTE_SHADER, shader_text, path);
-		if (shader_id) {
-			u32 new_program = link_program(&ctx->os, tmp, shader_id);
-			if (new_program) {
-				Stream buf = arena_stream(&tmp);
-				stream_append_s8(&buf, s8("loaded: "));
-				stream_append_s8(&buf, path);
-				stream_append_s8(&buf, extra);
-				stream_append_byte(&buf, '\n');
-				ctx->os.write_file(ctx->os.stderr, stream_to_s8(&buf));
-				glDeleteProgram(cs->programs[csr->shader]);
-				cs->programs[csr->shader] = new_program;
-				glUseProgram(cs->programs[csr->shader]);
-				glBindBufferBase(GL_UNIFORM_BUFFER, 0, cs->shared_ubo);
-				LABEL_GL_OBJECT(GL_PROGRAM, cs->programs[csr->shader], csr->label);
-				result = 1;
-			}
-			glDeleteShader(shader_id);
+		s8 info = {.data = tmp.beg};
+		push_s8(&tmp, path);
+		push_s8(&tmp, extra);
+		info.len = tmp.beg - info.data;
+		u32 new_program = load_shader(&ctx->os, tmp, 1, (s8){0}, (s8){0}, shader_text,
+		                              info, csr->label);
+		if (new_program) {
+			glDeleteProgram(cs->programs[csr->shader]);
+			cs->programs[csr->shader] = new_program;
+			glUseProgram(cs->programs[csr->shader]);
+			glBindBufferBase(GL_UNIFORM_BUFFER, 0, cs->shared_ubo);
 		}
 	} else {
 		Stream buf = arena_stream(&tmp);
@@ -826,7 +769,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 	draw_ui(ctx, input, frame_to_draw->ready_to_present? &frame_to_draw->frame : 0,
 	        frame_to_draw->image_plane_tag, &frame_to_draw->stats);
 
-	ctx->fsctx.updated = 0;
+	ctx->frame_view_render_context.updated = 0;
 
 	if (WindowShouldClose())
 		ctx->should_exit = 1;

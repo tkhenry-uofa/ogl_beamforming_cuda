@@ -1,14 +1,5 @@
 /* See LICENSE for license details. */
-#version 430 core
-
-in  vec2 fragTexCoord;
-out vec4 v_out_colour;
-
-layout(binding = 0)  uniform sampler3D u_out_data_tex;
-layout(location = 1) uniform float     u_db_cutoff = 60;
-layout(location = 2) uniform float     u_threshold = 40;
-layout(location = 3) uniform float     u_gamma     = 1;
-layout(location = 4) uniform bool      u_log_scale;
+layout(binding = 0) uniform sampler3D u_out_data_tex;
 
 /* input:  h [0,360] | s,v [0, 1] *
  * output: rgb [0,1]              */
@@ -26,7 +17,7 @@ void main()
 	//vec2 min_max = texelFetch(u_out_data_tex, ivec3(0), textureQueryLevels(u_out_data_tex) - 1).xy;
 
 	/* TODO(rnp): select between x and y and specify slice */
-	ivec2 coord     = ivec2(fragTexCoord * vec2(out_data_dim));
+	ivec2 coord     = ivec2(fragment_texture_coordinate * vec2(out_data_dim));
 	ivec3 smp_coord = ivec3(coord.x, 0, coord.y);
 	float smp       = length(texelFetch(u_out_data_tex, smp_coord, 0).xy);
 
