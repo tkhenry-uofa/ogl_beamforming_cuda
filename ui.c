@@ -927,11 +927,9 @@ ui_copy_frame(BeamformerUI *ui, Variable *view, RegionSplitDirection direction)
 	resize_frame_view(bv, (uv2){.x = bv->frame->dim.x, .y = bv->frame->dim.z});
 }
 
-static b32
+function b32
 view_update(BeamformerUI *ui, BeamformerFrameView *view)
 {
-	b32 needs_resize = 0;
-	uv2 current = view->texture_dim;
 	if (view->type == FVT_LATEST) {
 		u32 index = view->cycler->u.cycler.state % (IPT_LAST + 1);
 		view->needs_update   |= view->frame != ui->latest_plane[index];
@@ -942,10 +940,9 @@ view_update(BeamformerUI *ui, BeamformerFrameView *view)
 
 	/* TODO(rnp): x-z or y-z */
 	/* TODO(rnp): add method of setting a target size in frame view */
-	uv2 target = {.w = ui->params.output_points.x, .h = ui->params.output_points.z};
-	needs_resize = !uv2_equal(current, target) && !uv2_equal(target, (uv2){0});
-
-	if (needs_resize) {
+	uv2 current = view->texture_dim;
+	uv2 target  = {.w = ui->params.output_points.x, .h = ui->params.output_points.z};
+	if (view->type != FVT_COPY && !uv2_equal(current, target) && !uv2_equal(target, (uv2){0})) {
 		resize_frame_view(view, target);
 		view->needs_update = 1;
 	}
@@ -964,9 +961,9 @@ update_frame_views(BeamformerUI *ui, Rect window)
 				glBindFramebuffer(GL_FRAMEBUFFER, view->ctx->framebuffer);
 				glUseProgram(view->ctx->shader);
 				glBindVertexArray(view->ctx->vao);
-				glViewport(0, 0, view->texture_dim.w, view->texture_dim.h);
 				glClearColor(0.79, 0.46, 0.77, 1);
 			}
+			glViewport(0, 0, view->texture_dim.w, view->texture_dim.h);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 			                       GL_TEXTURE_2D, view->texture, 0);
 			glClear(GL_COLOR_BUFFER_BIT);
