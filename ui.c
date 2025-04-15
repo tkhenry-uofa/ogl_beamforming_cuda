@@ -13,6 +13,7 @@
  *      	hot = next_hot ....
  *
  *      hot->hover_t += hover_speed * dt_for_frame
+ * [ ]: is IT_SCALE_BAR even necessary?
  * [ ]: scroll bar for views that don't have enough space
  * [ ]: compute times through same path as parameter list ?
  * [ ]: allow views to collapse to just their title bar
@@ -30,7 +31,6 @@
  * [ ]: add tag based selection to frame views
  * [ ]: draw the ui with a post-order traversal instead of pre-order traversal
  * [ ]: consider V_HOVER_GROUP and use that to implement submenus
- * [ ]: bug: ruler needs to know which view is associated with it
  * [ ]: menu's need to support nested groups
  * [ ]: bug: ruler mark stays active when a frame is removed?
  * [ ]: don't redraw on every refresh; instead redraw on mouse movement/event or when a new frame
@@ -88,7 +88,6 @@ typedef struct {
 typedef enum {
 	IT_NONE,
 	IT_NOP,
-	IT_DISPLAY,
 	IT_DRAG,
 	IT_MENU,
 	IT_SCALE_BAR,
@@ -97,11 +96,17 @@ typedef enum {
 	IT_TEXT,
 } InteractionType;
 
-enum ruler_state {
+typedef enum {
 	RS_NONE,
 	RS_START,
 	RS_HOLD,
-};
+} RulerState;
+
+typedef struct {
+	v2 start;
+	v2 end;
+	RulerState state;
+} Ruler;
 
 typedef struct v2_sll {
 	struct v2_sll *next;
@@ -302,6 +307,8 @@ typedef struct BeamformerFrameView {
 	v4 min_coordinate;
 	v4 max_coordinate;
 
+	Ruler ruler;
+
 	Variable threshold;
 	Variable dynamic_range;
 	Variable gamma;
@@ -346,10 +353,6 @@ struct BeamformerUI {
 	InputState       text_input_state;
 
 	v2_sll *scale_bar_savepoint_freelist;
-
-	v2  ruler_start_p;
-	v2  ruler_stop_p;
-	u32 ruler_state;
 
 	BeamformFrame      *latest_plane[IPT_LAST + 1];
 	ComputeShaderStats *latest_compute_stats;
@@ -1194,17 +1197,25 @@ scale_rect_centered(Rect r, v2 scale)
 	return r;
 }
 
-static b32
+function b32
+point_in_rect(v2 p, Rect r)
+{
+	v2  end    = add_v2(r.pos, r.size);
+	b32 result = BETWEEN(p.x, r.pos.x, end.x) & BETWEEN(p.y, r.pos.y, end.y);
+	return result;
+}
+
+function b32
 hover_rect(v2 mouse, Rect rect, f32 *hover_t)
 {
-	b32 hovering = CheckCollisionPointRec(mouse.rl, rect.rl);
+	b32 hovering = point_in_rect(mouse, rect);
 	if (hovering) *hover_t += HOVER_SPEED * dt_for_frame;
 	else          *hover_t -= HOVER_SPEED * dt_for_frame;
 	*hover_t = CLAMP01(*hover_t);
 	return hovering;
 }
 
-static b32
+function b32
 hover_var(BeamformerUI *ui, v2 mouse, Rect rect, Variable *var)
 {
 	b32 result = 0;
@@ -1532,9 +1543,8 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 
 	b32 drew_coordinates = 0;
 	f32 remaining_width  = vr.size.w;
-	if (CheckCollisionPointRec(mouse.rl, vr.rl)) {
-		is->hot_type = IT_DISPLAY;
-		is->hot      = var;
+	if (point_in_rect(mouse, vr)) {
+		is->hot = var;
 
 		v2 relative_mouse = sub_v2(mouse, vr.pos);
 		v2 mm = mul_v2(relative_mouse, pixels_to_mm);
@@ -1575,17 +1585,17 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	}
 
 	/* TODO(rnp): store converted ruler points instead of screen points */
-	if (ui->ruler_state != RS_NONE && CheckCollisionPointRec(ui->ruler_start_p.rl, vr.rl)) {
-		v2 end_p;
-		if (ui->ruler_state == RS_START) end_p = mouse;
-		else                             end_p = ui->ruler_stop_p;
+	if (view->ruler.state != RS_NONE && point_in_rect(view->ruler.start, vr)) {
+		v2 end_p = mouse;
+		if (view->ruler.state == RS_HOLD)
+			end_p = view->ruler.end;
 
 		end_p          = clamp_v2_rect(end_p, vr);
-		v2 pixel_delta = sub_v2(ui->ruler_start_p, end_p);
+		v2 pixel_delta = sub_v2(view->ruler.start, end_p);
 		v2 mm_delta    = mul_v2(pixels_to_mm, pixel_delta);
 
-		DrawCircleV(ui->ruler_start_p.rl, 3, text_spec.colour);
-		DrawLineEx(end_p.rl, ui->ruler_start_p.rl, 2, text_spec.colour);
+		DrawCircleV(view->ruler.start.rl, 3, text_spec.colour);
+		DrawLineEx(end_p.rl, view->ruler.start.rl, 2, text_spec.colour);
 		DrawCircleV(end_p.rl, 3, text_spec.colour);
 
 		Arena  tmp = a;
@@ -1593,7 +1603,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		stream_append_f64(&buf, magnitude_v2(mm_delta), 100);
 		stream_append_s8(&buf, s8(" mm"));
 
-		v2 txt_p = ui->ruler_start_p;
+		v2 txt_p = view->ruler.start;
 		v2 txt_s = measure_text(*text_spec.font, stream_to_s8(&buf));
 		if (pixel_delta.y < 0) txt_p.y -= txt_s.y;
 		if (pixel_delta.x < 0) txt_p.x -= txt_s.x;
@@ -2089,6 +2099,11 @@ scroll_interaction(Variable *var, f32 delta)
 {
 	switch (var->type) {
 	case VT_SCALED_F32: var->u.scaled_f32.val += delta * var->u.scaled_f32.scale; break;
+	case VT_BEAMFORMER_FRAME_VIEW: {
+		BeamformerFrameView *bv = var->u.generic;
+		bv->needs_update = 1;
+		scroll_interaction_base(VT_F32, &bv->threshold.u.f32, delta);
+	} break;
 	case VT_BEAMFORMER_VARIABLE: {
 		BeamformerVariable *bv = &var->u.beamformer_variable;
 		scroll_interaction_base(bv->store_type, bv->store, delta * bv->params.scroll_scale);
@@ -2200,46 +2215,7 @@ update_text_input(InputState *is, Variable *var)
 	}
 }
 
-static void
-display_interaction_end(BeamformerUI *ui)
-{
-	b32 is_hot    = ui->interaction.hot_type == IT_DISPLAY;
-	b32 is_active = ui->interaction.type     == IT_DISPLAY;
-	if ((is_active && is_hot) || ui->ruler_state == RS_HOLD)
-		return;
-	ui->ruler_state = RS_NONE;
-}
-
-static void
-display_interaction(BeamformerUI *ui, v2 mouse, f32 scroll)
-{
-	b32 mouse_left_pressed  = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
-	b32 mouse_right_pressed = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
-	b32 is_hot              = ui->interaction.hot_type == IT_DISPLAY;
-	b32 is_active           = ui->interaction.type     == IT_DISPLAY;
-
-	if (scroll) {
-		ASSERT(ui->interaction.active->type == VT_BEAMFORMER_FRAME_VIEW);
-		BeamformerFrameView *bv = ui->interaction.active->u.generic;
-		bv->threshold.u.f32 += scroll;
-		bv->needs_update = 1;
-	}
-
-	if (mouse_left_pressed && is_active) {
-		ui->ruler_state++;
-		switch (ui->ruler_state) {
-		case RS_START: ui->ruler_start_p = mouse; break;
-		case RS_HOLD:  ui->ruler_stop_p  = mouse; break;
-		default:
-			ui->ruler_state = RS_NONE;
-			break;
-		}
-	} else if (mouse_right_pressed && is_hot) {
-		ui->ruler_state = RS_NONE;
-	}
-}
-
-static void
+function void
 scale_bar_interaction(BeamformerCtx *ctx, v2 mouse)
 {
 	BeamformerUI *ui        = ctx->ui;
@@ -2365,6 +2341,19 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mous
 				is->type = IT_SET;
 			}
 		} break;
+		case VT_BEAMFORMER_FRAME_VIEW: {
+			if (scroll) {
+				is->type = IT_SCROLL;
+			} else {
+				BeamformerFrameView *bv = is->hot->u.generic;
+				bv->ruler.state++;
+				switch (bv->ruler.state) {
+				case RS_START: bv->ruler.start = input->mouse; break;
+				case RS_HOLD:  bv->ruler.end   = input->mouse; break;
+				default: bv->ruler.state = RS_NONE; break;
+				}
+			}
+		} break;
 		case VT_BEAMFORMER_VARIABLE: {
 			if (is->hot->u.beamformer_variable.store_type == VT_B32) {
 				is->type = IT_SET;
@@ -2414,7 +2403,6 @@ ui_end_interact(BeamformerCtx *ctx, v2 mouse)
 		default: INVALID_CODE_PATH;
 		}
 	} break;
-	case IT_DISPLAY: display_interaction_end(ui); break;
 	case IT_SCROLL:  scroll_interaction(is->active, GetMouseWheelMoveV().y); break;
 	case IT_TEXT:    end_text_input(&ui->text_input_state, is->active);      break;
 	case IT_MENU:      break;
@@ -2474,10 +2462,9 @@ ui_interact(BeamformerCtx *ctx, BeamformerInput *input)
 	case IT_NONE: break;
 	case IT_NOP:  break;
 	case IT_MENU: break;
-	case IT_DISPLAY: display_interaction(ui, input->mouse, GetMouseWheelMoveV().y); break;
-	case IT_SCROLL:  ui_end_interact(ctx, input->mouse);                            break;
-	case IT_SET:     ui_end_interact(ctx, input->mouse);                            break;
-	case IT_TEXT:    update_text_input(&ui->text_input_state, is->active);          break;
+	case IT_SCROLL: ui_end_interact(ctx, input->mouse);                   break;
+	case IT_SET:    ui_end_interact(ctx, input->mouse);                   break;
+	case IT_TEXT:   update_text_input(&ui->text_input_state, is->active); break;
 	case IT_DRAG: {
 		if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
 			ui_end_interact(ctx, input->mouse);
@@ -2629,7 +2616,8 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 	update_frame_views(ui, window_rect);
 
 	BeginDrawing();
-		ClearBackground(colour_from_normalized(BG_COLOUR));
+		glClearColor(BG_COLOUR.r, BG_COLOUR.g, BG_COLOUR.b, BG_COLOUR.a);
+		glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
 		draw_ui_regions(ui, window_rect, input->mouse);
 		if (ui->interaction.type == IT_TEXT)
