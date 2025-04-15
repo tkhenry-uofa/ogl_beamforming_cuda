@@ -908,6 +908,8 @@ ui_copy_frame(BeamformerUI *ui, Variable *view, RegionSplitDirection direction)
 	bv->needs_update        = 1;
 	bv->threshold.u.f32     = old->threshold.u.f32;
 	bv->dynamic_range.u.f32 = old->dynamic_range.u.f32;
+	bv->gamma.u.f32         = old->gamma.u.f32;
+	bv->log_scale->u.b32    = old->log_scale->u.b32;
 	bv->min_coordinate      = old->frame->min_coordinate;
 	bv->max_coordinate      = old->frame->max_coordinate;
 
