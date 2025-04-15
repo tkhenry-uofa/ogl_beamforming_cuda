@@ -1604,14 +1604,13 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	if (remaining_width > view->dynamic_range.name_width || !drew_coordinates) {
 		f32 max_prefix_width = MAX(view->threshold.name_width, view->dynamic_range.name_width);
 
-		b32 log_scale = view->log_scale->u.b32;
-		f32 items   = log_scale ? 2 : 3;
+		f32 items   = 3;
 		v2  end     = add_v2(vr.pos, vr.size);
 		f32 start_y = MAX(end.y - 4 - items * text_spec.font->baseSize, vr.pos.y);
 		end.y -= text_spec.font->baseSize;
 		v2 at = {.x = vr.pos.x + 4, .y = start_y};
 
-		if (!log_scale && at.y < end.y) at.y += draw_text(view->gamma.name, at, &text_spec).y;
+		if (at.y < end.y) at.y += draw_text(view->gamma.name, at, &text_spec).y;
 		if (at.y < end.y) at.y += draw_text(view->threshold.name, at, &text_spec).y;
 		if (at.y < end.y) at.y += draw_text(view->dynamic_range.name, at, &text_spec).y;
 
@@ -1621,7 +1620,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 
 		v2  size;
 		f32 max_center_width = 0;
-		if (!log_scale && at.y < end.y) {
+		if (at.y < end.y) {
 			size = draw_variable(ui, a, &view->gamma, at, mouse, RULER_COLOUR, text_spec);
 			max_center_width = MAX(size.w, max_center_width);
 			at.y += size.h;
