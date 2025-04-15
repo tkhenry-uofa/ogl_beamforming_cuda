@@ -2222,11 +2222,7 @@ display_interaction(BeamformerUI *ui, v2 mouse, f32 scroll)
 	if (scroll) {
 		ASSERT(ui->interaction.active->type == VT_BEAMFORMER_FRAME_VIEW);
 		BeamformerFrameView *bv = ui->interaction.active->u.generic;
-		if (bv->log_scale->u.b32) {
-			bv->threshold.u.f32 += scroll;
-		} else {
-			bv->gamma.u.scaled_f32.val += scroll * bv->gamma.u.scaled_f32.scale;
-		}
+		bv->threshold.u.f32 += scroll;
 		bv->needs_update = 1;
 	}
 
