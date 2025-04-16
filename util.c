@@ -590,6 +590,16 @@ mul_v2(v2 a, v2 b)
 	return result;
 }
 
+function v2
+div_v2(v2 a, v2 b)
+{
+	v2 result;
+	result.x = a.x / b.x;
+	result.y = a.y / b.y;
+	return result;
+}
+
+
 static v2
 floor_v2(v2 a)
 {

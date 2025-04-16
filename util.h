@@ -62,8 +62,10 @@
 
 /* NOTE(rnp): no guarantees about actually getting an element */
 #define SLLPop(list)     list; list = list ? list->next : 0
-/* NOTE(rnp): evaluates to the old value of v->next */
-#define SLLPush(v, list) (v)->next; (v)->next = (list), (list) = v
+#define SLLPush(v, list) do { \
+	(v)->next = (list); \
+	(list)    = v;      \
+} while (0)
 
 #define DLLPushDown(v, list) do { \
 	(v)->next = (list);                   \
@@ -171,6 +173,10 @@ typedef union {
 	struct { v2 xy, zw; };
 	f32 E[4];
 } v4;
+
+#define XZ(v) (v2){.x = v.x, .y = v.z}
+#define YZ(v) (v2){.x = v.y, .y = v.z}
+#define XY(v) (v2){.x = v.x, .y = v.y}
 
 typedef union {
 	struct { v4 x, y, z, w; };
