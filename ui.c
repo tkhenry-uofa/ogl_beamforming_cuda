@@ -2369,7 +2369,7 @@ ui_end_interact(BeamformerUI *ui, v2 mouse)
 		case VT_CYCLER: { is->active->u.cycler.state++;           } break;
 		case VT_B32:    { is->active->u.b32 = !is->active->u.b32; } break;
 		case VT_SCALE_BAR: {
-			scale_bar_interaction(ui, &is->hot->u.scale_bar, mouse);
+			scale_bar_interaction(ui, &is->active->u.scale_bar, mouse);
 		} break;
 		case VT_BEAMFORMER_VARIABLE: {
 			ASSERT(is->active->u.beamformer_variable.store_type == VT_B32);
