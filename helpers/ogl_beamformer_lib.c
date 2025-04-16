@@ -283,20 +283,20 @@ beamformer_upload_buffer(char *shm_name, void *data, u32 size, i32 store_offset,
 }
 
 #define BEAMFORMER_UPLOAD_FNS \
-	X(channel_mapping, i16, CHANNEL_MAPPING) \
-	X(sparse_elements, i16, SPARSE_ELEMENTS) \
-	X(focal_vectors,   f32, FOCAL_VECTORS)
+	X(channel_mapping, i16, 1, CHANNEL_MAPPING) \
+	X(sparse_elements, i16, 1, SPARSE_ELEMENTS) \
+	X(focal_vectors,   f32, 2, FOCAL_VECTORS)
 
-#define X(name, dtype, command) \
+#define X(name, dtype, elements, command) \
 b32 beamformer_push_##name (char *shm_id, dtype *data, u32 count, i32 timeout_ms) { \
-	b32 result = count <= ARRAY_COUNT(g_bp->name);                                           \
-	if (result) {                                                                            \
-		result = beamformer_upload_buffer(shm_id, data, count * sizeof(dtype),           \
-		                                  offsetof(BeamformerSharedMemory, name),        \
-		                                  offsetof(BeamformerSharedMemory, name##_sync), \
-		                                  BU_KIND_##command, timeout_ms);                \
-	}                                                                                        \
-	return result;                                                                           \
+	b32 result = count <= ARRAY_COUNT(g_bp->name);                                            \
+	if (result) {                                                                             \
+		result = beamformer_upload_buffer(shm_id, data, count * elements * sizeof(dtype), \
+		                                  offsetof(BeamformerSharedMemory, name),         \
+		                                  offsetof(BeamformerSharedMemory, name##_sync),  \
+		                                  BU_KIND_##command, timeout_ms);                 \
+	}                                                                                         \
+	return result;                                                                            \
 }
 BEAMFORMER_UPLOAD_FNS
 #undef X
