@@ -2,7 +2,6 @@
 /* TODO(rnp):
  * [ ]: refactor: ui should be in its own thread and that thread should only be concerned with the ui
  * [ ]: refactor: ui shouldn't fully destroy itself on hot reload
- * [ ]: refactor: scalebar should use the interaction rectangle
  * [ ]: refactor: move remaining fragment shader stuff into ui
  * [ ]: refactor: re-add next_hot variable. this will simplify the code and number of checks
  *      being performed inline. example:
@@ -25,8 +24,6 @@
  * [ ]: refactor: add_variable_no_link()
  * [ ]: refactor: draw_text_limited should clamp to rect and measure text itself
  * [ ]: refactor: draw_active_menu should just use draw_variable_list
- * [ ]: refactor: scale bars should just be variables
- * [ ]: refactor: remove scale bar limits (limits should only prevent invalid program state)
  * [ ]: ui leaks split beamform views on hot-reload
  * [ ]: add tag based selection to frame views
  * [ ]: draw the ui with a post-order traversal instead of pre-order traversal
@@ -113,10 +110,9 @@ typedef enum {
 typedef struct {
 	f32    *min_value, *max_value;
 	v2_sll *savepoint_stack;
-	v2      zoom_starting_point;
-	v2      screen_offset;
-	v2      screen_space_to_value;
 	v2      scroll_scale;
+	f32     zoom_starting_coord;
+	ScaleBarDirection direction;
 } ScaleBar;
 
 typedef struct { f32 val, scale; } scaled_f32;
@@ -770,10 +766,12 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	fill_variable(&bv->axial_scale_bar,   var, s8(""), V_INPUT, VT_SCALE_BAR, ui->small_font);
 	ScaleBar *lateral            = &bv->lateral_scale_bar.u.scale_bar;
 	ScaleBar *axial              = &bv->axial_scale_bar.u.scale_bar;
+	lateral->direction           = SB_LATERAL;
+	axial->direction             = SB_AXIAL;
 	lateral->scroll_scale        = (v2){.x = -0.5e-3, .y = 0.5e-3};
 	axial->scroll_scale          = (v2){.x =  0,      .y = 1e-3};
-	lateral->zoom_starting_point = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
-	axial->zoom_starting_point   = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
+	lateral->zoom_starting_coord = F32_INFINITY;
+	axial->zoom_starting_coord   = F32_INFINITY;
 
 	Variable *menu = result->u.view.menu;
 	/* TODO(rnp): push to head of list? */
@@ -1352,8 +1350,8 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 }
 
 function void
-do_scale_bar(BeamformerUI *ui, Stream *buf, Variable *scale_bar, ScaleBarDirection direction,
-             v2 mouse, Rect draw_rect, f32 start_value, f32 end_value, s8 suffix)
+do_scale_bar(BeamformerUI *ui, Stream *buf, Variable *scale_bar, v2 mouse, Rect draw_rect,
+             f32 start_value, f32 end_value, s8 suffix)
 {
 	ASSERT(scale_bar->type == VT_SCALE_BAR);
 	ScaleBar *sb = &scale_bar->u.scale_bar;
@@ -1368,24 +1366,24 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, Variable *scale_bar, ScaleBarDirecti
 	f32  markers[2];
 	u32  marker_count = 1;
 
+	v2 world_zoom_point  = {{sb->zoom_starting_coord, sb->zoom_starting_coord}};
+	v2 screen_zoom_point = world_point_to_screen_2d(world_zoom_point,
+	                                                (v2){{*sb->min_value, *sb->min_value}},
+	                                                (v2){{*sb->max_value, *sb->max_value}},
+	                                                (v2){0}, tick_rect.size);
 	u32  tick_count;
-	if (direction == SB_AXIAL) {
+	if (sb->direction == SB_AXIAL) {
 		tick_rect.size.x  = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
 		tick_count        = tick_rect.size.y / (1.5 * ui->small_font.baseSize);
 		start_pos.y      += tick_rect.size.y;
-		markers[0]        = tick_rect.size.y - sb->zoom_starting_point.y;
+		markers[0]        = tick_rect.size.y - screen_zoom_point.y;
 		markers[1]        = tick_rect.size.y - relative_mouse.y;
-		sb->screen_offset = (v2){.y = tick_rect.pos.y};
-		sb->screen_space_to_value = (v2){.y = (*sb->max_value - *sb->min_value) / tick_rect.size.y};
 	} else {
 		tick_rect.size.y  = RULER_TEXT_PAD + RULER_TICK_LENGTH + txt_s.x;
 		tick_count        = tick_rect.size.x / (1.5 * ui->small_font.baseSize);
 		end_pos.x        += tick_rect.size.x;
-		markers[0]        = sb->zoom_starting_point.x;
+		markers[0]        = screen_zoom_point.x;
 		markers[1]        = relative_mouse.x;
-		/* TODO(rnp): screen space to value space transformation helper */
-		sb->screen_offset = (v2){.x = tick_rect.pos.x};
-		sb->screen_space_to_value = (v2){.x = (*sb->max_value - *sb->min_value) / tick_rect.size.x};
 	}
 
 	if (hover_var(ui, mouse, tick_rect, scale_bar))
@@ -1520,7 +1518,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	if (vr.size.w > 0 && view->lateral_scale_bar_active->u.b32) {
 		Arena  tmp = a;
 		Stream buf = arena_stream(&tmp);
-		do_scale_bar(ui, &buf, &view->lateral_scale_bar, SB_LATERAL, mouse,
+		do_scale_bar(ui, &buf, &view->lateral_scale_bar, mouse,
 		             (Rect){.pos = start_pos, .size = vr.size},
 		             *view->lateral_scale_bar.u.scale_bar.min_value * 1e3,
 		             *view->lateral_scale_bar.u.scale_bar.max_value * 1e3, s8(" mm"));
@@ -1532,15 +1530,11 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	if (vr.size.h > 0 && view->axial_scale_bar_active->u.b32) {
 		Arena  tmp = a;
 		Stream buf = arena_stream(&tmp);
-		do_scale_bar(ui, &buf, &view->axial_scale_bar, SB_AXIAL, mouse,
+		do_scale_bar(ui, &buf, &view->axial_scale_bar, mouse,
 		             (Rect){.pos = start_pos, .size = vr.size},
 		             *view->axial_scale_bar.u.scale_bar.max_value * 1e3,
 		             *view->axial_scale_bar.u.scale_bar.min_value * 1e3, s8(" mm"));
 	}
-
-	v2 pixels_to_mm;
-	pixels_to_mm.x = output_dim.x / (vr.size.x * 1e-3);
-	pixels_to_mm.y = output_dim.y / (vr.size.y * 1e-3);
 
 	TextSpec text_spec = {.font = &ui->small_font, .flags = TF_LIMITED|TF_OUTLINED,
 	                      .colour = colour_from_normalized(RULER_COLOUR),
@@ -1553,14 +1547,12 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		is->hot      = var;
 		is->hot_rect = vr;
 
-		v2 relative_mouse = sub_v2(mouse, vr.pos);
-		v2 mm = mul_v2(relative_mouse, pixels_to_mm);
-		mm.x += 1e3 * min.x;
-		mm.y += 1e3 * min.z;
-
+		v2 world = screen_point_to_world_2d(mouse, vr.pos, add_v2(vr.pos, vr.size),
+		                                    XZ(view->min_coordinate),
+		                                    XZ(view->max_coordinate));
 		Arena  tmp = a;
 		Stream buf = arena_stream(&tmp);
-		stream_append_v2(&buf, mm);
+		stream_append_v2(&buf, scale_v2(world, 1e3));
 
 		text_spec.limits.size.w -= 4;
 		v2 txt_s = measure_text(*text_spec.font, stream_to_s8(&buf));
@@ -2224,21 +2216,27 @@ update_text_input(InputState *is, Variable *var)
 function void
 scale_bar_interaction(BeamformerUI *ui, ScaleBar *sb, v2 mouse)
 {
+	InteractionState *is    = &ui->interaction;
 	b32 mouse_left_pressed  = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
 	b32 mouse_right_pressed = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
 	f32 mouse_wheel         = GetMouseWheelMoveV().y;
 
 	if (mouse_left_pressed) {
-		if (sb->zoom_starting_point.x == F32_INFINITY) {
-			sb->zoom_starting_point = sub_v2(mouse, sb->screen_offset);
+		v2 world_mouse = screen_point_to_world_2d(mouse, is->rect.pos,
+		                                          add_v2(is->rect.pos, is->rect.size),
+		                                          (v2){{*sb->min_value, *sb->min_value}},
+		                                          (v2){{*sb->max_value, *sb->max_value}});
+		f32 new_coord;
+		switch (sb->direction) {
+		case SB_LATERAL: new_coord = world_mouse.x; break;
+		case SB_AXIAL:   new_coord = world_mouse.y; break;
+		}
+		if (sb->zoom_starting_coord == F32_INFINITY) {
+			sb->zoom_starting_coord = new_coord;
 		} else {
-			v2 relative_mouse = sub_v2(mouse, sb->screen_offset);
-			f32 min = magnitude_v2(mul_v2(sb->zoom_starting_point, sb->screen_space_to_value));
-			f32 max = magnitude_v2(mul_v2(relative_mouse,          sb->screen_space_to_value));
-			if (min > max) { f32 tmp = min; min = max; max = tmp; }
-
-			min += *sb->min_value;
-			max += *sb->min_value;
+			f32 min = sb->zoom_starting_coord;
+			f32 max = new_coord;
+			if (min > max) SWAP(min, max)
 
 			v2_sll *savepoint = SLLPop(ui->scale_bar_savepoint_freelist);
 			if (!savepoint) savepoint = push_struct(&ui->arena, v2_sll);
@@ -2250,7 +2248,7 @@ scale_bar_interaction(BeamformerUI *ui, ScaleBar *sb, v2 mouse)
 			*sb->min_value = min;
 			*sb->max_value = max;
 
-			sb->zoom_starting_point = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
+			sb->zoom_starting_coord = F32_INFINITY;
 		}
 	}
 
@@ -2262,7 +2260,7 @@ scale_bar_interaction(BeamformerUI *ui, ScaleBar *sb, v2 mouse)
 			sb->savepoint_stack = savepoint->next;
 			SLLPush(savepoint, ui->scale_bar_savepoint_freelist);
 		}
-		sb->zoom_starting_point = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
+		sb->zoom_starting_coord = F32_INFINITY;
 	}
 
 	if (mouse_wheel) {
