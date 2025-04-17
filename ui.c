@@ -40,6 +40,7 @@
  * [ ]: visual indicator for broken shader stage gh#27
  * [ ]: V_UP_HIERARCHY, V_DOWN_HIERARCHY - set active interaction to parent or child ?
  * [ ]: bug: cross-plane view with different dimensions for each plane
+ * [ ]: interaction last_rect is weird; need a better way of keeping track of menu position
  */
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -318,7 +319,7 @@ typedef struct {
 	Variable *hot;
 	Variable *active;
 	InteractionType type;
-	Rect  rect,  hot_rect;
+	Rect  rect,  hot_rect, last_rect;
 	Font *font, *hot_font;
 } InteractionState;
 
@@ -2330,8 +2331,7 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mous
 		} break;
 		case VT_GROUP: {
 			if (mouse_left_pressed && is->hot->flags & V_MENU) {
-				is->type         = IT_MENU;
-				is->hot_rect.pos = input->mouse;
+				is->type = IT_MENU;
 			} else {
 				is->type = IT_SET;
 			}
@@ -2356,6 +2356,7 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mous
 		}
 	}
 	if (is->type != IT_NONE) {
+		is->last_rect = is->rect;
 		is->active = is->hot;
 		is->rect   = is->hot_rect;
 		is->font   = is->hot_font;
@@ -2368,6 +2369,8 @@ ui_end_interact(BeamformerUI *ui, v2 mouse)
 	InteractionState *is = &ui->interaction;
 	switch (is->type) {
 	case IT_NOP:  break;
+	case IT_MENU: break;
+	case IT_DRAG: break;
 	case IT_SET: {
 		switch (is->active->type) {
 		case VT_GROUP: {
@@ -2404,8 +2407,6 @@ ui_end_interact(BeamformerUI *ui, v2 mouse)
 	} break;
 	case IT_SCROLL:  scroll_interaction(is->active, GetMouseWheelMoveV().y); break;
 	case IT_TEXT:    end_text_input(&ui->text_input_state, is->active);      break;
-	case IT_MENU:      break;
-	case IT_DRAG:      break;
 	default: INVALID_CODE_PATH;
 	}
 
@@ -2432,6 +2433,7 @@ ui_end_interact(BeamformerUI *ui, v2 mouse)
 
 	if (menu_child && (is->active->flags & V_CLOSES_MENU) == 0) {
 		is->type   = IT_MENU;
+		is->rect   = is->last_rect;
 		is->active = is->active->parent;
 	} else {
 		is->type   = IT_NONE;
