@@ -19,8 +19,6 @@
  *      - title bar struct with expanded. Check when pushing onto draw stack; if expanded
  *        do normal behaviour else make size title bar size and ignore the splits fraction.
  * [ ]: enforce a minimum region size or allow regions themselves to scroll
- * [ ]: refactor: draw_left_aligned_list()
- * [ ]: refactor: draw_variable_table()
  * [ ]: refactor: add_variable_no_link()
  * [ ]: refactor: draw_text_limited should clamp to rect and measure text itself
  * [ ]: refactor: draw_active_menu should just use draw_variable_list
@@ -49,9 +47,10 @@
 #define MENU_PLUS_COLOUR       (v4){.r = 0.33, .g = 0.42, .b = 1.00, .a = 1.0}
 #define MENU_CLOSE_COLOUR      FOCUSED_COLOUR
 
-#define NORMALIZED_FG_COLOUR   colour_from_normalized(FG_COLOUR)
-
 #define HOVER_SPEED            5.0f
+
+#define TABLE_CELL_PAD_HEIGHT  2.0f
+#define TABLE_CELL_PAD_WIDTH   8.0f
 
 #define RULER_TEXT_PAD         10.0f
 #define RULER_TICK_LENGTH      20.0f
@@ -354,15 +353,56 @@ typedef enum {
 	TF_OUTLINED = 1 << 2,
 } TextFlags;
 
+typedef enum {
+	TA_CENTER,
+	TA_LEFT,
+	TA_RIGHT,
+} TextAlignment;
+
 typedef struct {
 	Font  *font;
 	Rect  limits;
-	Color colour;
-	Color outline_colour;
+	v4    colour;
+	v4    outline_colour;
 	f32   outline_thick;
 	f32   rotation;
-	TextFlags flags;
+	TextAlignment align;
+	TextFlags     flags;
 } TextSpec;
+
+typedef enum {
+	TRK_CELLS,
+	TRK_TABLE,
+} TableRowKind;
+
+typedef struct {
+	s8 text;
+	Variable *var;
+	f32 width;
+} TableCell;
+
+typedef struct {
+	void         *data;
+	TableRowKind  kind;
+} TableRow;
+
+typedef struct {
+	TableRow *data;
+	iz        count;
+	iz        capacity;
+
+	TextAlignment *alignment;
+
+	v4  border_colour;
+
+	/* NOTE(rnp): row count including nested tables */
+	i32 rows;
+	i32 columns;
+
+	f32 cell_border_thick;
+	f32 row_border_thick;
+	b32 fill_space;
+} Table;
 
 function v2
 measure_glyph(Font font, u32 glyph)
@@ -457,6 +497,117 @@ stream_append_variable(Stream *s, Variable *var)
 	} break;
 	default: INVALID_CODE_PATH;
 	}
+}
+
+function Table
+table_new(Arena *a, i32 initial_capacity, i32 columns, TextAlignment *alignment)
+{
+	Table result = {.columns = columns};
+	da_reserve(a, &result, initial_capacity);
+	result.alignment = alloc(a, TextAlignment, columns);
+	mem_copy(result.alignment, alignment, sizeof(*alignment) * columns);
+	return result;
+}
+
+function f32
+table_height(Table *t, TextSpec *ts)
+{
+	f32 result = t->count * (ts->font->baseSize + TABLE_CELL_PAD_HEIGHT);
+	result += (t->count - 1) * t->row_border_thick;
+	return result;
+}
+
+function i32
+table_skip_rows(Table *t, f32 draw_height, f32 text_height)
+{
+	i32 max_rows = draw_height / (text_height + TABLE_CELL_PAD_HEIGHT);
+	i32 result   = t->rows - MIN(t->rows, max_rows);
+	return result;
+}
+
+function f32 *
+table_measure(Table *table, Arena *a, f32 max_width, TextSpec ts)
+{
+	f32 *result = alloc(a, f32, table->columns);
+
+	for (iz i = 0; i < table->count; i++) {
+		TableRow *row = table->data + i;
+		if (row->kind == TRK_CELLS) {
+			for (iz j = 0; j < table->columns; j++) {
+				TableCell *cell = (TableCell *)row->data + j;
+				if (!cell->text.len) cell->width = ts.font->baseSize;
+				else                 cell->width = measure_text(*ts.font, cell->text).w;
+				cell->width += TABLE_CELL_PAD_WIDTH;
+				result[j] = MAX(cell->width, result[j]);
+			}
+		}
+	}
+
+	if (table->fill_space) {
+		f32 sum = 0;
+		for (iz i = 0; i < table->columns; i++)
+			sum += result[i];
+		for (iz i = 0; i < table->columns; i++)
+			result[i] = max_width * result[i] / sum;
+	}
+
+	return result;
+}
+
+function v2
+table_cell_align(TableCell *cell, TextAlignment align, Rect r)
+{
+	v2 result = r.pos;
+	if (r.size.w >= cell->width) {
+		switch (align) {
+		case TA_LEFT:  result.x += TABLE_CELL_PAD_WIDTH / 2; break;
+		case TA_RIGHT: result.x += r.size.w  - cell->width;  break;
+		case TA_CENTER: {
+			result.x += (r.size.w - cell->width + TABLE_CELL_PAD_WIDTH) / 2;
+		} break;
+		}
+	}
+	result.y += TABLE_CELL_PAD_HEIGHT / 2;
+	return result;
+}
+
+function TableCell
+table_variable_cell(Arena *a, Variable *var)
+{
+	TableCell result = {.var = var};
+	Arena  tmp  = *a;
+	Stream text = arena_stream(&tmp);
+	stream_append_variable(&text, var);
+	result.text = stream_to_s8(&text);
+	arena_commit(a, text.widx);
+	return result;
+}
+
+function TableRow *
+table_push_row(Table *t, Arena *a, TableRowKind kind)
+{
+	TableRow *result = da_push(a, t);
+	if (kind == TRK_TABLE) {
+		result->data = push_struct(a, Table);
+	} else {
+		result->data = alloc(a, TableCell, t->columns);
+		t->rows++;
+	}
+	return result;
+}
+
+function TableRow *
+table_push_parameter_row(Table *t, Arena *a, s8 label, Variable *var, s8 suffix)
+{
+	ASSERT(t->columns >= 3);
+	TableRow *result = table_push_row(t, a, TRK_CELLS);
+	TableCell *cells = result->data;
+
+	cells[0].text  = label;
+	cells[1]       = table_variable_cell(a, var);
+	cells[2].text  = suffix;
+
+	return result;
 }
 
 function void
@@ -718,7 +869,7 @@ add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 	result = end_variable_group(result);
 
 	add_beamformer_variable_f32(ui, result, &ui->arena, s8("Off Axis Position:"), s8("[mm]"),
-	                            &bp->off_axis_pos, (v2){.x = -1e3, .y = 1e3}, 1e3,
+	                            &bp->off_axis_pos, (v2){.x = -1e3, .y = 1e3}, 0.25e3,
 	                            0.5e-3, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
 	add_beamformer_variable_b32(ui, result, &ui->arena, s8("Beamform Plane:"), s8("XZ"), s8("YZ"),
@@ -1112,12 +1263,14 @@ static v2
 draw_outlined_text(s8 text, v2 pos, TextSpec *ts)
 {
 	f32 ow = ts->outline_thick;
-	draw_text_base(*ts->font, text, sub_v2(pos, (v2){.x =  ow, .y =  ow}), ts->outline_colour);
-	draw_text_base(*ts->font, text, sub_v2(pos, (v2){.x =  ow, .y = -ow}), ts->outline_colour);
-	draw_text_base(*ts->font, text, sub_v2(pos, (v2){.x = -ow, .y =  ow}), ts->outline_colour);
-	draw_text_base(*ts->font, text, sub_v2(pos, (v2){.x = -ow, .y = -ow}), ts->outline_colour);
+	Color outline = colour_from_normalized(ts->outline_colour);
+	Color colour  = colour_from_normalized(ts->colour);
+	draw_text_base(*ts->font, text, sub_v2(pos, (v2){.x =  ow, .y =  ow}), outline);
+	draw_text_base(*ts->font, text, sub_v2(pos, (v2){.x =  ow, .y = -ow}), outline);
+	draw_text_base(*ts->font, text, sub_v2(pos, (v2){.x = -ow, .y =  ow}), outline);
+	draw_text_base(*ts->font, text, sub_v2(pos, (v2){.x = -ow, .y = -ow}), outline);
 
-	v2 result = draw_text_base(*ts->font, text, pos, ts->colour);
+	v2 result = draw_text_base(*ts->font, text, pos, colour);
 
 	return result;
 }
@@ -1146,14 +1299,15 @@ draw_text(s8 text, v2 pos, TextSpec *ts)
 		}
 	}
 
+	Color colour = colour_from_normalized(ts->colour);
 	if (ts->flags & TF_OUTLINED) result.x = draw_outlined_text(text, pos, ts).x;
-	else                         result.x = draw_text_base(*ts->font, text, pos, ts->colour).x;
+	else                         result.x = draw_text_base(*ts->font, text, pos, colour).x;
 
 	if (clamped) {
 		pos.x += result.x;
 		if (ts->flags & TF_OUTLINED) result.x += draw_outlined_text(ellipsis, pos, ts).x;
 		else                         result.x += draw_text_base(*ts->font, ellipsis, pos,
-		                                                        ts->colour).x;
+		                                                        colour).x;
 	}
 
 	if (ts->flags & TF_ROTATED) rlPopMatrix();
@@ -1292,8 +1446,8 @@ draw_title_bar(BeamformerUI *ui, Arena arena, Variable *ui_view, Rect r, v2 mous
 
 	v2 title_pos = title_rect.pos;
 	title_pos.y += 0.5 * TITLE_BAR_PAD;
-	TextSpec text_spec = {.font = &ui->small_font, .flags = TF_LIMITED,
-	                      .colour = NORMALIZED_FG_COLOUR, .limits.size = title_rect.size};
+	TextSpec text_spec = {.font = &ui->small_font, .flags = TF_LIMITED, .colour = FG_COLOUR,
+	                      .limits.size = title_rect.size};
 	draw_text(title, title_pos, &text_spec);
 
 	return result;
@@ -1301,10 +1455,10 @@ draw_title_bar(BeamformerUI *ui, Arena arena, Variable *ui_view, Rect r, v2 mous
 
 /* TODO(rnp): once this has more callers decide if it would be better for this to take
  * an orientation rather than force CCW/right-handed */
-static void
+function void
 draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
            f32 start_value, f32 end_value, f32 *markers, u32 marker_count,
-           u32 segments, s8 suffix, Color ruler_colour, Color txt_colour)
+           u32 segments, s8 suffix, v4 ruler_colour, v4 txt_colour)
 {
 	b32 draw_plus = SIGN(start_value) != SIGN(end_value);
 
@@ -1322,8 +1476,9 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 	v2 sp = {0}, ep = {.y = RULER_TICK_LENGTH};
 	v2 tp = {.x = ui->small_font.baseSize / 2, .y = ep.y + RULER_TEXT_PAD};
 	TextSpec text_spec = {.font = &ui->small_font, .rotation = 90, .colour = txt_colour, .flags = TF_ROTATED};
+	Color rl_ruler_colour = colour_from_normalized(ruler_colour);
 	for (u32 j = 0; j <= segments; j++) {
-		DrawLineEx(sp.rl, ep.rl, 3, ruler_colour);
+		DrawLineEx(sp.rl, ep.rl, 3, rl_ruler_colour);
 
 		stream_reset(buf, 0);
 		if (draw_plus && value > 0) stream_append_byte(buf, '+');
@@ -1341,8 +1496,8 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 	for (u32 i = 0; i < marker_count; i++) {
 		if (markers[i] < F32_INFINITY) {
 			ep.x  = sp.x = markers[i];
-			DrawLineEx(sp.rl, ep.rl, 3, colour_from_normalized(RULER_COLOUR));
-			DrawCircleV(ep.rl, 3, colour_from_normalized(RULER_COLOUR));
+			DrawLineEx(sp.rl, ep.rl, 3, rl_ruler_colour);
+			DrawCircleV(ep.rl, 3, rl_ruler_colour);
 		}
 	}
 
@@ -1390,8 +1545,7 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, Variable *scale_bar, v2 mouse, Rect 
 		marker_count = 2;
 
 	draw_ruler(ui, buf, start_pos, end_pos, start_value, end_value, markers, marker_count,
-	           tick_count, suffix, colour_from_normalized(FG_COLOUR),
-	           colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, scale_bar->hover_t)));
+	           tick_count, suffix, FG_COLOUR, lerp_v4(FG_COLOUR, HOVERED_COLOUR, scale_bar->hover_t));
 }
 
 static v2
@@ -1436,8 +1590,7 @@ draw_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, v4 
 			text_rect = extend_rect_centered(text_rect, (v2){.x = 8});
 			if (hover_var(ui, mouse, text_rect, var) && (var->flags & V_TEXT))
 				ui->interaction.hot_font = text_spec.font;
-			text_spec.colour = colour_from_normalized(lerp_v4(base_colour, HOVERED_COLOUR,
-			                                                  var->hover_t));
+			text_spec.colour = lerp_v4(base_colour, HOVERED_COLOUR, var->hover_t);
 		}
 
 		draw_text(stream_to_s8(&buf), at, &text_spec);
@@ -1445,7 +1598,94 @@ draw_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, v4 
 	return result;
 }
 
-static void
+function v2
+draw_table_row(BeamformerUI *ui, Arena arena, TableCell *cells, TextAlignment *cell_alignments,
+               f32 *widths, i32 cell_count, Rect draw_rect, TextSpec ts, v2 mouse)
+{
+	v2 at = draw_rect.pos;
+	v4 base_colour = ts.colour;
+	ts.flags |= TF_LIMITED;
+	ts.limits.size.w = draw_rect.size.w;
+
+	for (i32 i = 0; i < cell_count; i++) {
+		TableCell *c = cells + i;
+		Rect cell_rect = {.pos = at};
+		cell_rect.size.h = draw_rect.size.h;
+
+		/* NOTE(rnp): used desired width for alignment and clamped width for drawing */
+		cell_rect.size.w = widths[i];
+		v2 cell_at = table_cell_align(c, cell_alignments[i], cell_rect);
+		cell_rect.size.w = MIN(ts.limits.size.w, widths[i]);
+
+		ts.colour = base_colour;
+		if (c->var && c->var->flags & V_INPUT) {
+			if (hover_var(ui, mouse, cell_rect, c->var) && (c->var->flags & V_TEXT))
+				ui->interaction.hot_font = ts.font;
+			ts.colour = lerp_v4(base_colour, HOVERED_COLOUR, c->var->hover_t);
+		}
+
+		/* TODO(rnp): push truncated text for hovering */
+
+		if (c->var && c->var->flags & V_RADIO_BUTTON)
+			draw_radio_button(ui, c->var, cell_at, mouse, base_colour, ts.font->baseSize);
+		else
+			draw_text(c->text, cell_at, &ts);
+		at.x             += cell_rect.size.w;
+		ts.limits.size.w -= cell_rect.size.w;
+		/* TODO(rnp): draw column borders */
+	}
+
+	return (v2){.x = draw_rect.pos.x - at.x, .y = draw_rect.size.h};
+}
+
+function void
+draw_table(BeamformerUI *ui, Arena arena, Table *table, Rect draw_rect, TextSpec ts, v2 mouse)
+{
+	struct table_frame {
+		Table *table;
+		f32   *column_widths;
+		iz     row_index;
+	} init[4];
+
+	struct {
+		struct table_frame *data;
+		iz count;
+		iz capacity;
+	} stack = {init, 0, countof(init)};
+
+	i32 row_index      = table_skip_rows(table, draw_rect.size.h, ts.font->baseSize);
+	f32 *column_widths = table_measure(table, &arena, draw_rect.size.w, ts);
+	for (;;) {
+		TableRow *row = table->data + row_index++;
+		if (row_index <= table->rows) {
+			if (row->kind == TRK_TABLE) {
+				*da_push(&arena, &stack) = (struct table_frame){table, column_widths,
+				                                                row_index};
+				table         = row->data;
+				row_index     = 0;
+				column_widths = table_measure(table, &arena, draw_rect.size.w, ts);
+			} else {
+				Rect row_rect   = draw_rect;
+				row_rect.size.h = ts.font->baseSize + TABLE_CELL_PAD_HEIGHT;
+				f32 h = draw_table_row(ui, arena, row->data, table->alignment,
+				                       column_widths, table->columns, row_rect,
+				                       ts, mouse).y;
+				draw_rect.pos.y  += h;
+				draw_rect.size.y -= h;
+				/* TODO(rnp): draw column borders */
+			}
+		} else if (stack.count) {
+			struct table_frame *frame = stack.data + --stack.count;
+			table         = frame->table;
+			row_index     = frame->row_index;
+			column_widths = frame->column_widths;
+		} else {
+			break;
+		}
+	}
+}
+
+function void
 draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect display_rect, v2 mouse)
 {
 	ASSERT(var->type == VT_BEAMFORMER_FRAME_VIEW);
@@ -1537,12 +1777,10 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	}
 
 	TextSpec text_spec = {.font = &ui->small_font, .flags = TF_LIMITED|TF_OUTLINED,
-	                      .colour = colour_from_normalized(RULER_COLOUR),
-	                      .outline_thick = 1, .outline_colour = BLACK,
+	                      .colour = RULER_COLOUR, .outline_thick = 1, .outline_colour.a = 1,
 	                      .limits.size.x = vr.size.w};
 
-	b32 drew_coordinates = 0;
-	f32 remaining_width  = vr.size.w;
+	f32 draw_table_width = vr.size.w;
 	if (point_in_rect(mouse, vr)) {
 		is->hot      = var;
 		is->hot_rect = vr;
@@ -1561,9 +1799,8 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 			.y = vr.pos.y + vr.size.h - txt_s.h - 4,
 		};
 		txt_p.x = MAX(vr.pos.x, txt_p.x);
-		remaining_width -= draw_text(stream_to_s8(&buf), txt_p, &text_spec).w;
+		draw_table_width -= draw_text(stream_to_s8(&buf), txt_p, &text_spec).w;
 		text_spec.limits.size.w += 4;
-		drew_coordinates = 1;
 	}
 
 	{
@@ -1601,9 +1838,10 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		v2 pixel_delta = sub_v2(start_p, end_p);
 		v2 m_delta     = sub_v2(end_p_world, start_p_world);
 
-		DrawCircleV(start_p.rl, 3, text_spec.colour);
-		DrawLineEx(end_p.rl, start_p.rl, 2, text_spec.colour);
-		DrawCircleV(end_p.rl, 3, text_spec.colour);
+		Color rl_colour = colour_from_normalized(text_spec.colour);
+		DrawCircleV(start_p.rl, 3, rl_colour);
+		DrawLineEx(end_p.rl, start_p.rl, 2, rl_colour);
+		DrawCircleV(end_p.rl, 3, rl_colour);
 
 		Arena  tmp = a;
 		Stream buf = arena_stream(&tmp);
@@ -1617,48 +1855,20 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		draw_text(stream_to_s8(&buf), txt_p, &text_spec);
 	}
 
-	/* TODO(rnp): cleanup this whole mess with a table */
-	if (remaining_width > view->dynamic_range.name_width || !drew_coordinates) {
-		f32 max_prefix_width = MAX(view->threshold.name_width, view->dynamic_range.name_width);
+	Table table = table_new(&a, 3, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_LEFT});
+	table_push_parameter_row(&table, &a, view->gamma.name,         &view->gamma,         s8(""));
+	table_push_parameter_row(&table, &a, view->threshold.name,     &view->threshold,     s8(""));
+	table_push_parameter_row(&table, &a, view->dynamic_range.name, &view->dynamic_range, s8("[dB]"));
 
-		f32 items   = 3;
-		v2  end     = add_v2(vr.pos, vr.size);
-		f32 start_y = MAX(end.y - 4 - items * text_spec.font->baseSize, vr.pos.y);
-		end.y -= text_spec.font->baseSize;
-		v2 at = {.x = vr.pos.x + 4, .y = start_y};
+	Rect table_rect = vr;
+	f32 height      = table_height(&table, &text_spec);
+	height          = MIN(height, vr.size.h);
+	table_rect.pos.w  += 8;
+	table_rect.pos.y  += vr.size.h - height - 8;
+	table_rect.size.h  = height;
+	table_rect.size.w  = draw_table_width - 16;
 
-		if (at.y < end.y) at.y += draw_text(view->gamma.name, at, &text_spec).y;
-		if (at.y < end.y) at.y += draw_text(view->threshold.name, at, &text_spec).y;
-		if (at.y < end.y) at.y += draw_text(view->dynamic_range.name, at, &text_spec).y;
-
-		at.y  = start_y;
-		at.x += max_prefix_width + 8;
-		text_spec.limits.size.x = end.x - at.x;
-
-		v2  size;
-		f32 max_center_width = 0;
-		if (at.y < end.y) {
-			size = draw_variable(ui, a, &view->gamma, at, mouse, RULER_COLOUR, text_spec);
-			max_center_width = MAX(size.w, max_center_width);
-			at.y += size.h;
-		}
-
-		if (at.y < end.y) {
-			size = draw_variable(ui, a, &view->threshold, at, mouse, RULER_COLOUR, text_spec);
-			max_center_width = MAX(size.w, max_center_width);
-			at.y += size.h;
-		}
-
-		if (at.y < end.y) {
-			size = draw_variable(ui, a, &view->dynamic_range, at, mouse, RULER_COLOUR, text_spec);
-			max_center_width = MAX(size.w, max_center_width);
-			at.x += max_center_width + 8;
-			text_spec.limits.size.x = end.x - at.x;
-			draw_text(s8(" [dB]"), at, &text_spec);
-			at.x -= max_center_width + 8;
-			at.y += size.h;
-		}
-	}
+	draw_table(ui, a, &table, table_rect, text_spec, mouse);
 }
 
 static v2
@@ -1709,7 +1919,7 @@ draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *sta
 	Stream buf = stream_alloc(&arena, 64);
 	f32 compute_time_sum = 0;
 	u32 stages = ctx->shared_memory->compute_stages_count;
-	TextSpec text_spec = {.font = &ui->font, .colour = NORMALIZED_FG_COLOUR, .flags = TF_LIMITED};
+	TextSpec text_spec = {.font = &ui->font, .colour = FG_COLOUR, .flags = TF_LIMITED};
 	for (u32 i = 0; i < stages; i++) {
 		u32 index  = ctx->shared_memory->compute_stages[i];
 		text_spec.limits.size.x = r.size.w;
@@ -1887,8 +2097,7 @@ draw_active_text_box(BeamformerUI *ui, Variable *var)
 	v4 cursor_colour = FOCUSED_COLOUR;
 	cursor_colour.a  = CLAMP01(is->cursor_blink_t);
 
-	Color c = colour_from_normalized(lerp_v4(FG_COLOUR, HOVERED_COLOUR, var->hover_t));
-	TextSpec text_spec = {.font = font, .colour = c};
+	TextSpec text_spec = {.font = font, .colour = lerp_v4(FG_COLOUR, HOVERED_COLOUR, var->hover_t)};
 
 	DrawRectangleRounded(background.rl, 0.2, 0, fade(BLACK, 0.8));
 	DrawRectangleRounded(box.rl, 0.2, 0, colour_from_normalized(BG_COLOUR));
@@ -1940,7 +2149,7 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 	}
 
 	item = menu->u.group.first;
-	TextSpec text_spec = {.font = font, .colour = NORMALIZED_FG_COLOUR, .limits.size.w = menu_width};
+	TextSpec text_spec = {.font = font, .colour = FG_COLOUR, .limits.size.w = menu_width};
 	at = start;
 	while (item) {
 		at.x = start.x;
@@ -1974,7 +2183,7 @@ draw_layout_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 	switch (var->type) {
 	case VT_UI_VIEW: {
 		hover_var(ui, mouse, draw_rect, var);
-		TextSpec text_spec = {.font = &ui->font, .colour = NORMALIZED_FG_COLOUR, .flags = TF_LIMITED};
+		TextSpec text_spec = {.font = &ui->font, .colour = FG_COLOUR, .flags = TF_LIMITED};
 		draw_ui_view(ui, var, draw_rect, mouse, text_spec);
 	} break;
 	case VT_UI_REGION_SPLIT: {
