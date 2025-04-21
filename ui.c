@@ -391,18 +391,35 @@ typedef struct {
 	iz        count;
 	iz        capacity;
 
+	/* NOTE(rnp): counted by columns */
 	TextAlignment *alignment;
+	f32           *widths;
 
 	v4  border_colour;
+	f32 column_border_thick;
+	f32 row_border_thick;
 
 	/* NOTE(rnp): row count including nested tables */
 	i32 rows;
 	i32 columns;
-
-	f32 cell_border_thick;
-	f32 row_border_thick;
-	b32 fill_space;
 } Table;
+
+typedef struct {
+	Table *table;
+	i32    row_index;
+} TableStackFrame;
+
+typedef struct {
+	TableStackFrame *data;
+	iz count;
+	iz capacity;
+} TableStack;
+
+typedef struct {
+	TableStack stack;
+	Table *table;
+	i32    row_index;
+} TableRowIterator;
 
 function v2
 measure_glyph(Font font, u32 glyph)
@@ -505,15 +522,8 @@ table_new(Arena *a, i32 initial_capacity, i32 columns, TextAlignment *alignment)
 	Table result = {.columns = columns};
 	da_reserve(a, &result, initial_capacity);
 	result.alignment = alloc(a, TextAlignment, columns);
+	result.widths    = alloc(a, f32, columns);
 	mem_copy(result.alignment, alignment, sizeof(*alignment) * columns);
-	return result;
-}
-
-function f32
-table_height(Table *t, TextSpec *ts)
-{
-	f32 result = t->count * (ts->font->baseSize + TABLE_CELL_PAD_HEIGHT);
-	result += (t->count - 1) * t->row_border_thick;
 	return result;
 }
 
@@ -525,32 +535,72 @@ table_skip_rows(Table *t, f32 draw_height, f32 text_height)
 	return result;
 }
 
-function f32 *
-table_measure(Table *table, Arena *a, f32 max_width, TextSpec ts)
+function TableRowIterator
+table_row_iterator_new(Table *table, Arena *a, i32 starting_row_index)
 {
-	f32 *result = alloc(a, f32, table->columns);
+	TableRowIterator result = {0};
+	result.table            = table;
+	result.row_index        = starting_row_index;
+	da_reserve(a, &result.stack, 4);
+	return result;
+}
 
-	for (iz i = 0; i < table->count; i++) {
-		TableRow *row = table->data + i;
-		if (row->kind == TRK_CELLS) {
-			for (iz j = 0; j < table->columns; j++) {
-				TableCell *cell = (TableCell *)row->data + j;
-				if (!cell->text.len) cell->width = ts.font->baseSize;
-				else                 cell->width = measure_text(*ts.font, cell->text).w;
-				cell->width += TABLE_CELL_PAD_WIDTH;
-				result[j] = MAX(cell->width, result[j]);
+function TableRow *
+table_row_iterator_next(TableRowIterator *it, Arena *a)
+{
+	TableRow *result = 0;
+	for (;;) {
+		TableRow *row = it->table->data + it->row_index++;
+		if (it->row_index <= it->table->count) {
+			if (row->kind == TRK_TABLE) {
+				*da_push(a, &it->stack) = (TableStackFrame){it->table, it->row_index};
+				it->table     = row->data;
+				it->row_index = 0;
+			} else {
+				result = row;
+				break;
 			}
+		} else if (it->stack.count) {
+			TableStackFrame *frame = it->stack.data + --it->stack.count;
+			it->table     = frame->table;
+			it->row_index = frame->row_index;
+		} else {
+			break;
 		}
 	}
+	return result;
+}
 
-	if (table->fill_space) {
-		f32 sum = 0;
-		for (iz i = 0; i < table->columns; i++)
-			sum += result[i];
-		for (iz i = 0; i < table->columns; i++)
-			result[i] = max_width * result[i] / sum;
+function v2
+table_extent(Table *t, Arena arena, Font *font)
+{
+	TableRowIterator it = table_row_iterator_new(t, &arena, 0);
+	f32 max_row_width   = 0;
+	for (TableRow *row = table_row_iterator_next(&it, &arena);
+	     row;
+	     row = table_row_iterator_next(&it, &arena))
+	{
+		i32 columns   = it.table->columns;
+		f32 row_width = 0;
+		for (i32 i = 0; i < columns; i++) {
+			TableCell *cell = (TableCell *)row->data + i;
+			if (!cell->text.len && cell->var && cell->var->flags & V_RADIO_BUTTON) {
+				cell->width = 3 * font->baseSize;
+			} else {
+				cell->width = measure_text(*font, cell->text).w;
+			}
+			cell->width += TABLE_CELL_PAD_WIDTH;
+			row_width   += cell->width;
+			it.table->widths[i] = MAX(cell->width, it.table->widths[i]);
+		}
+		row_width     += (columns - 1) * it.table->column_border_thick;
+		max_row_width  = MAX(row_width, max_row_width);
 	}
 
+	v2 result;
+	result.x = max_row_width;
+	result.y = t->rows * (font->baseSize + TABLE_CELL_PAD_HEIGHT)
+	           + (t->rows - 1) * t->row_border_thick;
 	return result;
 }
 
@@ -1641,47 +1691,19 @@ draw_table_row(BeamformerUI *ui, Arena arena, TableCell *cells, TextAlignment *c
 function void
 draw_table(BeamformerUI *ui, Arena arena, Table *table, Rect draw_rect, TextSpec ts, v2 mouse)
 {
-	struct table_frame {
-		Table *table;
-		f32   *column_widths;
-		iz     row_index;
-	} init[4];
-
-	struct {
-		struct table_frame *data;
-		iz count;
-		iz capacity;
-	} stack = {init, 0, countof(init)};
-
-	i32 row_index      = table_skip_rows(table, draw_rect.size.h, ts.font->baseSize);
-	f32 *column_widths = table_measure(table, &arena, draw_rect.size.w, ts);
-	for (;;) {
-		TableRow *row = table->data + row_index++;
-		if (row_index <= table->rows) {
-			if (row->kind == TRK_TABLE) {
-				*da_push(&arena, &stack) = (struct table_frame){table, column_widths,
-				                                                row_index};
-				table         = row->data;
-				row_index     = 0;
-				column_widths = table_measure(table, &arena, draw_rect.size.w, ts);
-			} else {
-				Rect row_rect   = draw_rect;
-				row_rect.size.h = ts.font->baseSize + TABLE_CELL_PAD_HEIGHT;
-				f32 h = draw_table_row(ui, arena, row->data, table->alignment,
-				                       column_widths, table->columns, row_rect,
-				                       ts, mouse).y;
-				draw_rect.pos.y  += h;
-				draw_rect.size.y -= h;
-				/* TODO(rnp): draw column borders */
-			}
-		} else if (stack.count) {
-			struct table_frame *frame = stack.data + --stack.count;
-			table         = frame->table;
-			row_index     = frame->row_index;
-			column_widths = frame->column_widths;
-		} else {
-			break;
-		}
+	i32 row_index       = table_skip_rows(table, draw_rect.size.h, ts.font->baseSize);
+	TableRowIterator it = table_row_iterator_new(table, &arena, row_index);
+	for (TableRow *row = table_row_iterator_next(&it, &arena);
+	     row;
+	     row = table_row_iterator_next(&it, &arena))
+	{
+		Rect row_rect   = draw_rect;
+		row_rect.size.h = ts.font->baseSize + TABLE_CELL_PAD_HEIGHT;
+		f32 h = draw_table_row(ui, arena, row->data, it.table->alignment, it.table->widths,
+		                       it.table->columns, row_rect, ts, mouse).y;
+		draw_rect.pos.y  += h;
+		draw_rect.size.y -= h;
+		/* TODO(rnp): draw column borders */
 	}
 }
 
@@ -1861,7 +1883,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	table_push_parameter_row(&table, &a, view->dynamic_range.name, &view->dynamic_range, s8("[dB]"));
 
 	Rect table_rect = vr;
-	f32 height      = table_height(&table, &text_spec);
+	f32 height      = table_extent(&table, a, text_spec.font).y;
 	height          = MIN(height, vr.size.h);
 	table_rect.pos.w  += 8;
 	table_rect.pos.y  += vr.size.h - height - 8;
