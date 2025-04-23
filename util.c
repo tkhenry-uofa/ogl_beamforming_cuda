@@ -72,6 +72,16 @@ alloc_(Arena *a, iz len, iz align, iz count)
 	return mem_clear(p, 0, count * len);
 }
 
+#define arena_capacity(a, t) arena_capacity_(a, sizeof(t), _Alignof(t))
+function iz
+arena_capacity_(Arena *a, iz size, iz alignment)
+{
+	iz padding   = -(uintptr_t)a->beg & (alignment - 1);
+	iz available = a->end - a->beg - padding;
+	iz result    = available / size;
+	return result;
+}
+
 enum { DA_INITIAL_CAP = 8 };
 #define da_reserve(a, s, n) \
   (s)->data = da_reserve_((a), (s)->data, &(s)->capacity, (s)->count + n, \
@@ -780,40 +790,43 @@ kronecker_product(i32 *out, i32 *a, uv2 a_dim, i32 *b, uv2 b_dim)
 }
 
 /* NOTE/TODO: to support even more hadamard sizes use the Paley construction */
-static void
-fill_hadamard_transpose(i32 *out, i32 *tmp, u32 dim)
+function i32 *
+make_hadamard_transpose(Arena *a, u32 dim)
 {
-	ASSERT(dim);
+	i32 *result = 0;
+
 	b32 power_of_2     = ISPOWEROF2(dim);
 	b32 multiple_of_12 = dim % 12 == 0;
+	iz elements        = dim * dim;
 
-	if (!power_of_2 && !multiple_of_12)
-		return;
+	if (dim && (power_of_2 || multiple_of_12) &&
+	    arena_capacity(a, i32) >= elements * (1 + multiple_of_12))
+	{
+		if (!power_of_2) dim /= 12;
+		result = alloc(a, i32, elements);
 
-	if (!power_of_2) {
-		ASSERT(multiple_of_12);
-		dim /= 12;
-	}
+		Arena tmp = *a;
+		i32 *m = power_of_2 ? result : alloc(&tmp, i32, elements);
 
-	i32 *m;
-	if (power_of_2) m = out;
-	else            m = tmp;
-
-	#define IND(i, j) ((i) * dim + (j))
-	m[0] = 1;
-	for (u32 k = 1; k < dim; k *= 2) {
-		for (u32 i = 0; i < k; i++) {
-			for (u32 j = 0; j < k; j++) {
-				i32 val = m[IND(i, j)];
-				m[IND(i + k, j)]     =  val;
-				m[IND(i, j + k)]     =  val;
-				m[IND(i + k, j + k)] = -val;
+		#define IND(i, j) ((i) * dim + (j))
+		m[0] = 1;
+		for (u32 k = 1; k < dim; k *= 2) {
+			for (u32 i = 0; i < k; i++) {
+				for (u32 j = 0; j < k; j++) {
+					i32 val = m[IND(i, j)];
+					m[IND(i + k, j)]     =  val;
+					m[IND(i, j + k)]     =  val;
+					m[IND(i + k, j + k)] = -val;
+				}
 			}
 		}
-	}
-	#undef IND
+		#undef IND
 
-	if (!power_of_2)
-		kronecker_product(out, tmp, (uv2){.x = dim, .y = dim}, hadamard_12_12_transpose,
-		                  (uv2){.x = 12, .y = 12});
+		if (!power_of_2) {
+			kronecker_product(result, m, (uv2){.x = dim, .y = dim},
+			                  hadamard_12_12_transpose, (uv2){.x = 12, .y = 12});
+		}
+	}
+
+	return result;
 }

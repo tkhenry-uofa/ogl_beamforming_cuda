@@ -143,17 +143,15 @@ alloc_shader_storage(BeamformerCtx *ctx, u32 rf_raw_size, Arena a)
 	ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E,
 		                              ctx->shared_memory->channel_mapping);
 
-	/* NOTE: store hadamard in GPU once; it won't change for a particular imaging session */
-	iz   hadamard_elements = dec_data_dim.z * dec_data_dim.z;
-	i32  *hadamard         = alloc(&a, i32, hadamard_elements);
-	i32  *tmp              = alloc(&a, i32, hadamard_elements);
-	fill_hadamard_transpose(hadamard, tmp, dec_data_dim.z);
-	glDeleteTextures(1, &cs->hadamard_texture);
-	glCreateTextures(GL_TEXTURE_2D, 1, &cs->hadamard_texture);
-	glTextureStorage2D(cs->hadamard_texture, 1, GL_R8I, dec_data_dim.z, dec_data_dim.z);
-	glTextureSubImage2D(cs->hadamard_texture, 0, 0, 0, dec_data_dim.z, dec_data_dim.z,
-	                    GL_RED_INTEGER, GL_INT, hadamard);
-	LABEL_GL_OBJECT(GL_TEXTURE, cs->hadamard_texture, s8("Hadamard_Matrix"));
+	i32 *hadamard = make_hadamard_transpose(&a, dec_data_dim.z);
+	if (hadamard) {
+		glDeleteTextures(1, &cs->hadamard_texture);
+		glCreateTextures(GL_TEXTURE_2D, 1, &cs->hadamard_texture);
+		glTextureStorage2D(cs->hadamard_texture, 1, GL_R8I, dec_data_dim.z, dec_data_dim.z);
+		glTextureSubImage2D(cs->hadamard_texture, 0, 0, 0, dec_data_dim.z, dec_data_dim.z,
+		                    GL_RED_INTEGER, GL_INT, hadamard);
+		LABEL_GL_OBJECT(GL_TEXTURE, cs->hadamard_texture, s8("Hadamard_Matrix"));
+	}
 }
 
 static b32
