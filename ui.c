@@ -416,10 +416,18 @@ typedef struct {
 } TableStack;
 
 typedef struct {
-	TableStack stack;
-	Table *table;
-	i32    row_index;
+	TableStack      stack;
+	TableStackFrame frame;
 } TableRowIterator;
+
+typedef struct {
+	TableRowIterator row_iterator;
+	TableRow *row;
+	i32  column;
+	f32  start_x;
+	Rect          cell_rect;
+	TextAlignment alignment;
+} TableCellIterator;
 
 function v2
 measure_glyph(Font font, u32 glyph)
@@ -539,8 +547,8 @@ function TableRowIterator
 table_row_iterator_new(Table *table, Arena *a, i32 starting_row_index)
 {
 	TableRowIterator result = {0};
-	result.table            = table;
-	result.row_index        = starting_row_index;
+	result.frame.table      = table;
+	result.frame.row_index  = starting_row_index;
 	da_reserve(a, &result.stack, 4);
 	return result;
 }
@@ -550,24 +558,57 @@ table_row_iterator_next(TableRowIterator *it, Arena *a)
 {
 	TableRow *result = 0;
 	for (;;) {
-		TableRow *row = it->table->data + it->row_index++;
-		if (it->row_index <= it->table->count) {
+		TableRow *row = it->frame.table->data + it->frame.row_index++;
+		if (it->frame.row_index <= it->frame.table->count) {
 			if (row->kind == TRK_TABLE) {
-				*da_push(a, &it->stack) = (TableStackFrame){it->table, it->row_index};
-				it->table     = row->data;
-				it->row_index = 0;
+				*da_push(a, &it->stack) = it->frame;
+				it->frame = (TableStackFrame){.table = row->data};
 			} else {
 				result = row;
 				break;
 			}
 		} else if (it->stack.count) {
-			TableStackFrame *frame = it->stack.data + --it->stack.count;
-			it->table     = frame->table;
-			it->row_index = frame->row_index;
+			it->frame = it->stack.data[--it->stack.count];
 		} else {
 			break;
 		}
 	}
+	return result;
+}
+
+function TableCellIterator
+table_cell_iterator_new(Table *table, Arena *a, i32 starting_row_index, v2 position, Font *font)
+{
+	TableCellIterator result = {0};
+	result.row_iterator      = table_row_iterator_new(table, a, starting_row_index);
+	result.row               = table_row_iterator_next(&result.row_iterator, a);
+	result.cell_rect.size.h  = font->baseSize + TABLE_CELL_PAD_HEIGHT;
+	result.start_x           = position.x;
+	result.cell_rect.pos     = add_v2(position,
+	                                  (v2){.y = starting_row_index * result.cell_rect.size.h});
+	return result;
+}
+
+function TableCell *
+table_cell_iterator_next(TableCellIterator *it, Arena *a)
+{
+	TableCell *result = 0;
+
+	if (it->column == it->row_iterator.frame.table->columns) {
+		it->row    = table_row_iterator_next(&it->row_iterator, a);
+		it->column = 0;
+		it->cell_rect.pos.x  = it->start_x;
+		it->cell_rect.pos.y += it->cell_rect.size.h;
+	}
+
+	if (it->row) {
+		i32 column = it->column++;
+		it->cell_rect.pos.x  += column > 0 ? it->cell_rect.size.w : 0;
+		it->cell_rect.size.w  = it->row_iterator.frame.table->widths[column];
+		it->alignment         = it->row_iterator.frame.table->alignment[column];
+		result = (TableCell *)it->row->data + column;
+	}
+
 	return result;
 }
 
@@ -580,7 +621,7 @@ table_extent(Table *t, Arena arena, Font *font)
 	     row;
 	     row = table_row_iterator_next(&it, &arena))
 	{
-		i32 columns   = it.table->columns;
+		i32 columns   = it.frame.table->columns;
 		f32 row_width = 0;
 		for (i32 i = 0; i < columns; i++) {
 			TableCell *cell = (TableCell *)row->data + i;
@@ -591,9 +632,9 @@ table_extent(Table *t, Arena arena, Font *font)
 			}
 			cell->width += TABLE_CELL_PAD_WIDTH;
 			row_width   += cell->width;
-			it.table->widths[i] = MAX(cell->width, it.table->widths[i]);
+			it.frame.table->widths[i] = MAX(cell->width, it.frame.table->widths[i]);
 		}
-		row_width     += (columns - 1) * it.table->column_border_thick;
+		row_width     += (columns - 1) * it.frame.table->column_border_thick;
 		max_row_width  = MAX(row_width, max_row_width);
 	}
 
@@ -1649,61 +1690,66 @@ draw_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, v4 
 }
 
 function v2
+draw_table_cell(BeamformerUI *ui, TableCell *cell, Rect cell_rect, TextAlignment alignment,
+                TextSpec ts, v2 mouse)
+{
+	/* NOTE(rnp): use desired width for alignment and clamped width for drawing */
+	v2 cell_at = table_cell_align(cell, alignment, cell_rect);
+	cell_rect.size.w = MIN(ts.limits.size.w, cell_rect.size.w);
+
+	v4 base_colour = ts.colour;
+	if (cell->var && cell->var->flags & V_INPUT) {
+		if (hover_var(ui, mouse, cell_rect, cell->var) && (cell->var->flags & V_TEXT))
+			ui->interaction.hot_font = ts.font;
+		ts.colour = lerp_v4(ts.colour, HOVERED_COLOUR, cell->var->hover_t);
+	}
+
+	/* TODO(rnp): push truncated text for hovering */
+	if (cell->var && cell->var->flags & V_RADIO_BUTTON)
+		draw_radio_button(ui, cell->var, cell_at, mouse, base_colour, ts.font->baseSize);
+	else if (cell->text.len)
+		draw_text(cell->text, cell_at, &ts);
+	/* TODO(rnp): draw column border */
+
+	return cell_rect.size;
+}
+
+function v2
 draw_table_row(BeamformerUI *ui, Arena arena, TableCell *cells, TextAlignment *cell_alignments,
                f32 *widths, i32 cell_count, Rect draw_rect, TextSpec ts, v2 mouse)
 {
-	v2 at = draw_rect.pos;
-	v4 base_colour = ts.colour;
-	ts.flags |= TF_LIMITED;
-	ts.limits.size.w = draw_rect.size.w;
-
+	Rect cell_rect = {.pos = draw_rect.pos, .size.h = draw_rect.size.h};
 	for (i32 i = 0; i < cell_count; i++) {
-		TableCell *c = cells + i;
-		Rect cell_rect = {.pos = at};
-		cell_rect.size.h = draw_rect.size.h;
-
-		/* NOTE(rnp): used desired width for alignment and clamped width for drawing */
+		TableCell *cell  = cells + i;
 		cell_rect.size.w = widths[i];
-		v2 cell_at = table_cell_align(c, cell_alignments[i], cell_rect);
-		cell_rect.size.w = MIN(ts.limits.size.w, widths[i]);
 
-		ts.colour = base_colour;
-		if (c->var && c->var->flags & V_INPUT) {
-			if (hover_var(ui, mouse, cell_rect, c->var) && (c->var->flags & V_TEXT))
-				ui->interaction.hot_font = ts.font;
-			ts.colour = lerp_v4(base_colour, HOVERED_COLOUR, c->var->hover_t);
-		}
-
-		/* TODO(rnp): push truncated text for hovering */
-
-		if (c->var && c->var->flags & V_RADIO_BUTTON)
-			draw_radio_button(ui, c->var, cell_at, mouse, base_colour, ts.font->baseSize);
-		else
-			draw_text(c->text, cell_at, &ts);
-		at.x             += cell_rect.size.w;
-		ts.limits.size.w -= cell_rect.size.w;
-		/* TODO(rnp): draw column borders */
+		f32 dw = draw_table_cell(ui, cell, cell_rect, cell_alignments[i], ts, mouse).w;
+		cell_rect.pos.x  += dw;
+		ts.limits.size.w -= dw;
 	}
-
-	return (v2){.x = draw_rect.pos.x - at.x, .y = draw_rect.size.h};
+	return (v2){.x = draw_rect.pos.x - cell_rect.pos.x, .y = draw_rect.size.h};
 }
 
 function void
 draw_table(BeamformerUI *ui, Arena arena, Table *table, Rect draw_rect, TextSpec ts, v2 mouse)
 {
+	ts.flags |= TF_LIMITED;
+	ts.limits.size.w = draw_rect.size.w;
+
 	i32 row_index       = table_skip_rows(table, draw_rect.size.h, ts.font->baseSize);
 	TableRowIterator it = table_row_iterator_new(table, &arena, row_index);
 	for (TableRow *row = table_row_iterator_next(&it, &arena);
 	     row;
 	     row = table_row_iterator_next(&it, &arena))
 	{
+		Table *table    = it.frame.table;
 		Rect row_rect   = draw_rect;
 		row_rect.size.h = ts.font->baseSize + TABLE_CELL_PAD_HEIGHT;
-		f32 h = draw_table_row(ui, arena, row->data, it.table->alignment, it.table->widths,
-		                       it.table->columns, row_rect, ts, mouse).y;
+		f32 h = draw_table_row(ui, arena, row->data, table->alignment, table->widths,
+		                       table->columns, row_rect, ts, mouse).y;
 		draw_rect.pos.y  += h;
 		draw_rect.size.y -= h;
-		/* TODO(rnp): draw column borders */
+		/* TODO(rnp): draw row border */
 	}
 }
 
