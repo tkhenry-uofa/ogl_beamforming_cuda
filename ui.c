@@ -375,9 +375,21 @@ typedef enum {
 	TRK_TABLE,
 } TableRowKind;
 
+typedef enum {
+	TCK_NONE,
+	TCK_GENERIC,
+	TCK_INTEGER,
+	TCK_VARIABLE,
+} TableCellKind;
+
 typedef struct {
 	s8 text;
-	Variable *var;
+	union {
+		i64       integer;
+		Variable *var;
+		void     *generic;
+	};
+	TableCellKind kind;
 	f32 width;
 } TableCell;
 
@@ -665,7 +677,7 @@ table_cell_align(TableCell *cell, TextAlignment align, Rect r)
 function TableCell
 table_variable_cell(Arena *a, Variable *var)
 {
-	TableCell result = {.var = var};
+	TableCell result = {.var = var, .kind = TCK_VARIABLE};
 	Arena  tmp  = *a;
 	Stream text = arena_stream(&tmp);
 	stream_append_variable(&text, var);
@@ -1698,14 +1710,14 @@ draw_table_cell(BeamformerUI *ui, TableCell *cell, Rect cell_rect, TextAlignment
 	cell_rect.size.w = MIN(ts.limits.size.w, cell_rect.size.w);
 
 	v4 base_colour = ts.colour;
-	if (cell->var && cell->var->flags & V_INPUT) {
+	if (cell->kind == TCK_VARIABLE && cell->var->flags & V_INPUT) {
 		if (hover_var(ui, mouse, cell_rect, cell->var) && (cell->var->flags & V_TEXT))
 			ui->interaction.hot_font = ts.font;
 		ts.colour = lerp_v4(ts.colour, HOVERED_COLOUR, cell->var->hover_t);
 	}
 
 	/* TODO(rnp): push truncated text for hovering */
-	if (cell->var && cell->var->flags & V_RADIO_BUTTON)
+	if (cell->kind == TCK_VARIABLE && cell->var->flags & V_RADIO_BUTTON)
 		draw_radio_button(ui, cell->var, cell_at, mouse, base_colour, ts.font->baseSize);
 	else if (cell->text.len)
 		draw_text(cell->text, cell_at, &ts);
