@@ -8,7 +8,7 @@ layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 #elif defined(INPUT_DATA_TYPE_FLOAT_COMPLEX)
 	#define INPUT_DATA_TYPE      vec2
 	#define RF_SAMPLES_PER_INDEX 1
-	#define RESULT_TYPE_CAST(x)  vec2(x)
+	#define RESULT_TYPE_CAST(x)  (x)
 #else
 	#define INPUT_DATA_TYPE      int
 	#define RF_SAMPLES_PER_INDEX 2
@@ -29,9 +29,7 @@ layout(r16i, binding = 1) readonly restrict uniform iimage1D channel_mapping;
 INPUT_DATA_TYPE sample_rf_data(int index, uint lfs)
 {
 	INPUT_DATA_TYPE result;
-#if   defined(INPUT_DATA_TYPE_FLOAT)
-	result = rf_data[index];
-#elif defined(INPUT_DATA_TYPE_FLOAT_COMPLEX)
+#if defined(INPUT_DATA_TYPE_FLOAT) || defined(INPUT_DATA_TYPE_FLOAT_COMPLEX)
 	result = rf_data[index];
 #else
 	result = (rf_data[index] << lfs) >> 16;
