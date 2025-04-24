@@ -55,7 +55,8 @@ typedef enum {
 	X(RACES,           6, "RACES",          1) \
 	X(EPIC_FORCES,     7, "EPIC-FORCES",    1) \
 	X(EPIC_UFORCES,    8, "EPIC-UFORCES",   0) \
-	X(EPIC_UHERCULES,  9, "EPIC-UHERCULES", 0)
+	X(EPIC_UHERCULES,  9, "EPIC-UHERCULES", 0) \
+	X(FLASH,          10, "Flash",          0)
 
 #define DAS_LOCAL_SIZE_X 32
 #define DAS_LOCAL_SIZE_Y  1
