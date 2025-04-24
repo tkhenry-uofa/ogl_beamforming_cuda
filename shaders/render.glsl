@@ -12,13 +12,13 @@ vec3 hsv2rgb(vec3 hsv)
 
 void main()
 {
-	ivec2 out_data_dim = textureSize(u_out_data_tex, 0).xz;
+	ivec3 out_data_dim = textureSize(u_out_data_tex, 0);
 
 	//vec2 min_max = texelFetch(u_out_data_tex, ivec3(0), textureQueryLevels(u_out_data_tex) - 1).xy;
 
 	/* TODO(rnp): select between x and y and specify slice */
-	ivec2 coord     = ivec2(fragment_texture_coordinate * vec2(out_data_dim));
-	ivec3 smp_coord = ivec3(coord.x, 0, coord.y);
+	ivec2 coord     = ivec2(fragment_texture_coordinate * vec2(out_data_dim.xz));
+	ivec3 smp_coord = ivec3(coord.x, out_data_dim.y / 2, coord.y);
 	float smp       = length(texelFetch(u_out_data_tex, smp_coord, 0).xy);
 
 	float threshold_val = pow(10.0f, u_threshold / 20.0f);
