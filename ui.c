@@ -2,6 +2,8 @@
 /* TODO(rnp):
  * [ ]: refactor: ui should be in its own thread and that thread should only be concerned with the ui
  * [ ]: refactor: ui shouldn't fully destroy itself on hot reload
+ * [ ]: refactor: split up draw_ui_view function (have a VT_UI_LISTING)
+ * [ ]: refactor: remove all the excessive measure_texts (cell drawing, hover_var in params table)
  * [ ]: refactor: move remaining fragment shader stuff into ui
  * [ ]: refactor: re-add next_hot variable. this will simplify the code and number of checks
  *      being performed inline. example:
@@ -61,8 +63,6 @@
 /* TODO(rnp) smooth scroll */
 #define UI_SCROLL_SPEED 12.0f
 
-#define LISTING_ITEM_PAD   12.0f
-#define LISTING_INDENT     20.0f
 #define LISTING_LINE_PAD    6.0f
 #define TITLE_BAR_PAD       6.0f
 
@@ -176,7 +176,6 @@ typedef struct {
 	Variable *first;
 	Variable *last;
 	b32       expanded;
-	f32       max_name_width;
 	VariableGroupType type;
 } VariableGroup;
 
@@ -380,6 +379,7 @@ typedef enum {
 	TCK_GENERIC,
 	TCK_INTEGER,
 	TCK_VARIABLE,
+	TCK_VARIABLE_GROUP,
 } TableCellKind;
 
 typedef struct {
@@ -811,8 +811,6 @@ fill_variable(Variable *var, Variable *group, s8 name, u32 flags, VariableType t
 	if (group && (group->type == VT_GROUP || group->type == VT_UI_VIEW)) {
 		if (group->u.group.last) group->u.group.last = group->u.group.last->next = var;
 		else                     group->u.group.last = group->u.group.first      = var;
-
-		group->u.group.max_name_width = MAX(group->u.group.max_name_width, var->name_width);
 	}
 
 	return var;
@@ -1715,8 +1713,10 @@ draw_table_cell(BeamformerUI *ui, TableCell *cell, Rect cell_rect, TextAlignment
                 TextSpec ts, v2 mouse)
 {
 	/* NOTE(rnp): use desired width for alignment and clamped width for drawing */
-	v2 cell_at = table_cell_align(cell, alignment, cell_rect);
-	cell_rect.size.w = MIN(ts.limits.size.w, cell_rect.size.w);
+	f32 start_x = cell_rect.pos.x;
+	v2 cell_at  = table_cell_align(cell, alignment, cell_rect);
+	ts.limits.size.w -= (cell_at.x - start_x);
+	cell_rect.size.w  = MIN(ts.limits.size.w, cell_rect.size.w);
 
 	v4 base_colour = ts.colour;
 	if (cell->kind == TCK_VARIABLE && cell->var->flags & V_INPUT) {
@@ -2037,73 +2037,58 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec tex
 
 	r.pos.y -= view->offset;
 
-	f32 start_height = r.size.h;
-	Variable *var    = view->group.first;
-	f32 x_off        = view->group.max_name_width;
+	v2 size = {0};
+	Arena arena = ui->arena;
+	Table table = table_new(&arena, 0, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_RIGHT});
+
+	Variable *var = view->group.first;
 	while (var) {
-		s8 suffix   = {0};
-		v2 at       = r.pos;
-		f32 advance = 0;
 		switch (var->type) {
 		case VT_BEAMFORMER_VARIABLE: {
 			BeamformerVariable *bv = &var->u.beamformer_variable;
-
-			suffix   = bv->suffix;
-	                text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
-			advance  = draw_text(var->name, at, &text_spec).y;
-			at.x    += x_off + LISTING_ITEM_PAD;
-	                text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
-			at.x    += draw_variable(ui, ui->arena, var, at, mouse, FG_COLOUR, text_spec).x;
-
+			table_push_parameter_row(&table, &arena, var->name, var, bv->suffix);
 			while (var) {
 				if (var->next) {
 					var = var->next;
 					break;
 				}
-				var       = var->parent;
-				r.pos.x  -= LISTING_INDENT;
-				r.size.x += LISTING_INDENT;
-				x_off    += LISTING_INDENT;
+				var = var->parent;
 			}
 		} break;
 		case VT_GROUP: {
 			VariableGroup *g = &var->u.group;
 
-	                text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
-			advance  = draw_variable(ui, ui->arena, var, at, mouse, FG_COLOUR, text_spec).y;
-			at.x    += x_off + LISTING_ITEM_PAD;
+	                TableCell *cells = table_push_row(&table, &arena, TRK_CELLS)->data;
+	                cells[0] = (TableCell){.text = var->name, .kind = TCK_VARIABLE, .var = var};
+
 			if (g->expanded) {
-				cut_rect_horizontal(r, LISTING_INDENT, 0, &r);
-				x_off -= LISTING_INDENT;
-				var   = g->first;
+				var = g->first;
 			} else {
 				Variable *v = g->first;
 
 				ASSERT(!v || v->type == VT_BEAMFORMER_VARIABLE);
 				/* NOTE(rnp): assume the suffix is the same for all elements */
-				if (v) suffix = v->u.beamformer_variable.suffix;
+				if (v) cells[2].text = v->u.beamformer_variable.suffix;
 
+				Arena tmp = arena;
+				Stream sb = arena_stream(&tmp);
 				switch (g->type) {
 				case VG_LIST: break;
 				case VG_V2:
 				case VG_V4: {
-					text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
-					at.x += draw_text(s8("{"), at, &text_spec).x;
+					stream_append_s8(&sb, s8("{"));
 					while (v) {
-						text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
-						at.x += draw_variable(ui, ui->arena, v, at, mouse,
-						                      FG_COLOUR, text_spec).x;
-
+						stream_append_variable(&sb, v);
 						v = v->next;
-						if (v) {
-							text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
-							at.x += draw_text(s8(", "), at, &text_spec).x;
-						}
+						if (v) stream_append_s8(&sb, s8(", "));
 					}
-					text_spec.limits.size.w = r.size.w + r.pos.x - at.x;
-					at.x += draw_text(s8("}"), at, &text_spec).x;
+					stream_append_s8(&sb, s8("}"));
 				} break;
 				}
+				arena_commit(&arena, sb.widx);
+				cells[1].kind = TCK_VARIABLE_GROUP;
+				cells[1].text = stream_to_s8(&sb);
+				cells[1].var  = var;
 
 				var = var->next;
 			}
@@ -2116,7 +2101,7 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec tex
 		} break;
 		case VT_COMPUTE_PROGRESS_BAR: {
 			ComputeProgressBar *bar = &var->u.compute_progress_bar;
-			advance = draw_compute_progress_bar(ui, ui->arena, bar, r).y;
+			size = draw_compute_progress_bar(ui, ui->arena, bar, r);
 			var = var->next;
 		} break;
 		case VT_COMPUTE_LATEST_STATS_VIEW:
@@ -2124,25 +2109,52 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec tex
 			ComputeShaderStats *stats = var->u.compute_stats_view.stats;
 			if (var->type == VT_COMPUTE_LATEST_STATS_VIEW)
 				stats = *(ComputeShaderStats **)stats;
-			advance = draw_compute_stats_view(var->u.compute_stats_view.ctx, ui->arena, stats, r).y;
+			size = draw_compute_stats_view(var->u.compute_stats_view.ctx, ui->arena, stats, r);
 			var = var->next;
 		} break;
 		default: INVALID_CODE_PATH;
 		}
+	}
 
-		if (suffix.len) {
-			v2 suffix_s = measure_text(ui->font, suffix);
-			if (r.size.w + r.pos.x - LISTING_ITEM_PAD - suffix_s.x > at.x) {
-				v2 suffix_p = {.x = r.pos.x + r.size.w - suffix_s.w, .y = r.pos.y};
-				draw_text(suffix, suffix_p, &text_spec);
+	if (table.rows) {
+		text_spec.flags |= TF_LIMITED;
+		/* NOTE(rnp): minimum width for middle column */
+		table.widths[1] = 150;
+		size = table_extent(&table, arena, text_spec.font);
+		TableCellIterator it = table_cell_iterator_new(&table, &arena, 0, r.pos, text_spec.font);
+		for (TableCell *cell = table_cell_iterator_next(&it, &arena);
+		     cell;
+		     cell = table_cell_iterator_next(&it, &arena))
+		{
+			text_spec.limits.size.w = r.size.w - (it.cell_rect.pos.x - it.start_x);
+			if (cell->kind == TCK_VARIABLE_GROUP) {
+				Variable *v = cell->var->u.group.first;
+				v2 at = table_cell_align(cell, it.alignment, it.cell_rect);
+				text_spec.limits.size.w = r.size.w - (at.x - it.start_x);
+				f32 dw = draw_text(s8("{"), at, &text_spec).x;
+				while (v) {
+					at.x += dw;
+					text_spec.limits.size.w -= dw;
+					dw = draw_variable(ui, arena, v, at, mouse,
+					                   text_spec.colour, text_spec).x;
+
+					v = v->next;
+					if (v) {
+						at.x += dw;
+						text_spec.limits.size.w -= dw;
+						dw = draw_text(s8(", "), at, &text_spec).x;
+					}
+				}
+				at.x += dw;
+				text_spec.limits.size.w -= dw;
+				draw_text(s8("}"), at, &text_spec);
+			} else {
+				draw_table_cell(ui, cell, it.cell_rect, it.alignment, text_spec, mouse);
 			}
 		}
-
-		/* NOTE(rnp): we want to let this overflow to the desired size */
-		r.pos.y  += advance + LISTING_LINE_PAD;
-		r.size.y -= advance + LISTING_LINE_PAD;
 	}
-	view->needed_height = start_height - r.size.h;
+
+	view->needed_height = size.y;
 }
 
 static void
@@ -2245,6 +2257,7 @@ draw_layout_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 	if (var->type != VT_UI_REGION_SPLIT) {
 		v2 shrink = {.x = UI_REGION_PAD, .y = UI_REGION_PAD};
 		draw_rect = shrink_rect_centered(draw_rect, shrink);
+		draw_rect.size = floor_v2(draw_rect.size);
 		BeginScissorMode(draw_rect.pos.x, draw_rect.pos.y, draw_rect.size.w, draw_rect.size.h);
 		draw_rect = draw_title_bar(ui, ui->arena, var, draw_rect, mouse);
 		EndScissorMode();
@@ -2254,6 +2267,7 @@ draw_layout_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 	if (!CheckCollisionPointRec(mouse.rl, draw_rect.rl))
 		mouse = (v2){.x = F32_INFINITY, .y = F32_INFINITY};
 
+	draw_rect.size = floor_v2(draw_rect.size);
 	BeginScissorMode(draw_rect.pos.x, draw_rect.pos.y, draw_rect.size.w, draw_rect.size.h);
 	switch (var->type) {
 	case VT_UI_VIEW: {
