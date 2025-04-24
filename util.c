@@ -229,7 +229,17 @@ stream_to_s8(Stream *s)
 	return result;
 }
 
-static void
+function s8
+stream_chop_head(Stream *s)
+{
+	s8 result = stream_to_s8(s);
+	s->cap  -= s->widx;
+	s->data += s->widx;
+	s->widx  = 0;
+	return result;
+}
+
+function void
 stream_reset(Stream *s, iz index)
 {
 	s->errors = s->cap <= index;

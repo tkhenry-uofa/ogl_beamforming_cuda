@@ -624,6 +624,15 @@ table_cell_iterator_next(TableCellIterator *it, Arena *a)
 	return result;
 }
 
+function f32
+table_width(Table *t)
+{
+	f32 result = 0;
+	for (i32 i = 0; i < t->columns; i++)
+		result += t->widths[i];
+	return result;
+}
+
 function v2
 table_extent(Table *t, Arena arena, Font *font)
 {
@@ -1742,12 +1751,13 @@ draw_table_row(BeamformerUI *ui, Arena arena, TableCell *cells, TextAlignment *c
 	return (v2){.x = draw_rect.pos.x - cell_rect.pos.x, .y = draw_rect.size.h};
 }
 
-function void
+function v2
 draw_table(BeamformerUI *ui, Arena arena, Table *table, Rect draw_rect, TextSpec ts, v2 mouse)
 {
 	ts.flags |= TF_LIMITED;
 	ts.limits.size.w = draw_rect.size.w;
 
+	f32 start_height    = draw_rect.size.h;
 	i32 row_index       = table_skip_rows(table, draw_rect.size.h, ts.font->baseSize);
 	TableRowIterator it = table_row_iterator_new(table, &arena, row_index);
 	for (TableRow *row = table_row_iterator_next(&it, &arena);
@@ -1763,6 +1773,8 @@ draw_table(BeamformerUI *ui, Arena arena, Table *table, Rect draw_rect, TextSpec
 		draw_rect.size.y -= h;
 		/* TODO(rnp): draw row border */
 	}
+	v2 result = {.x = table_width(table), .y = start_height - draw_rect.size.h};
+	return result;
 }
 
 function void
@@ -1975,60 +1987,43 @@ draw_compute_progress_bar(BeamformerUI *ui, Arena arena, ComputeProgressBar *sta
 	return result;
 }
 
-static v2
+function v2
 draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *stats, Rect r)
 {
-	static s8 labels[CS_LAST] = {
-		#define X(e, n, s, h, pn) [CS_##e] = s8(pn ":"),
-		COMPUTE_SHADERS
-		#undef X
-	};
+	#define X(e, n, s, h, pn) [CS_##e] = s8(pn ":"),
+	local_persist s8 labels[CS_LAST] = { COMPUTE_SHADERS };
+	#undef X
 
-	BeamformerUI *ui        = ctx->ui;
-	s8  compute_total       = s8("Compute Total:");
-	f32 compute_total_width = measure_text(ui->font, compute_total).w;
-	f32 max_label_width     = compute_total_width;
-
-	f32 *label_widths = alloc(&arena, f32, ARRAY_COUNT(labels));
-	for (u32 i = 0; i < ARRAY_COUNT(labels); i++) {
-		label_widths[i] = measure_text(ui->font, labels[i]).x;
-		max_label_width = MAX(label_widths[i], max_label_width);
-	}
-
-	v2 at = r.pos;
-	Stream buf = stream_alloc(&arena, 64);
+	BeamformerUI *ui     = ctx->ui;
 	f32 compute_time_sum = 0;
-	u32 stages = ctx->shared_memory->compute_stages_count;
-	TextSpec text_spec = {.font = &ui->font, .colour = FG_COLOUR, .flags = TF_LIMITED};
-	for (u32 i = 0; i < stages; i++) {
-		u32 index  = ctx->shared_memory->compute_stages[i];
-		text_spec.limits.size.x = r.size.w;
-		draw_text(labels[index], at, &text_spec);
-		text_spec.limits.size.x -= LISTING_ITEM_PAD + max_label_width;
+	u32 stages           = ctx->shared_memory->compute_stages_count;
+	TextSpec text_spec   = {.font = &ui->font, .colour = FG_COLOUR, .flags = TF_LIMITED};
 
-		stream_reset(&buf, 0);
-		stream_append_f64_e(&buf, stats->times[index]);
-		stream_append_s8(&buf, s8(" [s]"));
-		v2 rpos = {.x = r.pos.x + max_label_width + LISTING_ITEM_PAD, .y = at.y};
-		at.y += draw_text(stream_to_s8(&buf), rpos, &text_spec).h;
+	Stream sb   = stream_alloc(&arena, 256);
+	Table table = table_new(&arena, stages + 1, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_LEFT});
+	for (u32 i = 0; i < stages; i++) {
+		u32 index = ctx->shared_memory->compute_stages[i];
 
 		compute_time_sum += stats->times[index];
+		stream_append_f64_e(&sb, stats->times[index]);
+
+		TableCell *cells = table_push_row(&table, &arena, TRK_CELLS)->data;
+		cells[0].text = labels[index];
+		cells[1].text = stream_chop_head(&sb);
+		cells[2].text = s8("[s]");
 	}
 
-	stream_reset(&buf, 0);
-	stream_append_f64_e(&buf, compute_time_sum);
-	stream_append_s8(&buf, s8(" [s]"));
-	v2 rpos = {.x = r.pos.x + max_label_width + LISTING_ITEM_PAD, .y = at.y};
-	text_spec.limits.size.w = r.size.w;
-	draw_text(compute_total, at, &text_spec);
-	text_spec.limits.size.w -= LISTING_ITEM_PAD + max_label_width;
-	at.y -= draw_text(stream_to_s8(&buf), rpos, &text_spec).h;
+	stream_append_f64_e(&sb, compute_time_sum);
+	TableCell *cells = table_push_row(&table, &arena, TRK_CELLS)->data;
+	cells[0].text = s8("Compute Total:");
+	cells[1].text = stream_chop_head(&sb);
+	cells[2].text = s8("[s]");
 
-	v2 result = {.x = r.size.w, .y = at.y - r.pos.y};
-	return result;
+	table_extent(&table, arena, text_spec.font);
+	return draw_table(ui, arena, &table, r, text_spec, (v2){0});
 }
 
-static void
+function void
 draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec text_spec)
 {
 	ASSERT(ui_view->type == VT_UI_VIEW);
