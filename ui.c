@@ -1682,7 +1682,8 @@ draw_table_cell(BeamformerUI *ui, TableCell *cell, Rect cell_rect, TextAlignment
 
 	v4 base_colour = ts.colour;
 	if (cell->kind == TCK_VARIABLE && cell->var->flags & V_INPUT) {
-		if (hover_var(ui, mouse, cell_rect, cell->var) && (cell->var->flags & V_TEXT))
+		Rect hover = {.pos = cell_rect.pos, .size = {.w = cell->width, .h = cell_rect.size.h}};
+		if (hover_var(ui, mouse, hover, cell->var) && (cell->var->flags & V_TEXT))
 			ui->interaction.hot_font = ts.font;
 		ts.colour = lerp_v4(ts.colour, HOVERED_COLOUR, cell->var->hover_t);
 	}
