@@ -54,6 +54,7 @@ vec3 calc_image_point(vec3 voxel)
 	vec3 image_point   = output_min_coordinate.xyz + voxel * output_size.xyz / out_data_dim;
 
 	switch (das_shader_id) {
+	case DAS_ID_FLASH:
 	case DAS_ID_FORCES:
 	case DAS_ID_UFORCES:
 		/* TODO: fix the math so that the image plane can be aritrary */
@@ -250,6 +251,7 @@ void main()
 	case DAS_ID_UHERCULES:
 		sum = HERCULES(image_point, vec3(xdc_element_pitch, 0), apod_arg);
 		break;
+	case DAS_ID_FLASH:
 	case DAS_ID_RCA_TPW:
 	case DAS_ID_RCA_VLS:
 		sum = RCA(image_point, vec3(xdc_element_pitch, 0), apod_arg);
