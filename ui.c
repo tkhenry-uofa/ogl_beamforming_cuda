@@ -2,7 +2,6 @@
 /* TODO(rnp):
  * [ ]: refactor: ui should be in its own thread and that thread should only be concerned with the ui
  * [ ]: refactor: ui shouldn't fully destroy itself on hot reload
- * [ ]: refactor: split up draw_ui_view function (have a VT_UI_LISTING)
  * [ ]: refactor: remove all the excessive measure_texts (cell drawing, hover_var in params table)
  * [ ]: refactor: move remaining fragment shader stuff into ui
  * [ ]: refactor: re-add next_hot variable. this will simplify the code and number of checks
@@ -184,13 +183,12 @@ typedef enum {
 } UIViewFlags;
 
 typedef struct {
-	/* NOTE(rnp): superset of group, group must come first */
-	VariableGroup  group;
-	Variable      *close;
-	Variable      *menu;
-	f32            needed_height;
-	f32            offset;
-	UIViewFlags    flags;
+	Variable    *child;
+	Variable    *close;
+	Variable    *menu;
+	f32          needed_height;
+	f32          offset;
+	UIViewFlags  flags;
 } UIView;
 
 /* X(id, text) */
@@ -751,7 +749,7 @@ ui_variable_free(BeamformerUI *ui, Variable *var)
 	if (var) {
 		var->parent = 0;
 		while (var) {
-			if (var->type == VT_GROUP || var->type == VT_UI_VIEW) {
+			if (var->type == VT_GROUP) {
 				var = var->u.group.first;
 			} else {
 				if (var->type == VT_BEAMFORMER_FRAME_VIEW) {
@@ -790,10 +788,11 @@ ui_variable_free(BeamformerUI *ui, Variable *var)
 	}
 }
 
-static void
+function void
 ui_view_free(BeamformerUI *ui, Variable *view)
 {
 	ASSERT(view->type == VT_UI_VIEW);
+	ui_variable_free(ui, view->u.view.child);
 	ui_variable_free(ui, view->u.view.close);
 	ui_variable_free(ui, view->u.view.menu);
 	ui_variable_free(ui, view);
@@ -808,7 +807,7 @@ fill_variable(Variable *var, Variable *group, s8 name, u32 flags, VariableType t
 	var->parent     = group;
 	var->name_width = measure_text(font, name).x;
 
-	if (group && (group->type == VT_GROUP || group->type == VT_UI_VIEW)) {
+	if (group && group->type == VT_GROUP) {
 		if (group->u.group.last) group->u.group.last = group->u.group.last->next = var;
 		else                     group->u.group.last = group->u.group.first      = var;
 	}
@@ -887,12 +886,11 @@ add_global_menu(BeamformerUI *ui, Arena *arena, Variable *parent)
 	return result;
 }
 
-static Variable *
+function Variable *
 add_ui_view(BeamformerUI *ui, Variable *parent, Arena *arena, s8 name, u32 view_flags, b32 closable)
 {
 	Variable *result = add_variable(ui, parent, arena, name, 0, VT_UI_VIEW, ui->small_font);
 	UIView   *view   = &result->u.view;
-	view->group.type = VG_LIST;
 	view->flags      = view_flags;
 	view->menu       = add_global_menu(ui, arena, result);
 	if (closable) {
@@ -932,7 +930,7 @@ add_beamformer_variable_b32(BeamformerUI *ui, Variable *group, Arena *arena, s8 
 	bv->name_table.names[1] = true_text;
 }
 
-static Variable *
+function Variable *
 add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 {
 	BeamformerUI *ui           = ctx->ui;
@@ -942,66 +940,68 @@ add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 
 	/* TODO(rnp): this can be closable once we have a way of opening new views */
 	Variable *result = add_ui_view(ui, parent, &ui->arena, s8("Parameters"), 0, 0);
+	Variable *group  = result->u.view.child = add_variable(ui, result, &ui->arena, s8(""), 0,
+	                                                       VT_GROUP, ui->font);
 
-	add_beamformer_variable_f32(ui, result, &ui->arena, s8("Sampling Frequency:"), s8("[MHz]"),
+	add_beamformer_variable_f32(ui, group, &ui->arena, s8("Sampling Frequency:"), s8("[MHz]"),
 	                            &bp->sampling_frequency, (v2){0}, 1e-6, 0, 0, ui->font);
 
-	add_beamformer_variable_f32(ui, result, &ui->arena, s8("Center Frequency:"), s8("[MHz]"),
+	add_beamformer_variable_f32(ui, group, &ui->arena, s8("Center Frequency:"), s8("[MHz]"),
 	                            &bp->center_frequency, (v2){.y = 100e-6}, 1e-6, 1e5,
 	                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-	add_beamformer_variable_f32(ui, result, &ui->arena, s8("Speed of Sound:"), s8("[m/s]"),
+	add_beamformer_variable_f32(ui, group, &ui->arena, s8("Speed of Sound:"), s8("[m/s]"),
 	                            &bp->speed_of_sound, (v2){.y = 1e6}, 1, 10,
 	                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-	result = add_variable_group(ui, result, &ui->arena, s8("Lateral Extent:"), VG_V2, ui->font);
+	group = add_variable_group(ui, group, &ui->arena, s8("Lateral Extent:"), VG_V2, ui->font);
 	{
-		add_beamformer_variable_f32(ui, result, &ui->arena, s8("Min:"), s8("[mm]"),
+		add_beamformer_variable_f32(ui, group, &ui->arena, s8("Min:"), s8("[mm]"),
 		                            &bp->output_min_coordinate.x, v2_inf, 1e3, 0.5e-3,
 		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-		add_beamformer_variable_f32(ui, result, &ui->arena, s8("Max:"), s8("[mm]"),
+		add_beamformer_variable_f32(ui, group, &ui->arena, s8("Max:"), s8("[mm]"),
 		                            &bp->output_max_coordinate.x, v2_inf, 1e3, 0.5e-3,
 		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 	}
-	result = end_variable_group(result);
+	group = end_variable_group(group);
 
-	result = add_variable_group(ui, result, &ui->arena, s8("Axial Extent:"), VG_V2, ui->font);
+	group = add_variable_group(ui, group, &ui->arena, s8("Axial Extent:"), VG_V2, ui->font);
 	{
-		add_beamformer_variable_f32(ui, result, &ui->arena, s8("Min:"), s8("[mm]"),
+		add_beamformer_variable_f32(ui, group, &ui->arena, s8("Min:"), s8("[mm]"),
 		                            &bp->output_min_coordinate.z, v2_inf, 1e3, 0.5e-3,
 		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-		add_beamformer_variable_f32(ui, result, &ui->arena, s8("Max:"), s8("[mm]"),
+		add_beamformer_variable_f32(ui, group, &ui->arena, s8("Max:"), s8("[mm]"),
 		                            &bp->output_max_coordinate.z, v2_inf, 1e3, 0.5e-3,
 		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 	}
-	result = end_variable_group(result);
+	group = end_variable_group(group);
 
-	add_beamformer_variable_f32(ui, result, &ui->arena, s8("Off Axis Position:"), s8("[mm]"),
+	add_beamformer_variable_f32(ui, group, &ui->arena, s8("Off Axis Position:"), s8("[mm]"),
 	                            &bp->off_axis_pos, (v2){.x = -1e3, .y = 1e3}, 0.25e3,
 	                            0.5e-3, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-	add_beamformer_variable_b32(ui, result, &ui->arena, s8("Beamform Plane:"), s8("XZ"), s8("YZ"),
+	add_beamformer_variable_b32(ui, group, &ui->arena, s8("Beamform Plane:"), s8("XZ"), s8("YZ"),
 	                            (b32 *)&bp->beamform_plane, V_INPUT|V_CAUSES_COMPUTE, ui->font);
 
-	add_beamformer_variable_f32(ui, result, &ui->arena, s8("F#:"), s8(""), &bp->f_number,
+	add_beamformer_variable_f32(ui, group, &ui->arena, s8("F#:"), s8(""), &bp->f_number,
 	                            (v2){.y = 1e3}, 1, 0.1, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-	add_beamformer_variable_b32(ui, result, &ui->arena, s8("Interpolate:"), s8("False"), s8("True"),
+	add_beamformer_variable_b32(ui, group, &ui->arena, s8("Interpolate:"), s8("False"), s8("True"),
 	                            &bp->interpolate, V_INPUT|V_CAUSES_COMPUTE, ui->font);
 
 	return result;
 }
 
-static Variable *
+function Variable *
 add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
                           BeamformerFrameViewType type, b32 closable)
 {
 	/* TODO(rnp): this can be always closable once we have a way of opening new views */
 	Variable *result = add_ui_view(ui, parent, arena, s8(""), UI_VIEW_CUSTOM_TEXT, closable);
-	Variable *var = add_variable(ui, result, arena, s8(""), 0, VT_BEAMFORMER_FRAME_VIEW,
-	                             ui->small_font);
+	Variable *var = result->u.view.child = add_variable(ui, result, arena, s8(""), 0,
+	                                                    VT_BEAMFORMER_FRAME_VIEW, ui->small_font);
 
 	BeamformerFrameView *bv = SLLPop(ui->view_freelist);
 	if (bv) zero_struct(bv);
@@ -1074,26 +1074,27 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	return result;
 }
 
-static Variable *
+function Variable *
 add_compute_progress_bar(Variable *parent, BeamformerCtx *ctx)
 {
 	BeamformerUI *ui = ctx->ui;
 	/* TODO(rnp): this can be closable once we have a way of opening new views */
 	Variable *result = add_ui_view(ui, parent, &ui->arena, s8(""), UI_VIEW_CUSTOM_TEXT, 0);
-	add_variable(ui, result, &ui->arena, s8(""), 0, VT_COMPUTE_PROGRESS_BAR, ui->small_font);
-	ComputeProgressBar *bar = &result->u.group.first->u.compute_progress_bar;
+	result->u.view.child = add_variable(ui, result, &ui->arena, s8(""), 0,
+	                                    VT_COMPUTE_PROGRESS_BAR, ui->small_font);
+	ComputeProgressBar *bar = &result->u.view.child->u.compute_progress_bar;
 	bar->progress   = &ctx->csctx.processing_progress;
 	bar->processing = &ctx->csctx.processing_compute;
 
 	return result;
 }
 
-static Variable *
+function Variable *
 add_compute_stats_view(BeamformerUI *ui, Variable *parent, Arena *arena, VariableType type)
 {
 	/* TODO(rnp): this can be closable once we have a way of opening new views */
-	Variable *result = add_ui_view(ui, parent, arena, s8(""), UI_VIEW_CUSTOM_TEXT, 0);
-	add_variable(ui, result, &ui->arena, s8(""), 0, type, ui->small_font);
+	Variable *result     = add_ui_view(ui, parent, arena, s8(""), UI_VIEW_CUSTOM_TEXT, 0);
+	result->u.view.child = add_variable(ui, result, &ui->arena, s8(""), 0, type, ui->small_font);
 	return result;
 }
 
@@ -2023,25 +2024,12 @@ draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *sta
 	return draw_table(ui, arena, &table, r, text_spec, (v2){0});
 }
 
-function void
-draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec text_spec)
+function v2
+draw_ui_view_listing(BeamformerUI *ui, Variable *group, Arena arena, Rect r, v2 mouse, TextSpec text_spec)
 {
-	ASSERT(ui_view->type == VT_UI_VIEW);
-	UIView *view = &ui_view->u.view;
-
-	if (view->needed_height - r.size.h < view->offset)
-		view->offset = view->needed_height - r.size.h;
-
-	if (view->needed_height - r.size.h < 0)
-		view->offset = 0;
-
-	r.pos.y -= view->offset;
-
-	v2 size = {0};
-	Arena arena = ui->arena;
-	Table table = table_new(&arena, 0, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_RIGHT});
-
-	Variable *var = view->group.first;
+	ASSERT(group->type == VT_GROUP);
+	Table table   = table_new(&arena, 0, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_RIGHT});
+	Variable *var = group->u.group.first;
 	while (var) {
 		switch (var->type) {
 		case VT_BEAMFORMER_VARIABLE: {
@@ -2058,8 +2046,8 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec tex
 		case VT_GROUP: {
 			VariableGroup *g = &var->u.group;
 
-	                TableCell *cells = table_push_row(&table, &arena, TRK_CELLS)->data;
-	                cells[0] = (TableCell){.text = var->name, .kind = TCK_VARIABLE, .var = var};
+			TableCell *cells = table_push_row(&table, &arena, TRK_CELLS)->data;
+			cells[0] = (TableCell){.text = var->name, .kind = TCK_VARIABLE, .var = var};
 
 			if (g->expanded) {
 				var = g->first;
@@ -2093,71 +2081,89 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec tex
 				var = var->next;
 			}
 		} break;
-		case VT_BEAMFORMER_FRAME_VIEW: {
-			BeamformerFrameView *bv = var->u.generic;
-			if (frame_view_ready_to_present(bv))
-				draw_beamformer_frame_view(ui, ui->arena, var, r, mouse);
-			var = var->next;
-		} break;
-		case VT_COMPUTE_PROGRESS_BAR: {
-			ComputeProgressBar *bar = &var->u.compute_progress_bar;
-			size = draw_compute_progress_bar(ui, ui->arena, bar, r);
-			var = var->next;
-		} break;
-		case VT_COMPUTE_LATEST_STATS_VIEW:
-		case VT_COMPUTE_STATS_VIEW: {
-			ComputeShaderStats *stats = var->u.compute_stats_view.stats;
-			if (var->type == VT_COMPUTE_LATEST_STATS_VIEW)
-				stats = *(ComputeShaderStats **)stats;
-			size = draw_compute_stats_view(var->u.compute_stats_view.ctx, ui->arena, stats, r);
-			var = var->next;
-		} break;
 		default: INVALID_CODE_PATH;
 		}
 	}
 
-	if (table.rows) {
-		text_spec.flags |= TF_LIMITED;
-		/* NOTE(rnp): minimum width for middle column */
-		table.widths[1] = 150;
-		size = table_extent(&table, arena, text_spec.font);
-		TableCellIterator it = table_cell_iterator_new(&table, &arena, 0, r.pos, text_spec.font);
-		for (TableCell *cell = table_cell_iterator_next(&it, &arena);
-		     cell;
-		     cell = table_cell_iterator_next(&it, &arena))
-		{
-			text_spec.limits.size.w = r.size.w - (it.cell_rect.pos.x - it.start_x);
-			if (cell->kind == TCK_VARIABLE_GROUP) {
-				Variable *v = cell->var->u.group.first;
-				v2 at = table_cell_align(cell, it.alignment, it.cell_rect);
-				text_spec.limits.size.w = r.size.w - (at.x - it.start_x);
-				f32 dw = draw_text(s8("{"), at, &text_spec).x;
-				while (v) {
-					at.x += dw;
-					text_spec.limits.size.w -= dw;
-					dw = draw_variable(ui, arena, v, at, mouse,
-					                   text_spec.colour, text_spec).x;
-
-					v = v->next;
-					if (v) {
-						at.x += dw;
-						text_spec.limits.size.w -= dw;
-						dw = draw_text(s8(", "), at, &text_spec).x;
-					}
-				}
+	text_spec.flags |= TF_LIMITED;
+	/* NOTE(rnp): minimum width for middle column */
+	table.widths[1] = 150;
+	v2 result = table_extent(&table, arena, text_spec.font);
+	TableCellIterator it = table_cell_iterator_new(&table, &arena, 0, r.pos, text_spec.font);
+	for (TableCell *cell = table_cell_iterator_next(&it, &arena);
+	     cell;
+	     cell = table_cell_iterator_next(&it, &arena))
+	{
+		text_spec.limits.size.w = r.size.w - (it.cell_rect.pos.x - it.start_x);
+		if (cell->kind == TCK_VARIABLE_GROUP) {
+			Variable *v = cell->var->u.group.first;
+			v2 at = table_cell_align(cell, it.alignment, it.cell_rect);
+			text_spec.limits.size.w = r.size.w - (at.x - it.start_x);
+			f32 dw = draw_text(s8("{"), at, &text_spec).x;
+			while (v) {
 				at.x += dw;
 				text_spec.limits.size.w -= dw;
-				draw_text(s8("}"), at, &text_spec);
-			} else {
-				draw_table_cell(ui, cell, it.cell_rect, it.alignment, text_spec, mouse);
+				dw = draw_variable(ui, arena, v, at, mouse, text_spec.colour, text_spec).x;
+
+				v = v->next;
+				if (v) {
+					at.x += dw;
+					text_spec.limits.size.w -= dw;
+					dw = draw_text(s8(", "), at, &text_spec).x;
+				}
 			}
+			at.x += dw;
+			text_spec.limits.size.w -= dw;
+			draw_text(s8("}"), at, &text_spec);
+		} else {
+			draw_table_cell(ui, cell, it.cell_rect, it.alignment, text_spec, mouse);
 		}
+	}
+
+	return result;
+}
+
+function void
+draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec text_spec)
+{
+	ASSERT(ui_view->type == VT_UI_VIEW);
+	UIView *view = &ui_view->u.view;
+
+	if (view->needed_height - r.size.h < view->offset)
+		view->offset = view->needed_height - r.size.h;
+
+	if (view->needed_height - r.size.h < 0)
+		view->offset = 0;
+
+	r.pos.y -= view->offset;
+
+	v2 size = {0};
+
+	Variable *var = view->child;
+	switch (var->type) {
+	case VT_GROUP: size = draw_ui_view_listing(ui, var, ui->arena, r, mouse, text_spec); break;
+	case VT_BEAMFORMER_FRAME_VIEW: {
+		BeamformerFrameView *bv = var->u.generic;
+		if (frame_view_ready_to_present(bv))
+			draw_beamformer_frame_view(ui, ui->arena, var, r, mouse);
+	} break;
+	case VT_COMPUTE_PROGRESS_BAR: {
+		size = draw_compute_progress_bar(ui, ui->arena, &var->u.compute_progress_bar, r);
+	} break;
+	case VT_COMPUTE_LATEST_STATS_VIEW:
+	case VT_COMPUTE_STATS_VIEW: {
+		ComputeShaderStats *stats = var->u.compute_stats_view.stats;
+		if (var->type == VT_COMPUTE_LATEST_STATS_VIEW)
+			stats = *(ComputeShaderStats **)stats;
+		size = draw_compute_stats_view(var->u.compute_stats_view.ctx, ui->arena, stats, r);
+	} break;
+	default: INVALID_CODE_PATH;
 	}
 
 	view->needed_height = size.y;
 }
 
-static void
+function void
 draw_active_text_box(BeamformerUI *ui, Variable *var)
 {
 	InputState *is = &ui->text_input_state;
@@ -2834,7 +2840,7 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	                                             RSD_VERTICAL, ui->font);
 	split->u.region_split.right   = add_beamformer_frame_view(ui, split, &ui->arena, FVT_LATEST, 0);
 
-	ui_fill_live_frame_view(ui, split->u.region_split.right->u.group.first->u.generic);
+	ui_fill_live_frame_view(ui, split->u.region_split.right->u.view.child->u.generic);
 
 	split = split->u.region_split.left;
 	split->u.region_split.left  = add_beamformer_parameters_view(split, ctx);
