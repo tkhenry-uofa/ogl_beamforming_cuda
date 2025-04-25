@@ -209,22 +209,16 @@ typedef enum {
 #undef X
 
 typedef struct {
-	s8 *labels;
-	u32 cycle_length;
-	u32 state;
+	s8  *labels;
+	u32 *state;
+	u32  cycle_length;
 } VariableCycler;
 
 typedef struct {
-	s8       suffix;
-	/* TODO(rnp): think of something better than this */
-	union {
-		struct {s8 *names; u32 count;} name_table;
-		struct {
-			f32 display_scale;
-			f32 scroll_scale;
-			v2  limits;
-		} params;
-	};
+	s8  suffix;
+	f32 display_scale;
+	f32 scroll_scale;
+	v2  limits;
 	void         *store;
 	VariableType  store_type;
 } BeamformerVariable;
@@ -285,6 +279,7 @@ typedef struct BeamformerFrameView {
 	/* NOTE(rnp): if type is LATEST  selects which type of latest to use
 	 *            if type is INDEXED selects the index */
 	Variable *cycler;
+	u32 cycler_state;
 
 	v4 min_coordinate;
 	v4 max_coordinate;
@@ -488,23 +483,7 @@ make_raylib_texture(BeamformerFrameView *v)
 	return result;
 }
 
-static void
-stream_append_variable_base(Stream *s, VariableType type, void *var, void *scale)
-{
-	switch (type) {
-	case VT_B32: {
-		s8 *text = var;
-		stream_append_s8(s, text[*(b32 *)scale != 0]);
-	} break;
-	case VT_F32: {
-		f32 val = *(f32 *)var * *(f32 *)scale;
-		stream_append_f64(s, val, 100);
-	} break;
-	default: INVALID_CODE_PATH;
-	}
-}
-
-static void
+function void
 stream_append_variable(Stream *s, Variable *var)
 {
 	switch (var->type) {
@@ -516,17 +495,12 @@ stream_append_variable(Stream *s, Variable *var)
 	case VT_BEAMFORMER_VARIABLE: {
 		BeamformerVariable *bv = &var->u.beamformer_variable;
 		switch (bv->store_type) {
-		case VT_B32: {
-			stream_append_variable_base(s, VT_B32, bv->name_table.names, bv->store);
-		} break;
-		case VT_F32: {
-			stream_append_variable_base(s, VT_F32, bv->store, &bv->params.display_scale);
-		} break;
+		case VT_F32: stream_append_f64(s, *(f32 *)bv->store * bv->display_scale, 100); break;
 		default: INVALID_CODE_PATH;
 		}
 	} break;
 	case VT_CYCLER: {
-		u32 index = var->u.cycler.state % var->u.cycler.cycle_length;
+		u32 index = *var->u.cycler.state;
 		if (var->u.cycler.labels) stream_append_s8(s, var->u.cycler.labels[index]);
 		else                      stream_append_u64(s, index);
 	} break;
@@ -841,11 +815,12 @@ end_variable_group(Variable *group)
 }
 
 function Variable *
-add_variable_cycler(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, Font font,
-                    s8 *labels, u32 label_count)
+add_variable_cycler(BeamformerUI *ui, Variable *group, Arena *arena, u32 flags, Font font, s8 name,
+                    u32 *store, s8 *labels, u32 label_count)
 {
-	Variable *result = add_variable(ui, group, arena, name, V_INPUT, VT_CYCLER, font);
+	Variable *result = add_variable(ui, group, arena, name, V_INPUT|flags, VT_CYCLER, font);
 	result->u.cycler.cycle_length = label_count;
+	result->u.cycler.state        = store;
 	if (labels) {
 		result->u.cycler.labels = alloc(arena, s8, label_count);
 		for (u32 i = 0; i < label_count; i++)
@@ -901,33 +876,19 @@ add_ui_view(BeamformerUI *ui, Variable *parent, Arena *arena, s8 name, u32 view_
 	return result;
 }
 
-static void
+function void
 add_beamformer_variable_f32(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, s8 suffix,
                             f32 *store, v2 limits, f32 display_scale, f32 scroll_scale, u32 flags,
                             Font font)
 {
 	Variable *var = add_variable(ui, group, arena, name, flags, VT_BEAMFORMER_VARIABLE, font);
-	BeamformerVariable *bv   = &var->u.beamformer_variable;
-	bv->suffix               = suffix;
-	bv->store                = store;
-	bv->store_type           = VT_F32;
-	bv->params.display_scale = display_scale;
-	bv->params.scroll_scale  = scroll_scale;
-	bv->params.limits        = limits;
-}
-
-static void
-add_beamformer_variable_b32(BeamformerUI *ui, Variable *group, Arena *arena, s8 name,
-                            s8 false_text, s8 true_text, b32 *store, u32 flags, Font font)
-{
-	Variable *var = add_variable(ui, group, arena, name, flags, VT_BEAMFORMER_VARIABLE, font);
-	BeamformerVariable *bv  = &var->u.beamformer_variable;
-	bv->store               = store;
-	bv->store_type          = VT_B32;
-	bv->name_table.names    = alloc(arena, s8, 2);
-	bv->name_table.count    = 2;
-	bv->name_table.names[0] = false_text;
-	bv->name_table.names[1] = true_text;
+	BeamformerVariable *bv = &var->u.beamformer_variable;
+	bv->suffix        = suffix;
+	bv->store         = store;
+	bv->store_type    = VT_F32;
+	bv->display_scale = display_scale;
+	bv->scroll_scale  = scroll_scale;
+	bv->limits        = limits;
 }
 
 function Variable *
@@ -982,14 +943,14 @@ add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 	                            &bp->off_axis_pos, (v2){.x = -1e3, .y = 1e3}, 0.25e3,
 	                            0.5e-3, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-	add_beamformer_variable_b32(ui, group, &ui->arena, s8("Beamform Plane:"), s8("XZ"), s8("YZ"),
-	                            (b32 *)&bp->beamform_plane, V_INPUT|V_CAUSES_COMPUTE, ui->font);
+	add_variable_cycler(ui, group, &ui->arena, V_CAUSES_COMPUTE, ui->font, s8("Beamform Plane:"),
+	                    (u32 *)&bp->beamform_plane, (s8 []){s8("XZ"), s8("YZ")}, 2);
 
 	add_beamformer_variable_f32(ui, group, &ui->arena, s8("F#:"), s8(""), &bp->f_number,
 	                            (v2){.y = 1e3}, 1, 0.1, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-	add_beamformer_variable_b32(ui, group, &ui->arena, s8("Interpolate:"), s8("False"), s8("True"),
-	                            &bp->interpolate, V_INPUT|V_CAUSES_COMPUTE, ui->font);
+	add_variable_cycler(ui, group, &ui->arena, V_CAUSES_COMPUTE, ui->font, s8("Interpolate:"),
+	                    &bp->interpolate, (s8 []){s8("False"), s8("True")}, 2);
 
 	return result;
 }
@@ -1049,13 +1010,13 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 		#define X(_type, _id, pretty) s8(pretty),
 		local_persist s8 labels[] = { IMAGE_PLANE_TAGS s8("Any") };
 		#undef X
-		bv->cycler = add_variable_cycler(ui, menu, arena, s8("Live: "), ui->small_font,
-		                                 labels, countof(labels));
-		bv->cycler->u.cycler.state = IPT_LAST;
+		bv->cycler = add_variable_cycler(ui, menu, arena, 0, ui->small_font, s8("Live: "),
+		                                 &bv->cycler_state, labels, countof(labels));
+		bv->cycler_state = IPT_LAST;
 	} break;
 	case FVT_INDEXED: {
-		bv->cycler = add_variable_cycler(ui, menu, arena, s8("Index: "), ui->small_font,
-		                                 0, MAX_BEAMFORMED_SAVED_FRAMES);
+		bv->cycler = add_variable_cycler(ui, menu, arena, 0, ui->small_font, s8("Index: "),
+		                                 &bv->cycler_state, 0, MAX_BEAMFORMED_SAVED_FRAMES);
 	} break;
 	default: break;
 	}
@@ -1193,7 +1154,7 @@ function b32
 view_update(BeamformerUI *ui, BeamformerFrameView *view)
 {
 	if (view->type == FVT_LATEST) {
-		u32 index = view->cycler->u.cycler.state % (IPT_LAST + 1);
+		u32 index = *view->cycler->u.cycler.state;
 		view->needs_update   |= view->frame != ui->latest_plane[index];
 		view->frame           = ui->latest_plane[index];
 		view->min_coordinate  = ui->params.output_min_coordinate;
@@ -1324,11 +1285,11 @@ push_custom_view_title(Stream *s, Variable *var)
 			#define X(plane, id, pretty) s8(": " pretty " ["),
 			local_persist s8 labels[IPT_LAST + 1] = { IMAGE_PLANE_TAGS s8(": Live [") };
 			#undef X
-			stream_append_s8(s, labels[bv->cycler->u.cycler.state % (IPT_LAST + 1)]);
+			stream_append_s8(s, labels[*bv->cycler->u.cycler.state % (IPT_LAST + 1)]);
 		} break;
 		case FVT_INDEXED: {
 			stream_append_s8(s, s8(": Index {"));
-			stream_append_u64(s, bv->cycler->u.cycler.state % MAX_BEAMFORMED_SAVED_FRAMES);
+			stream_append_u64(s, *bv->cycler->u.cycler.state % MAX_BEAMFORMED_SAVED_FRAMES);
 			stream_append_s8(s, s8("} ["));
 		} break;
 		}
@@ -2032,9 +1993,12 @@ draw_ui_view_listing(BeamformerUI *ui, Variable *group, Arena arena, Rect r, v2 
 	Variable *var = group->u.group.first;
 	while (var) {
 		switch (var->type) {
+		case VT_CYCLER:
 		case VT_BEAMFORMER_VARIABLE: {
-			BeamformerVariable *bv = &var->u.beamformer_variable;
-			table_push_parameter_row(&table, &arena, var->name, var, bv->suffix);
+			s8 suffix = s8("");
+			if (var->type == VT_BEAMFORMER_VARIABLE)
+				suffix = var->u.beamformer_variable.suffix;
+			table_push_parameter_row(&table, &arena, var->name, var, suffix);
 			while (var) {
 				if (var->next) {
 					var = var->next;
@@ -2387,7 +2351,7 @@ ui_store_variable(Variable *var, void *new_value)
 	} break;
 	case VT_BEAMFORMER_VARIABLE: {
 		BeamformerVariable *bv = &var->u.beamformer_variable;
-		ui_store_variable_base(bv->store_type, bv->store, new_value, &bv->params.limits);
+		ui_store_variable_base(bv->store_type, bv->store, new_value, &bv->limits);
 	} break;
 	default: INVALID_CODE_PATH;
 	}
@@ -2405,7 +2369,7 @@ scroll_interaction_base(VariableType type, void *store, f32 delta)
 	}
 }
 
-static void
+function void
 scroll_interaction(Variable *var, f32 delta)
 {
 	switch (var->type) {
@@ -2417,11 +2381,12 @@ scroll_interaction(Variable *var, f32 delta)
 	} break;
 	case VT_BEAMFORMER_VARIABLE: {
 		BeamformerVariable *bv = &var->u.beamformer_variable;
-		scroll_interaction_base(bv->store_type, bv->store, delta * bv->params.scroll_scale);
+		scroll_interaction_base(bv->store_type, bv->store, delta * bv->scroll_scale);
 		ui_store_variable(var, bv->store);
 	} break;
 	case VT_CYCLER: {
-		scroll_interaction_base(VT_U32, &var->u.cycler.state, delta > 0? 1 : -1);
+		scroll_interaction_base(VT_U32, var->u.cycler.state, delta > 0? 1 : -1);
+		*var->u.cycler.state %= var->u.cycler.cycle_length;
 	} break;
 	case VT_UI_VIEW: {
 		scroll_interaction_base(VT_F32, &var->u.view.offset, UI_SCROLL_SPEED * delta);
@@ -2460,7 +2425,7 @@ end_text_input(InputState *is, Variable *var)
 	if (var->type == VT_BEAMFORMER_VARIABLE) {
 		BeamformerVariable *bv = &var->u.beamformer_variable;
 		ASSERT(bv->store_type == VT_F32);
-		scale = bv->params.display_scale;
+		scale = bv->display_scale;
 		var->hover_t = 0;
 	}
 	f32 value = parse_f64((s8){.len = is->buf_len, .data = is->buf}) / scale;
@@ -2675,18 +2640,16 @@ ui_end_interact(BeamformerUI *ui, v2 mouse)
 	case IT_DRAG: break;
 	case IT_SET: {
 		switch (is->active->type) {
+		case VT_B32: { is->active->u.b32 = !is->active->u.b32; } break;
 		case VT_GROUP: {
 			is->active->u.group.expanded = !is->active->u.group.expanded;
 		} break;
-		case VT_CYCLER: { is->active->u.cycler.state++;           } break;
-		case VT_B32:    { is->active->u.b32 = !is->active->u.b32; } break;
+		case VT_CYCLER: {
+			*is->active->u.cycler.state += 1;
+			*is->active->u.cycler.state %= is->active->u.cycler.cycle_length;
+		} break;
 		case VT_SCALE_BAR: {
 			scale_bar_interaction(ui, &is->active->u.scale_bar, mouse);
-		} break;
-		case VT_BEAMFORMER_VARIABLE: {
-			ASSERT(is->active->u.beamformer_variable.store_type == VT_B32);
-			b32 *val = is->active->u.beamformer_variable.store;
-			*val     = !(*val);
 		} break;
 		case VT_BEAMFORMER_FRAME_VIEW: {
 			BeamformerFrameView *bv = is->hot->u.generic;
