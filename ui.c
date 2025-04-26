@@ -811,20 +811,16 @@ end_variable_group(Variable *group)
 
 function Variable *
 add_variable_cycler(BeamformerUI *ui, Variable *group, Arena *arena, u32 flags, Font font, s8 name,
-                    u32 *store, s8 *labels, u32 label_count)
+                    u32 *store, s8 *labels, u32 cycle_count)
 {
 	Variable *result = add_variable(ui, group, arena, name, V_INPUT|flags, VT_CYCLER, font);
-	result->u.cycler.cycle_length = label_count;
+	result->u.cycler.cycle_length = cycle_count;
 	result->u.cycler.state        = store;
-	if (labels) {
-		result->u.cycler.labels = alloc(arena, s8, label_count);
-		for (u32 i = 0; i < label_count; i++)
-			result->u.cycler.labels[i] = labels[i];
-	}
+	result->u.cycler.labels       = labels;
 	return result;
 }
 
-static Variable *
+function Variable *
 add_button(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, UIButtonID id,
            u32 flags, Font font)
 {
@@ -938,14 +934,16 @@ add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 	                            &bp->off_axis_pos, (v2){.x = -1e3, .y = 1e3}, 0.25e3,
 	                            0.5e-3, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
+	local_persist s8 beamform_plane_labels[] = {s8("XZ"), s8("YZ")};
 	add_variable_cycler(ui, group, &ui->arena, V_CAUSES_COMPUTE, ui->font, s8("Beamform Plane:"),
-	                    (u32 *)&bp->beamform_plane, (s8 []){s8("XZ"), s8("YZ")}, 2);
+	                    (u32 *)&bp->beamform_plane, beamform_plane_labels, countof(beamform_plane_labels));
 
 	add_beamformer_variable_f32(ui, group, &ui->arena, s8("F#:"), s8(""), &bp->f_number,
 	                            (v2){.y = 1e3}, 1, 0.1, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
+	local_persist s8 interpolate_labels[] = {s8("False"), s8("True")};
 	add_variable_cycler(ui, group, &ui->arena, V_CAUSES_COMPUTE, ui->font, s8("Interpolate:"),
-	                    &bp->interpolate, (s8 []){s8("False"), s8("True")}, 2);
+	                    &bp->interpolate, interpolate_labels, countof(interpolate_labels));
 
 	return result;
 }
