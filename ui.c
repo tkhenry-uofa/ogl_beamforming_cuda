@@ -2322,78 +2322,39 @@ draw_ui_regions(BeamformerUI *ui, Rect window, v2 mouse)
 	end_temp_arena(arena_savepoint);
 }
 
-static void
-ui_store_variable_base(VariableType type, void *store, void *new_value, void *limits)
-{
-	switch (type) {
-	case VT_B32: {
-		*(b32 *)store = *(b32 *)new_value;
-	} break;
-	case VT_F32: {
-		v2 *lim = limits;
-		f32 val = *(f32 *)new_value;
-		*(f32 *)store = CLAMP(val, lim->x, lim->y);
-	} break;
-	default: INVALID_CODE_PATH;
-	}
-}
-
-static void
-ui_store_variable(Variable *var, void *new_value)
-{
-	switch (var->type) {
-	case VT_SCALED_F32: {
-		v2 limits = {.x = -F32_INFINITY, .y = F32_INFINITY};
-		ui_store_variable_base(VT_F32, &var->u.scaled_f32.val, new_value, &limits);
-	} break;
-	case VT_F32: {
-		v2 limits = {.x = -F32_INFINITY, .y = F32_INFINITY};
-		ui_store_variable_base(VT_F32, &var->u.f32, new_value, &limits);
-	} break;
-	case VT_BEAMFORMER_VARIABLE: {
-		BeamformerVariable *bv = &var->u.beamformer_variable;
-		ui_store_variable_base(bv->store_type, bv->store, new_value, &bv->limits);
-	} break;
-	default: INVALID_CODE_PATH;
-	}
-}
-
-static void
-scroll_interaction_base(VariableType type, void *store, f32 delta)
-{
-	switch (type) {
-	case VT_B32: { *(b32 *)store  = !*(b32 *)store; } break;
-	case VT_F32: { *(f32 *)store += delta;          } break;
-	case VT_I32: { *(i32 *)store += delta;          } break;
-	case VT_U32: { *(u32 *)store += delta;          } break;
-	default: INVALID_CODE_PATH;
-	}
-}
-
 function void
 scroll_interaction(Variable *var, f32 delta)
 {
 	switch (var->type) {
+	case VT_B32: var->u.b32  = !var->u.b32; break;
+	case VT_F32: var->u.f32 += delta;       break;
+	case VT_I32: var->u.i32 += delta;       break;
+	case VT_U32: var->u.u32 += delta;       break;
 	case VT_SCALED_F32: var->u.scaled_f32.val += delta * var->u.scaled_f32.scale; break;
 	case VT_BEAMFORMER_FRAME_VIEW: {
 		BeamformerFrameView *bv = var->u.generic;
-		bv->needs_update = 1;
-		scroll_interaction_base(VT_F32, &bv->threshold.u.f32, delta);
+		bv->needs_update     = 1;
+		bv->threshold.u.f32 += delta;
 	} break;
 	case VT_BEAMFORMER_VARIABLE: {
 		BeamformerVariable *bv = &var->u.beamformer_variable;
-		scroll_interaction_base(bv->store_type, bv->store, delta * bv->scroll_scale);
-		ui_store_variable(var, bv->store);
+		switch (bv->store_type) {
+		case VT_F32: {
+			f32 val = *(f32 *)bv->store + delta * bv->scroll_scale;
+			*(f32 *)bv->store = CLAMP(val, bv->limits.x, bv->limits.y);
+		} break;
+		INVALID_DEFAULT_CASE;
+		}
 	} break;
 	case VT_CYCLER: {
-		scroll_interaction_base(VT_U32, var->u.cycler.state, delta > 0? 1 : -1);
+		*var->u.cycler.state += delta > 0? 1 : -1;
 		*var->u.cycler.state %= var->u.cycler.cycle_length;
 	} break;
 	case VT_UI_VIEW: {
-		scroll_interaction_base(VT_F32, &var->u.view.offset, UI_SCROLL_SPEED * delta);
-		var->u.view.offset = MAX(0, var->u.view.offset);
+		var->u.view.offset += UI_SCROLL_SPEED * delta;
+		var->u.view.offset  = MAX(0, var->u.view.offset);
 	} break;
-	default: scroll_interaction_base(var->type, &var->u, delta); break;
+	INVALID_DEFAULT_CASE;
 	}
 }
 
@@ -2419,21 +2380,30 @@ begin_text_input(InputState *is, Font *font, Rect r, Variable *var, v2 mouse)
 	is->cursor = i;
 }
 
-static void
+function void
 end_text_input(InputState *is, Variable *var)
 {
-	f32 scale = 1;
-	if (var->type == VT_BEAMFORMER_VARIABLE) {
+	f64 value = parse_f64((s8){.len = is->buf_len, .data = is->buf});
+
+	switch (var->type) {
+	case VT_SCALED_F32: var->u.scaled_f32.val = value; break;
+	case VT_F32:        var->u.f32            = value; break;
+	case VT_BEAMFORMER_VARIABLE: {
 		BeamformerVariable *bv = &var->u.beamformer_variable;
-		ASSERT(bv->store_type == VT_F32);
-		scale = bv->display_scale;
+		switch (bv->store_type) {
+		case VT_F32: {
+			value = CLAMP(value / bv->display_scale, bv->limits.x, bv->limits.y);
+			*(f32 *)bv->store = value;
+		} break;
+		INVALID_DEFAULT_CASE;
+		}
 		var->hover_t = 0;
+	} break;
+	INVALID_DEFAULT_CASE;
 	}
-	f32 value = parse_f64((s8){.len = is->buf_len, .data = is->buf}) / scale;
-	ui_store_variable(var, &value);
 }
 
-static void
+function void
 update_text_input(InputState *is, Variable *var)
 {
 	ASSERT(is->cursor != -1);

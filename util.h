@@ -36,6 +36,7 @@
 #endif
 
 #define INVALID_CODE_PATH ASSERT(0)
+#define INVALID_DEFAULT_CASE default: ASSERT(0) break
 
 #define function      static
 #define global        static
