@@ -420,19 +420,25 @@ typedef struct {
 	iz capacity;
 } TableStack;
 
+typedef enum {
+	TIK_ROWS,
+	TIK_CELLS,
+} TableIteratorKind;
+
 typedef struct {
 	TableStack      stack;
 	TableStackFrame frame;
-} TableRowIterator;
 
-typedef struct {
-	TableRowIterator row_iterator;
 	TableRow *row;
-	i32  column;
-	f32  start_x;
-	Rect          cell_rect;
+	i16       column;
+	i16       sub_table_depth;
+
+	TableIteratorKind kind;
+
+	f32           start_x;
 	TextAlignment alignment;
-} TableCellIterator;
+	Rect          cell_rect;
+} TableIterator;
 
 function v2
 measure_glyph(Font font, u32 glyph)
@@ -527,70 +533,59 @@ table_skip_rows(Table *t, f32 draw_height, f32 text_height)
 	return result;
 }
 
-function TableRowIterator
-table_row_iterator_new(Table *table, Arena *a, i32 starting_row_index)
+function TableIterator *
+table_iterator_new(Table *table, TableIteratorKind kind, Arena *a, i32 starting_row, v2 at, Font *font)
 {
-	TableRowIterator result = {0};
-	result.frame.table      = table;
-	result.frame.row_index  = starting_row_index;
-	da_reserve(a, &result.stack, 4);
+	TableIterator *result    = push_struct(a, TableIterator);
+	result->kind             = kind;
+	result->frame.table      = table;
+	result->frame.row_index  = starting_row;
+	result->start_x          = at.x;
+	result->cell_rect.size.h = font->baseSize + TABLE_CELL_PAD_HEIGHT;
+	result->cell_rect.pos    = add_v2(at, (v2){.y = (starting_row - 1) * result->cell_rect.size.h});
+	da_reserve(a, &result->stack, 4);
 	return result;
 }
 
-function TableRow *
-table_row_iterator_next(TableRowIterator *it, Arena *a)
+function void *
+table_iterator_next(TableIterator *it, Arena *a)
 {
-	TableRow *result = 0;
-	for (;;) {
-		TableRow *row = it->frame.table->data + it->frame.row_index++;
-		if (it->frame.row_index <= it->frame.table->count) {
-			if (row->kind == TRK_TABLE) {
-				*da_push(a, &it->stack) = it->frame;
-				it->frame = (TableStackFrame){.table = row->data};
+	void *result = 0;
+
+	if (!it->row || it->kind == TIK_ROWS) {
+		for (;;) {
+			TableRow *row = it->frame.table->data + it->frame.row_index++;
+			if (it->frame.row_index <= it->frame.table->count) {
+				if (row->kind == TRK_TABLE) {
+					*da_push(a, &it->stack) = it->frame;
+					it->frame = (TableStackFrame){.table = row->data};
+					it->sub_table_depth++;
+				} else {
+					result = row;
+					break;
+				}
+			} else if (it->stack.count) {
+				it->frame = it->stack.data[--it->stack.count];
+				it->sub_table_depth--;
 			} else {
-				result = row;
 				break;
 			}
-		} else if (it->stack.count) {
-			it->frame = it->stack.data[--it->stack.count];
-		} else {
-			break;
 		}
-	}
-	return result;
-}
-
-function TableCellIterator
-table_cell_iterator_new(Table *table, Arena *a, i32 starting_row_index, v2 position, Font *font)
-{
-	TableCellIterator result = {0};
-	result.row_iterator      = table_row_iterator_new(table, a, starting_row_index);
-	result.row               = table_row_iterator_next(&result.row_iterator, a);
-	result.cell_rect.size.h  = font->baseSize + TABLE_CELL_PAD_HEIGHT;
-	result.start_x           = position.x;
-	result.cell_rect.pos     = add_v2(position,
-	                                  (v2){.y = starting_row_index * result.cell_rect.size.h});
-	return result;
-}
-
-function TableCell *
-table_cell_iterator_next(TableCellIterator *it, Arena *a)
-{
-	TableCell *result = 0;
-
-	if (it->column == it->row_iterator.frame.table->columns) {
-		it->row    = table_row_iterator_next(&it->row_iterator, a);
+		it->row    = result;
 		it->column = 0;
 		it->cell_rect.pos.x  = it->start_x;
 		it->cell_rect.pos.y += it->cell_rect.size.h;
 	}
 
-	if (it->row) {
+	if (it->row && it->kind == TIK_CELLS) {
 		i32 column = it->column++;
 		it->cell_rect.pos.x  += column > 0 ? it->cell_rect.size.w : 0;
-		it->cell_rect.size.w  = it->row_iterator.frame.table->widths[column];
-		it->alignment         = it->row_iterator.frame.table->alignment[column];
-		result = (TableCell *)it->row->data + column;
+		it->cell_rect.size.w  = it->frame.table->widths[column];
+		it->alignment         = it->frame.table->alignment[column];
+		result                = (TableCell *)it->row->data + column;
+
+		if (it->column == it->frame.table->columns)
+			it->row = 0;
 	}
 
 	return result;
@@ -608,13 +603,13 @@ table_width(Table *t)
 function v2
 table_extent(Table *t, Arena arena, Font *font)
 {
-	TableRowIterator it = table_row_iterator_new(t, &arena, 0);
-	f32 max_row_width   = 0;
-	for (TableRow *row = table_row_iterator_next(&it, &arena);
+	TableIterator *it = table_iterator_new(t, TIK_ROWS, &arena, 0, (v2){0}, font);
+	f32 max_row_width = 0;
+	for (TableRow *row = table_iterator_next(it, &arena);
 	     row;
-	     row = table_row_iterator_next(&it, &arena))
+	     row = table_iterator_next(it, &arena))
 	{
-		i32 columns   = it.frame.table->columns;
+		i32 columns   = it->frame.table->columns;
 		f32 row_width = 0;
 		for (i32 i = 0; i < columns; i++) {
 			TableCell *cell = (TableCell *)row->data + i;
@@ -625,9 +620,9 @@ table_extent(Table *t, Arena arena, Font *font)
 			}
 			cell->width += TABLE_CELL_PAD_WIDTH;
 			row_width   += cell->width;
-			it.frame.table->widths[i] = MAX(cell->width, it.frame.table->widths[i]);
+			it->frame.table->widths[i] = MAX(cell->width, it->frame.table->widths[i]);
 		}
-		row_width     += (columns - 1) * it.frame.table->column_border_thick;
+		row_width     += (columns - 1) * it->frame.table->column_border_thick;
 		max_row_width  = MAX(row_width, max_row_width);
 	}
 
@@ -1720,14 +1715,14 @@ draw_table(BeamformerUI *ui, Arena arena, Table *table, Rect draw_rect, TextSpec
 	ts.flags |= TF_LIMITED;
 	ts.limits.size.w = draw_rect.size.w;
 
-	f32 start_height    = draw_rect.size.h;
-	i32 row_index       = table_skip_rows(table, draw_rect.size.h, ts.font->baseSize);
-	TableRowIterator it = table_row_iterator_new(table, &arena, row_index);
-	for (TableRow *row = table_row_iterator_next(&it, &arena);
+	f32 start_height  = draw_rect.size.h;
+	i32 row_index     = table_skip_rows(table, draw_rect.size.h, ts.font->baseSize);
+	TableIterator *it = table_iterator_new(table, TIK_ROWS, &arena, row_index, (v2){0}, ts.font);
+	for (TableRow *row = table_iterator_next(it, &arena);
 	     row;
-	     row = table_row_iterator_next(&it, &arena))
+	     row = table_iterator_next(it, &arena))
 	{
-		Table *table    = it.frame.table;
+		Table *table    = it->frame.table;
 		Rect row_rect   = draw_rect;
 		row_rect.size.h = ts.font->baseSize + TABLE_CELL_PAD_HEIGHT;
 		f32 h = draw_table_row(ui, arena, row->data, table->alignment, table->widths,
@@ -2054,16 +2049,16 @@ draw_ui_view_listing(BeamformerUI *ui, Variable *group, Arena arena, Rect r, v2 
 	/* NOTE(rnp): minimum width for middle column */
 	table.widths[1] = 150;
 	v2 result = table_extent(&table, arena, text_spec.font);
-	TableCellIterator it = table_cell_iterator_new(&table, &arena, 0, r.pos, text_spec.font);
-	for (TableCell *cell = table_cell_iterator_next(&it, &arena);
+	TableIterator *it = table_iterator_new(&table, TIK_CELLS, &arena, 0, r.pos, text_spec.font);
+	for (TableCell *cell = table_iterator_next(it, &arena);
 	     cell;
-	     cell = table_cell_iterator_next(&it, &arena))
+	     cell = table_iterator_next(it, &arena))
 	{
-		text_spec.limits.size.w = r.size.w - (it.cell_rect.pos.x - it.start_x);
+		text_spec.limits.size.w = r.size.w - (it->cell_rect.pos.x - it->start_x);
 		if (cell->kind == TCK_VARIABLE_GROUP) {
 			Variable *v = cell->var->u.group.first;
-			v2 at = table_cell_align(cell, it.alignment, it.cell_rect);
-			text_spec.limits.size.w = r.size.w - (at.x - it.start_x);
+			v2 at = table_cell_align(cell, it->alignment, it->cell_rect);
+			text_spec.limits.size.w = r.size.w - (at.x - it->start_x);
 			f32 dw = draw_text(s8("{"), at, &text_spec).x;
 			while (v) {
 				at.x += dw;
@@ -2081,7 +2076,7 @@ draw_ui_view_listing(BeamformerUI *ui, Variable *group, Arena arena, Rect r, v2 
 			text_spec.limits.size.w -= dw;
 			draw_text(s8("}"), at, &text_spec);
 		} else {
-			draw_table_cell(ui, cell, it.cell_rect, it.alignment, text_spec, mouse);
+			draw_table_cell(ui, cell, it->cell_rect, it->alignment, text_spec, mouse);
 		}
 	}
 
@@ -2756,8 +2751,6 @@ ui_init(BeamformerCtx *ctx, Arena store)
 				glDeleteTextures(1, &view->texture);
 	}
 
-	DEBUG_DECL(u8 *arena_start = store.beg);
-
 	ui = ctx->ui = push_struct(&store, typeof(*ui));
 	ui->os    = &ctx->os;
 	ui->arena = store;
@@ -2793,7 +2786,7 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	ctx->ui_read_params = 1;
 
 	/* NOTE(rnp): shrink variable size once this fires */
-	ASSERT(ui->arena.beg - arena_start < KB(64));
+	ASSERT(ui->arena.beg - (u8 *)ui < KB(64));
 }
 
 static void
