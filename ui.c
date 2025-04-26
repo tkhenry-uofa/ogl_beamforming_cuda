@@ -4,6 +4,7 @@
  * [ ]: refactor: ui shouldn't fully destroy itself on hot reload
  * [ ]: refactor: remove all the excessive measure_texts (cell drawing, hover_var in params table)
  * [ ]: refactor: move remaining fragment shader stuff into ui
+ * [ ]: refactor: scale table to rect
  * [ ]: refactor: re-add next_hot variable. this will simplify the code and number of checks
  *      being performed inline. example:
  *      if (hovering)
@@ -391,7 +392,7 @@ typedef struct {
 	TableRowKind  kind;
 } TableRow;
 
-typedef struct {
+typedef struct Table {
 	TableRow *data;
 	iz        count;
 	iz        capacity;
@@ -407,6 +408,8 @@ typedef struct {
 	/* NOTE(rnp): row count including nested tables */
 	i32 rows;
 	i32 columns;
+
+	struct Table *parent;
 } Table;
 
 typedef struct {
@@ -514,14 +517,15 @@ stream_append_variable(Stream *s, Variable *var)
 	}
 }
 
-function Table
+function Table *
 table_new(Arena *a, i32 initial_capacity, i32 columns, TextAlignment *alignment)
 {
-	Table result = {.columns = columns};
-	da_reserve(a, &result, initial_capacity);
-	result.alignment = alloc(a, TextAlignment, columns);
-	result.widths    = alloc(a, f32, columns);
-	mem_copy(result.alignment, alignment, sizeof(*alignment) * columns);
+	Table *result = push_struct(a, Table);
+	da_reserve(a, result, initial_capacity);
+	result->columns   = columns;
+	result->alignment = alloc(a, TextAlignment, columns);
+	result->widths    = alloc(a, f32, columns);
+	mem_copy(result->alignment, alignment, sizeof(*alignment) * columns);
 	return result;
 }
 
@@ -574,7 +578,7 @@ table_iterator_next(TableIterator *it, Arena *a)
 		it->row    = result;
 		it->column = 0;
 		it->cell_rect.pos.x  = it->start_x;
-		it->cell_rect.pos.y += it->cell_rect.size.h;
+		it->cell_rect.pos.y += it->cell_rect.size.h + it->frame.table->row_border_thick;
 	}
 
 	if (it->row && it->kind == TIK_CELLS) {
@@ -625,11 +629,7 @@ table_extent(Table *t, Arena arena, Font *font)
 		row_width     += (columns - 1) * it->frame.table->column_border_thick;
 		max_row_width  = MAX(row_width, max_row_width);
 	}
-
-	v2 result;
-	result.x = max_row_width;
-	result.y = t->rows * (font->baseSize + TABLE_CELL_PAD_HEIGHT)
-	           + (t->rows - 1) * t->row_border_thick;
+	v2 result = {.x = max_row_width, .y = it->cell_rect.pos.y};
 	return result;
 }
 
@@ -666,12 +666,12 @@ function TableRow *
 table_push_row(Table *t, Arena *a, TableRowKind kind)
 {
 	TableRow *result = da_push(a, t);
-	if (kind == TRK_TABLE) {
-		result->data = push_struct(a, Table);
-	} else {
+	if (kind == TRK_CELLS) {
 		result->data = alloc(a, TableCell, t->columns);
+		/* NOTE(rnp): do not increase rows for an empty subtable */
 		t->rows++;
 	}
+	result->kind = kind;
 	return result;
 }
 
@@ -686,6 +686,22 @@ table_push_parameter_row(Table *t, Arena *a, s8 label, Variable *var, s8 suffix)
 	cells[1]       = table_variable_cell(a, var);
 	cells[2].text  = suffix;
 
+	return result;
+}
+
+function Table *
+table_begin_subtable(Table *table, Arena *a, i32 columns, TextAlignment *alignment)
+{
+	TableRow *row = table_push_row(table, a, TRK_TABLE);
+	Table *result = row->data = table_new(a, 0, columns, alignment);
+	result->parent = table;
+	return result;
+}
+
+function Table *
+table_end_subtable(Table *table)
+{
+	Table *result = table->parent ? table->parent : table;
 	return result;
 }
 
@@ -1675,7 +1691,7 @@ draw_table_cell(BeamformerUI *ui, TableCell *cell, Rect cell_rect, TextAlignment
 
 	v4 base_colour = ts.colour;
 	if (cell->kind == TCK_VARIABLE && cell->var->flags & V_INPUT) {
-		Rect hover = {.pos = cell_rect.pos, .size = {.w = cell->width, .h = cell_rect.size.h}};
+		Rect hover = {.pos = cell_at, .size = {.w = cell->width, .h = cell_rect.size.h}};
 		if (hover_var(ui, mouse, hover, cell->var) && (cell->var->flags & V_TEXT))
 			ui->interaction.hot_font = ts.font;
 		ts.colour = lerp_v4(ts.colour, HOVERED_COLOUR, cell->var->hover_t);
@@ -1903,20 +1919,20 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		draw_text(stream_to_s8(&buf), txt_p, &text_spec);
 	}
 
-	Table table = table_new(&a, 3, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_LEFT});
-	table_push_parameter_row(&table, &a, view->gamma.name,         &view->gamma,         s8(""));
-	table_push_parameter_row(&table, &a, view->threshold.name,     &view->threshold,     s8(""));
-	table_push_parameter_row(&table, &a, view->dynamic_range.name, &view->dynamic_range, s8("[dB]"));
+	Table *table = table_new(&a, 3, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_LEFT});
+	table_push_parameter_row(table, &a, view->gamma.name,         &view->gamma,         s8(""));
+	table_push_parameter_row(table, &a, view->threshold.name,     &view->threshold,     s8(""));
+	table_push_parameter_row(table, &a, view->dynamic_range.name, &view->dynamic_range, s8("[dB]"));
 
 	Rect table_rect = vr;
-	f32 height      = table_extent(&table, a, text_spec.font).y;
+	f32 height      = table_extent(table, a, text_spec.font).y;
 	height          = MIN(height, vr.size.h);
 	table_rect.pos.w  += 8;
 	table_rect.pos.y  += vr.size.h - height - 8;
 	table_rect.size.h  = height;
 	table_rect.size.w  = draw_table_width - 16;
 
-	draw_table(ui, a, &table, table_rect, text_spec, mouse);
+	draw_table(ui, a, table, table_rect, text_spec, mouse);
 }
 
 static v2
@@ -1955,35 +1971,38 @@ draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *sta
 	u32 stages           = ctx->shared_memory->compute_stages_count;
 	TextSpec text_spec   = {.font = &ui->font, .colour = FG_COLOUR, .flags = TF_LIMITED};
 
-	Stream sb   = stream_alloc(&arena, 256);
-	Table table = table_new(&arena, stages + 1, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_LEFT});
+	Stream sb    = stream_alloc(&arena, 256);
+	Table *table = table_new(&arena, stages + 1, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_LEFT});
 	for (u32 i = 0; i < stages; i++) {
 		u32 index = ctx->shared_memory->compute_stages[i];
 
 		compute_time_sum += stats->times[index];
 		stream_append_f64_e(&sb, stats->times[index]);
 
-		TableCell *cells = table_push_row(&table, &arena, TRK_CELLS)->data;
+		TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
 		cells[0].text = labels[index];
 		cells[1].text = stream_chop_head(&sb);
 		cells[2].text = s8("[s]");
 	}
 
 	stream_append_f64_e(&sb, compute_time_sum);
-	TableCell *cells = table_push_row(&table, &arena, TRK_CELLS)->data;
+	TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
 	cells[0].text = s8("Compute Total:");
 	cells[1].text = stream_chop_head(&sb);
 	cells[2].text = s8("[s]");
 
-	table_extent(&table, arena, text_spec.font);
-	return draw_table(ui, arena, &table, r, text_spec, (v2){0});
+	table_extent(table, arena, text_spec.font);
+	return draw_table(ui, arena, table, r, text_spec, (v2){0});
 }
 
 function v2
 draw_ui_view_listing(BeamformerUI *ui, Variable *group, Arena arena, Rect r, v2 mouse, TextSpec text_spec)
 {
 	ASSERT(group->type == VT_GROUP);
-	Table table   = table_new(&arena, 0, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_RIGHT});
+	Table *table  = table_new(&arena, 0, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_RIGHT});
+	/* NOTE(rnp): minimum width for middle column */
+	table->widths[1] = 150;
+
 	Variable *var = group->u.group.first;
 	while (var) {
 		switch (var->type) {
@@ -1992,23 +2011,27 @@ draw_ui_view_listing(BeamformerUI *ui, Variable *group, Arena arena, Rect r, v2 
 			s8 suffix = s8("");
 			if (var->type == VT_BEAMFORMER_VARIABLE)
 				suffix = var->u.beamformer_variable.suffix;
-			table_push_parameter_row(&table, &arena, var->name, var, suffix);
+			table_push_parameter_row(table, &arena, var->name, var, suffix);
 			while (var) {
 				if (var->next) {
 					var = var->next;
 					break;
 				}
-				var = var->parent;
+				var   = var->parent;
+				table = table_end_subtable(table);
 			}
 		} break;
 		case VT_GROUP: {
 			VariableGroup *g = &var->u.group;
 
-			TableCell *cells = table_push_row(&table, &arena, TRK_CELLS)->data;
+			TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
 			cells[0] = (TableCell){.text = var->name, .kind = TCK_VARIABLE, .var = var};
 
 			if (g->expanded) {
 				var = g->first;
+				table = table_begin_subtable(table, &arena, table->columns,
+				                             (TextAlignment []){TA_LEFT, TA_CENTER, TA_RIGHT});
+				table->widths[1] = 100;
 			} else {
 				Variable *v = g->first;
 
@@ -2039,23 +2062,25 @@ draw_ui_view_listing(BeamformerUI *ui, Variable *group, Arena arena, Rect r, v2 
 				var = var->next;
 			}
 		} break;
-		default: INVALID_CODE_PATH;
+		INVALID_DEFAULT_CASE;
 		}
 	}
 
 	text_spec.flags |= TF_LIMITED;
-	/* NOTE(rnp): minimum width for middle column */
-	table.widths[1] = 150;
-	v2 result = table_extent(&table, arena, text_spec.font);
-	TableIterator *it = table_iterator_new(&table, TIK_CELLS, &arena, 0, r.pos, text_spec.font);
+	v2 result = table_extent(table, arena, text_spec.font);
+	TableIterator *it = table_iterator_new(table, TIK_CELLS, &arena, 0, r.pos, text_spec.font);
 	for (TableCell *cell = table_iterator_next(it, &arena);
 	     cell;
 	     cell = table_iterator_next(it, &arena))
 	{
 		text_spec.limits.size.w = r.size.w - (it->cell_rect.pos.x - it->start_x);
+		/* TODO(rnp): ensure this doesn't exceed r.size */
+		Rect rect;
+		rect.pos  = add_v2(it->cell_rect.pos, scale_v2((v2){.x = text_spec.font->baseSize}, it->sub_table_depth));
+		rect.size = it->cell_rect.size;
 		if (cell->kind == TCK_VARIABLE_GROUP) {
 			Variable *v = cell->var->u.group.first;
-			v2 at = table_cell_align(cell, it->alignment, it->cell_rect);
+			v2 at = table_cell_align(cell, it->alignment, rect);
 			text_spec.limits.size.w = r.size.w - (at.x - it->start_x);
 			f32 dw = draw_text(s8("{"), at, &text_spec).x;
 			while (v) {
@@ -2074,7 +2099,7 @@ draw_ui_view_listing(BeamformerUI *ui, Variable *group, Arena arena, Rect r, v2 
 			text_spec.limits.size.w -= dw;
 			draw_text(s8("}"), at, &text_spec);
 		} else {
-			draw_table_cell(ui, cell, it->cell_rect, it->alignment, text_spec, mouse);
+			draw_table_cell(ui, cell, rect, it->alignment, text_spec, mouse);
 		}
 	}
 
