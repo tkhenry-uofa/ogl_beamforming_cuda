@@ -74,7 +74,7 @@ main(void)
 	OS_FNS
 	#undef X
 
-	ctx.os.file_watch_context.handle = inotify_init1(O_NONBLOCK|O_CLOEXEC);
+	ctx.os.file_watch_context.handle = inotify_init1(IN_NONBLOCK|IN_CLOEXEC);
 	ctx.os.compute_worker.asleep     = 1;
 	ctx.os.stderr                    = STDERR_FILENO;
 

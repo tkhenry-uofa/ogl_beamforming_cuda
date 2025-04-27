@@ -5,20 +5,6 @@
 
 #include "beamformer.h"
 
-typedef struct {
-	iptr io_completion_handle;
-} w32_context;
-
-enum w32_io_events {
-	W32_IO_FILE_WATCH,
-	W32_IO_PIPE,
-};
-
-typedef struct {
-	u64  tag;
-	iptr context;
-} w32_io_completion_event;
-
 #include "os_win32.c"
 
 #define OS_DEBUG_LIB_NAME      ".\\beamformer.dll"

@@ -1,11 +1,11 @@
 *.dll
 *.exe
-*.mexa64
+*.old
 *.pdb
 *.rdi
 *.so*
+build
 external/include/r*.h
-external/lib
-helpers/helper
 ogl
+out
 x64

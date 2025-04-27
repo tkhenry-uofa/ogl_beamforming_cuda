@@ -1,6 +1,7 @@
 /* See LICENSE for license details. */
 #include "util.h"
 
+#define STD_INPUT_HANDLE  -10
 #define STD_OUTPUT_HANDLE -11
 #define STD_ERROR_HANDLE  -12
 
@@ -73,6 +74,22 @@ typedef struct {
 	iptr event_handle;
 } w32_overlapped;
 
+typedef struct {
+	iptr io_completion_handle;
+	u64  timer_start_time;
+	u64  timer_frequency;
+} w32_context;
+
+typedef enum {
+	W32_IO_FILE_WATCH,
+	W32_IO_PIPE,
+} W32_IO_Event;
+
+typedef struct {
+	u64  tag;
+	iptr context;
+} w32_io_completion_event;
+
 #define W32(r) __declspec(dllimport) r __stdcall
 W32(b32)    CloseHandle(iptr);
 W32(b32)    CopyFileA(c8 *, c8 *, b32);
@@ -125,15 +142,22 @@ static OS_WRITE_FILE_FN(os_write_file)
 	return raw.len == wlen;
 }
 
-static void __attribute__((noreturn))
-os_fatal(s8 msg)
+function void __attribute__((noreturn))
+os_exit(i32 code)
 {
-	os_write_file(GetStdHandle(STD_ERROR_HANDLE), msg);
 	ExitProcess(1);
 	unreachable();
 }
 
-static OS_ALLOC_ARENA_FN(os_alloc_arena)
+function void __attribute__((noreturn))
+os_fatal(s8 msg)
+{
+	os_write_file(GetStdHandle(STD_ERROR_HANDLE), msg);
+	os_exit(1);
+	unreachable();
+}
+
+function OS_ALLOC_ARENA_FN(os_alloc_arena)
 {
 	Arena result;
 	w32_sys_info Info;
@@ -231,13 +255,17 @@ os_open_shared_memory_area(char *name, iz cap)
 	return result;
 }
 
-static void *
+function b32
+os_copy_file(char *name, char *new)
+{
+	return CopyFileA(name, new, 0);
+}
+
+function void *
 os_load_library(char *name, char *temp_name, Stream *e)
 {
-	if (temp_name) {
-		if (CopyFileA(name, temp_name, 0))
-			name = temp_name;
-	}
+	if (temp_name && os_copy_file(name, temp_name))
+		name = temp_name;
 
 	void *result = LoadLibraryA(name);
 	if (!result && e) {

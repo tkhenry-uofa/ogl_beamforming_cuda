@@ -9,17 +9,17 @@ jobs:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm]
         cc: ["gcc", "clang"]
-    env:
-      CC: "${{ matrix.cc }}"
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
       - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install libxkbcommon-dev xorg-dev
       - name: Build
-        run: ./build.sh
+        run: ${{matrix.cc}} -march=native -O3 build.c -Iexternal/include -o build && ./build
 
   windows:
     runs-on: windows-latest
@@ -29,13 +29,13 @@ jobs:
         include:
           - { sys: ucrt64,  env: ucrt-x86_64,  cc: "gcc" }
           - { sys: clang64, env: clang-x86_64, cc: "clang" }
-    env:
-      CC: "${{ matrix.cc }}"
     defaults:
       run:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
       - uses: msys2/setup-msys2@v2
         with:
           msystem: ${{matrix.sys}}
@@ -43,4 +43,4 @@ jobs:
           install: git mingw-w64-${{matrix.env}}-${{matrix.cc}}
 
       - name: Build
-        run: NO_MATLAB=1 ./build.sh
+        run: ${{matrix.cc}} -march=native -O3 build.c -Iexternal/include -o build && ./build

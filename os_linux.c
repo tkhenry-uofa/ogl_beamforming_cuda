@@ -16,6 +16,8 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+/* NOTE(rnp): hidden behind feature flags -> screw compiler/standards idiots */
+i32 ftruncate(i32, i64);
 i64 syscall(i64, ...);
 
 #ifdef _DEBUG
@@ -42,15 +44,22 @@ static OS_WRITE_FILE_FN(os_write_file)
 	return 1;
 }
 
-static void __attribute__((noreturn))
-os_fatal(s8 msg)
+function void __attribute__((noreturn))
+os_exit(i32 code)
 {
-	os_write_file(STDERR_FILENO, msg);
-	_exit(1);
+	_exit(code);
 	unreachable();
 }
 
-static OS_ALLOC_ARENA_FN(os_alloc_arena)
+function void __attribute__((noreturn))
+os_fatal(s8 msg)
+{
+	os_write_file(STDERR_FILENO, msg);
+	os_exit(1);
+	unreachable();
+}
+
+function OS_ALLOC_ARENA_FN(os_alloc_arena)
 {
 	Arena result;
 	iz pagesize = sysconf(_SC_PAGESIZE);
@@ -147,36 +156,33 @@ os_open_shared_memory_area(char *name, iz cap)
 }
 
 /* NOTE: complete garbage because there is no standarized copyfile() in POSix */
-static b32
+function b32
 os_copy_file(char *name, char *new)
 {
 	b32 result = 0;
 	struct stat sb;
-	if (stat(name, &sb) < 0)
-		return 0;
-
-	i32 fd_old = open(name, O_RDONLY);
-	i32 fd_new = open(new, O_WRONLY|O_TRUNC, sb.st_mode);
-
-	if (fd_old < 0 || fd_new < 0)
-		goto ret;
-	u8 buf[4096];
-	iz copied = 0;
-	while (copied != sb.st_size) {
-		iz r = read(fd_old, buf, ARRAY_COUNT(buf));
-		if (r < 0) goto ret;
-		iz w = write(fd_new, buf, r);
-		if (w < 0) goto ret;
-		copied += w;
+	if (stat(name, &sb) == 0) {
+		i32 fd_old = open(name, O_RDONLY);
+		i32 fd_new = open(new,  O_WRONLY|O_CREAT, sb.st_mode);
+		if (fd_old >= 0 && fd_new >= 0) {
+			u8 buf[4096];
+			iz copied = 0;
+			while (copied != sb.st_size) {
+				iz r = read(fd_old, buf, countof(buf));
+				if (r < 0) break;
+				iz w = write(fd_new, buf, r);
+				if (w < 0) break;
+				copied += w;
+			}
+			result = copied == sb.st_size;
+		}
+		if (fd_old != -1) close(fd_old);
+		if (fd_new != -1) close(fd_new);
 	}
-	result = 1;
-ret:
-	if (fd_old != -1) close(fd_old);
-	if (fd_new != -1) close(fd_new);
 	return result;
 }
 
-static void *
+function void *
 os_load_library(char *name, char *temp_name, Stream *e)
 {
 	if (temp_name) {
