@@ -73,7 +73,7 @@ typedef struct v2_sll {
 
 typedef struct {
 	u8   buf[64];
-	i32  buf_len;
+	i32  count;
 	i32  cursor;
 	f32  cursor_blink_t;
 	f32  cursor_blink_scale;
@@ -2153,11 +2153,11 @@ draw_active_text_box(BeamformerUI *ui, Variable *var)
 	Rect box       = ui->interaction.rect;
 	Font *font     = ui->interaction.font;
 
-	s8 text          = {.len = is->buf_len, .data = is->buf};
+	s8 text          = {.len = is->count, .data = is->buf};
 	v2 text_size     = measure_text(*font, text);
 	v2 text_position = {.x = box.pos.x, .y = box.pos.y + (box.size.h - text_size.h) / 2};
 
-	f32 cursor_width   = (is->cursor == is->buf_len) ? 0.55 * font->baseSize : 4;
+	f32 cursor_width   = (is->cursor == is->count) ? 0.55 * font->baseSize : 4;
 	f32 cursor_offset  = measure_text(*font, (s8){.data = text.data, .len = is->cursor}).w;
 	cursor_offset     += text_position.x;
 
@@ -2381,14 +2381,14 @@ begin_text_input(InputState *is, Font *font, Rect r, Variable *var, v2 mouse)
 {
 	Stream s = {.cap = ARRAY_COUNT(is->buf), .data = is->buf};
 	stream_append_variable(&s, var);
-	is->buf_len = s.widx;
+	is->count = s.widx;
 
 	/* NOTE: extra offset to help with putting a cursor at idx 0 */
 	#define TEXT_HALF_CHAR_WIDTH 10
 	f32 hover_p = CLAMP01((mouse.x - r.pos.x) / r.size.w);
 	f32 x_off = TEXT_HALF_CHAR_WIDTH, x_bounds = r.size.w * hover_p;
 	i32 i;
-	for (i = 0; i < is->buf_len && x_off < x_bounds; i++) {
+	for (i = 0; i < is->count && x_off < x_bounds; i++) {
 		/* NOTE: assumes font glyphs are ordered ASCII */
 		i32 idx  = is->buf[i] - 0x20;
 		x_off   += font->glyphs[idx].advanceX;
@@ -2401,7 +2401,7 @@ begin_text_input(InputState *is, Font *font, Rect r, Variable *var, v2 mouse)
 function void
 end_text_input(InputState *is, Variable *var)
 {
-	f64 value = parse_f64((s8){.len = is->buf_len, .data = is->buf});
+	f64 value = parse_f64((s8){.len = is->count, .data = is->buf});
 
 	switch (var->type) {
 	case VT_SCALED_F32: var->u.scaled_f32.val = value; break;
@@ -2435,39 +2435,38 @@ update_text_input(InputState *is, Variable *var)
 
 	/* NOTE: handle multiple input keys on a single frame */
 	for (i32 key = GetCharPressed();
-	     is->cursor < ARRAY_COUNT(is->buf) && key > 0;
+	     is->count < countof(is->buf) && key > 0;
 	     key = GetCharPressed())
 	{
-		b32 allow_key = ((key >= '0' && key <= '9') || (key == '.') ||
+		b32 allow_key = (BETWEEN(key, '0', '9') || (key == '.') ||
 		                 (key == '-' && is->cursor == 0));
 		if (allow_key) {
 			mem_move(is->buf + is->cursor + 1,
 			         is->buf + is->cursor,
-			         is->buf_len - is->cursor + 1);
-
+			         is->count - is->cursor);
 			is->buf[is->cursor++] = key;
-			is->buf_len++;
+			is->count++;
 		}
 	}
 
 	is->cursor -= (IsKeyPressed(KEY_LEFT)  || IsKeyPressedRepeat(KEY_LEFT))  && is->cursor > 0;
-	is->cursor += (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) && is->cursor < is->buf_len;
+	is->cursor += (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) && is->cursor < is->count;
 
 	if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && is->cursor > 0) {
 		is->cursor--;
-		if (is->cursor < ARRAY_COUNT(is->buf) - 1) {
+		if (is->cursor < countof(is->buf) - 1) {
 			mem_move(is->buf + is->cursor,
 			         is->buf + is->cursor + 1,
-			         is->buf_len - is->cursor);
+			         is->count - is->cursor - 1);
 		}
-		is->buf_len--;
+		is->count--;
 	}
 
-	if ((IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) && is->cursor < is->buf_len) {
+	if ((IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) && is->cursor < is->count) {
 		mem_move(is->buf + is->cursor,
-			 is->buf + is->cursor + 1,
-		         is->buf_len - is->cursor);
-		is->buf_len--;
+		         is->buf + is->cursor + 1,
+		         is->count - is->cursor - 1);
+		is->count--;
 	}
 }
 
