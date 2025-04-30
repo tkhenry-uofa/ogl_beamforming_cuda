@@ -1,7 +1,7 @@
 #!/bin/sh
 
 cflags="-march=native -Wall -I ./external/include"
-ldflags="-lglfw -lraylib -lgdi32 -lwinmm -lSynchronization -lcuda_toolkit -L ./external/lib"
+ldflags="-L ./external/lib . -lglfw -lraylib -lgdi32 -lwinmm -lSynchronization -lcuda_toolkit "
 output_path="../x64"
 app_name="ogl_beamforming_cuda"
 
@@ -11,7 +11,7 @@ cc=${CC:-cc}
 if [ "$1" = "-d" ]; then
     cflags="$cflags -g -O0 -D_DEBUG -Wno-unused-function -g -gcodeview"
     c_lib_flags="$cflags -Wl,--pdb=beamformer"
-    cflags="$cflags -Wl,--pdb=${app_name}"
+    cflags="$cflags -Wl,--pdb=${app_name}.pdb"
     ldflags="$ldflags -fuse-ld=lld -L ../x64/Debug"
     output_path="${output_path}/Debug/"
     ${cc} ${c_lib_flags} -fPIC -shared beamformer.c -o beamformer.dll ${ldflags}
