@@ -1541,7 +1541,7 @@ draw_title_bar(BeamformerUI *ui, Arena arena, Variable *ui_view, Rect r, v2 mous
 function void
 draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
            f32 start_value, f32 end_value, f32 *markers, u32 marker_count,
-           u32 segments, s8 suffix, v4 ruler_colour, v4 txt_colour)
+           u32 segments, s8 suffix, v4 marker_colour, v4 txt_colour)
 {
 	b32 draw_plus = SIGN(start_value) != SIGN(end_value);
 
@@ -1559,9 +1559,9 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 	v2 sp = {0}, ep = {.y = RULER_TICK_LENGTH};
 	v2 tp = {.x = ui->small_font.baseSize / 2, .y = ep.y + RULER_TEXT_PAD};
 	TextSpec text_spec = {.font = &ui->small_font, .rotation = 90, .colour = txt_colour, .flags = TF_ROTATED};
-	Color rl_ruler_colour = colour_from_normalized(ruler_colour);
+	Color rl_txt_colour = colour_from_normalized(txt_colour);
 	for (u32 j = 0; j <= segments; j++) {
-		DrawLineEx(sp.rl, ep.rl, 3, rl_ruler_colour);
+		DrawLineEx(sp.rl, ep.rl, 3, rl_txt_colour);
 
 		stream_reset(buf, 0);
 		if (draw_plus && value > 0) stream_append_byte(buf, '+');
@@ -1575,12 +1575,13 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 		tp.x  += inc;
 	}
 
+	Color rl_marker_colour = colour_from_normalized(marker_colour);
 	ep.y += RULER_TICK_LENGTH;
 	for (u32 i = 0; i < marker_count; i++) {
 		if (markers[i] < F32_INFINITY) {
 			ep.x  = sp.x = markers[i];
-			DrawLineEx(sp.rl, ep.rl, 3, rl_ruler_colour);
-			DrawCircleV(ep.rl, 3, rl_ruler_colour);
+			DrawLineEx(sp.rl, ep.rl, 3, rl_marker_colour);
+			DrawCircleV(ep.rl, 3, rl_marker_colour);
 		}
 	}
 
@@ -1628,7 +1629,7 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, Variable *scale_bar, v2 mouse, Rect 
 		marker_count = 2;
 
 	draw_ruler(ui, buf, start_pos, end_pos, start_value, end_value, markers, marker_count,
-	           tick_count, suffix, FG_COLOUR, lerp_v4(FG_COLOUR, HOVERED_COLOUR, scale_bar->hover_t));
+	           tick_count, suffix, RULER_COLOUR, lerp_v4(FG_COLOUR, HOVERED_COLOUR, scale_bar->hover_t));
 }
 
 static v2
