@@ -1164,10 +1164,12 @@ view_update(BeamformerUI *ui, BeamformerFrameView *view)
 {
 	if (view->type == FVT_LATEST) {
 		u32 index = *view->cycler->u.cycler.state;
-		view->needs_update   |= view->frame != ui->latest_plane[index];
-		view->frame           = ui->latest_plane[index];
-		view->min_coordinate  = ui->params.output_min_coordinate;
-		view->max_coordinate  = ui->params.output_max_coordinate;
+		view->needs_update |= view->frame != ui->latest_plane[index];
+		view->frame         = ui->latest_plane[index];
+		if (view->needs_update) {
+			view->min_coordinate = ui->params.output_min_coordinate;
+			view->max_coordinate = ui->params.output_max_coordinate;
+		}
 	}
 
 	/* TODO(rnp): x-z or y-z */
@@ -1762,7 +1764,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 
 	v4 min = view->min_coordinate;
 	v4 max = view->max_coordinate;
-	v2 requested_dim = {.x = max.x - min.x, .y = max.z - min.z};
+	v2 requested_dim = sub_v2(XZ(max), XZ(min));
 	f32 aspect = requested_dim.w / requested_dim.h;
 
 	Rect vr = display_rect;
