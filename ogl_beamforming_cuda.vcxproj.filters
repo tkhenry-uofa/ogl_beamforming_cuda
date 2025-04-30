@@ -914,9 +914,6 @@
     <ClCompile Include="beamformer.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="os_unix.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="os_win32.c">
       <Filter>Source Files</Filter>
     </ClCompile>

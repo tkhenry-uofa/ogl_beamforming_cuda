@@ -441,7 +441,6 @@
     <ClCompile Include="intrinsics.c" />
     <ClCompile Include="main_linux.c" />
     <ClCompile Include="main_w32.c" />
-    <ClCompile Include="os_unix.c" />
     <ClCompile Include="os_win32.c" />
     <ClCompile Include="static.c" />
     <ClCompile Include="ui.c" />

@@ -1,7 +1,7 @@
 #!/bin/sh
 
 cflags="-march=native -Wall -I ./external/include"
-ldflags="-lglfw -lraylib -lgdi32 -lwinmm -lcuda_toolkit -L ./external/lib"
+ldflags="-lglfw -lraylib -lgdi32 -lwinmm -lSynchronization -lcuda_toolkit -L ./external/lib"
 output_path="../x64"
 app_name="ogl_beamforming_cuda"
 
