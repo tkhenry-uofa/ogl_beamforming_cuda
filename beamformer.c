@@ -89,7 +89,7 @@ alloc_beamform_frame(GLParams *gp, BeamformFrame *out, ComputeShaderStats *out_s
 	u32 max_dim = MAX(out->dim.x, MAX(out->dim.y, out->dim.z));
 	out->mips   = ctz_u32(max_dim) + 1;
 
-	Stream label = arena_stream(&arena);
+	Stream label = arena_stream(arena);
 	stream_append_s8(&label, name);
 	stream_append_byte(&label, '[');
 	stream_append_hex_u64(&label, out->id);
@@ -126,14 +126,13 @@ alloc_shader_storage(BeamformerCtx *ctx, u32 rf_raw_size, Arena a)
 	LABEL_GL_OBJECT(GL_BUFFER, cs->raw_data_ssbo, s8("Raw_RF_SSBO"));
 
 	iz rf_decoded_size = 2 * sizeof(f32) * cs->dec_data_dim.x * cs->dec_data_dim.y * cs->dec_data_dim.z;
-	Stream label = stream_alloc(&a, 256);
+	Stream label = arena_stream(a);
 	stream_append_s8(&label, s8("Decoded_RF_SSBO_"));
 	u32 s_widx = label.widx;
 	for (u32 i = 0; i < ARRAY_COUNT(cs->rf_data_ssbos); i++) {
 		glNamedBufferStorage(cs->rf_data_ssbos[i], rf_decoded_size, 0, 0);
 		stream_append_u64(&label, i);
-		s8 rf_label = stream_to_s8(&label);
-		LABEL_GL_OBJECT(GL_BUFFER, cs->rf_data_ssbos[i], rf_label);
+		LABEL_GL_OBJECT(GL_BUFFER, cs->rf_data_ssbos[i], stream_to_s8(&label));
 		stream_reset(&label, s_widx);
 	}
 
@@ -392,57 +391,55 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 function s8
 push_compute_shader_header(Arena *a, b32 parameters, ComputeShaderID shader)
 {
-	s8 result = {.data = a->beg};
+	Stream sb = arena_stream(*a);
 
-	push_s8(a, s8("#version 460 core\n\n"));
+	stream_append_s8(&sb, s8("#version 460 core\n\n"));
 
 	#define X(name, type, size, gltype, glsize, comment) "\t" #gltype " " #name #glsize "; " comment "\n"
 	if (parameters) {
-		push_s8(a, s8("layout(std140, binding = 0) uniform parameters {\n"
-		              BEAMFORMER_PARAMS_HEAD
-		              BEAMFORMER_UI_PARAMS
-		              BEAMFORMER_PARAMS_TAIL
-		              "};\n\n"));
+		stream_append_s8(&sb, s8("layout(std140, binding = 0) uniform parameters {\n"
+		                         BEAMFORMER_PARAMS_HEAD
+		                         BEAMFORMER_UI_PARAMS
+		                         BEAMFORMER_PARAMS_TAIL
+		                         "};\n\n"));
 	}
 	#undef X
 
 	switch (shader) {
 	case CS_DAS: {
-		push_s8(a, s8("layout("
-		              "local_size_x = " str(DAS_LOCAL_SIZE_X) ", "
-		              "local_size_y = " str(DAS_LOCAL_SIZE_Y) ", "
-		              "local_size_z = " str(DAS_LOCAL_SIZE_Z) ") "
-		              "in;\n\n"));
-
-		push_s8(a, s8("layout(location = " str(DAS_VOXEL_OFFSET_UNIFORM_LOC) ") uniform ivec3 u_voxel_offset;\n"));
-		push_s8(a, s8("layout(location = " str(DAS_CYCLE_T_UNIFORM_LOC)      ") uniform uint  u_cycle_t;\n\n"));
-		#define X(type, id, pretty, fixed_tx) push_s8(a, s8("#define DAS_ID_" #type " " #id "\n"));
+		#define X(type, id, pretty, fixed_tx) "#define DAS_ID_" #type " " #id "\n"
+		stream_append_s8(&sb, s8(""
+		"layout(local_size_x = " str(DAS_LOCAL_SIZE_X) ", "
+		       "local_size_y = " str(DAS_LOCAL_SIZE_Y) ", "
+		       "local_size_z = " str(DAS_LOCAL_SIZE_Z) ") in;\n\n"
+		"layout(location = " str(DAS_VOXEL_OFFSET_UNIFORM_LOC) ") uniform ivec3 u_voxel_offset;\n"
+		"layout(location = " str(DAS_CYCLE_T_UNIFORM_LOC)      ") uniform uint  u_cycle_t;\n\n"
 		DAS_TYPES
+		));
 		#undef X
 	} break;
 	case CS_DECODE_FLOAT:
 	case CS_DECODE_FLOAT_COMPLEX: {
-		if (shader == CS_DECODE_FLOAT) push_s8(a, s8("#define INPUT_DATA_TYPE_FLOAT\n\n"));
-		else                           push_s8(a, s8("#define INPUT_DATA_TYPE_FLOAT_COMPLEX\n\n"));
+		if (shader == CS_DECODE_FLOAT) stream_append_s8(&sb, s8("#define INPUT_DATA_TYPE_FLOAT\n\n"));
+		else                           stream_append_s8(&sb, s8("#define INPUT_DATA_TYPE_FLOAT_COMPLEX\n\n"));
 	} /* FALLTHROUGH */
 	case CS_DECODE: {
-		#define X(type, id, pretty) push_s8(a, s8("#define DECODE_MODE_" #type " " #id "\n"));
+		#define X(type, id, pretty) stream_append_s8(&sb, s8("#define DECODE_MODE_" #type " " #id "\n"));
 		DECODE_TYPES
 		#undef X
 	} break;
 	case CS_MIN_MAX: {
-		push_s8(a, s8("layout(location = " str(CS_MIN_MAX_MIPS_LEVEL_UNIFORM_LOC)
-		              ") uniform int u_mip_map;\n\n"));
+		stream_append_s8(&sb, s8("layout(location = " str(CS_MIN_MAX_MIPS_LEVEL_UNIFORM_LOC)
+		                         ") uniform int u_mip_map;\n\n"));
 	} break;
 	case CS_SUM: {
-		push_s8(a, s8("layout(location = " str(CS_SUM_PRESCALE_UNIFORM_LOC)
-		              ") uniform float u_sum_prescale = 1.0;\n\n"));
+		stream_append_s8(&sb, s8("layout(location = " str(CS_SUM_PRESCALE_UNIFORM_LOC)
+		                         ") uniform float u_sum_prescale = 1.0;\n\n"));
 	} break;
 	default: break;
 	}
-	s8 end = push_s8(a, s8("\n#line 1\n"));
-	result.len = end.data + end.len - result.data;
-	return result;
+	stream_append_s8(&sb, s8("\n#line 1\n"));
+	return arena_stream_commit(a, &sb);
 }
 
 static b32
@@ -458,10 +455,9 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, s8 extra, ComputeShaderReload
 	shader_text.len  += header.len;
 
 	if (shader_text.data == header.data) {
-		s8 info = {.data = tmp.beg};
-		push_s8(&tmp, path);
-		push_s8(&tmp, extra);
-		info.len = tmp.beg - info.data;
+		Stream sb = arena_stream(tmp);
+		stream_append_s8s(&sb, path, extra);
+		s8 info = arena_stream_commit(&tmp, &sb);
 		u32 new_program = load_shader(&ctx->os, tmp, 1, (s8){0}, (s8){0}, shader_text,
 		                              info, csr->label);
 		if (new_program) {
@@ -471,12 +467,9 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, s8 extra, ComputeShaderReload
 			glBindBufferBase(GL_UNIFORM_BUFFER, 0, cs->shared_ubo);
 		}
 	} else {
-		Stream buf = arena_stream(&tmp);
-		stream_append_s8(&buf, s8("failed to load: "));
-		stream_append_s8(&buf, path);
-		stream_append_s8(&buf, extra);
-		stream_append_byte(&buf, '\n');
-		ctx->os.write_file(ctx->os.stderr, stream_to_s8(&buf));
+		Stream sb = arena_stream(tmp);
+		stream_append_s8s(&sb, s8("failed to load: "), path, extra, s8("\n"));
+		ctx->os.write_file(ctx->os.stderr, stream_to_s8(&sb));
 	}
 
 	return result;

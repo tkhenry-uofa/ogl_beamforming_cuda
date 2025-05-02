@@ -204,17 +204,7 @@ utf16_encode(u16 *out, u32 cp)
 	return result;
 }
 
-static Stream
-arena_stream(Arena *a)
-{
-	Stream result = {0};
-	result.data   = a->beg;
-	result.cap    = a->end - a->beg;
-	a->beg = a->end;
-	return result;
-}
-
-static Stream
+function Stream
 stream_alloc(Arena *a, iz cap)
 {
 	Stream result = {.cap = cap};
@@ -222,20 +212,11 @@ stream_alloc(Arena *a, iz cap)
 	return result;
 }
 
-static s8
+function s8
 stream_to_s8(Stream *s)
 {
-	s8 result = {.len = s->widx, .data = s->data};
-	return result;
-}
-
-function s8
-stream_chop_head(Stream *s)
-{
-	s8 result = stream_to_s8(s);
-	s->cap  -= s->widx;
-	s->data += s->widx;
-	s->widx  = 0;
+	s8 result = {0};
+	if (!s->errors) result = (s8){.len = s->widx, .data = s->data};
 	return result;
 }
 
@@ -283,8 +264,10 @@ stream_append_s8(Stream *s, s8 str)
 	stream_append(s, str.data, str.len);
 }
 
-static void
-stream_append_s8_array(Stream *s, s8 *strs, iz count)
+#define stream_append_s8s(s, ...) stream_append_s8s_(s, (s8 []){__VA_ARGS__}, \
+                                                     sizeof((s8 []){__VA_ARGS__}) / sizeof(s8))
+function void
+stream_append_s8s_(Stream *s, s8 *strs, iz count)
 {
 	for (iz i = 0; i < count; i++)
 		stream_append(s, strs[i].data, strs[i].len);
@@ -400,8 +383,37 @@ stream_append_v2(Stream *s, v2 v)
 	stream_append_byte(s, '}');
 }
 
+function Stream
+arena_stream(Arena a)
+{
+	Stream result = {0};
+	result.data   = a.beg;
+	result.cap    = a.end - a.beg;
+	return result;
+}
+
+function s8
+arena_stream_commit(Arena *a, Stream *s)
+{
+	ASSERT(s->data == a->beg);
+	s8 result = stream_to_s8(s);
+	arena_commit(a, result.len);
+	return result;
+}
+
+function s8
+arena_stream_commit_zero(Arena *a, Stream *s)
+{
+	b32 error = s->errors || s->widx == s->cap;
+	if (!error)
+		s->data[s->widx] = 0;
+	s8 result = stream_to_s8(s);
+	arena_commit(a, result.len + 1);
+	return result;
+}
+
 /* NOTE(rnp): FNV-1a hash */
-static u64
+function u64
 s8_hash(s8 v)
 {
 	u64 h = 0x3243f6a8885a308d; /* digits of pi */

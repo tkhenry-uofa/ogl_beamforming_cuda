@@ -43,9 +43,7 @@ dispatch_file_watch_events(OS *os, Arena arena)
 				for (u32 i = 0; i < dir->file_watch_count; i++) {
 					FileWatch *fw = dir->file_watches + i;
 					if (fw->hash == hash) {
-						stream_append_s8(&path, dir->name);
-						stream_append_byte(&path, '/');
-						stream_append_s8(&path, file);
+						stream_append_s8s(&path, dir->name, s8("/"), file);
 						stream_append_byte(&path, 0);
 						stream_commit(&path, -1);
 						fw->callback(os, stream_to_s8(&path),

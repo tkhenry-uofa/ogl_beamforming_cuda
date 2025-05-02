@@ -126,8 +126,7 @@ os_get_module(char *name, Stream *e)
 {
 	void *result = GetModuleHandleA(name);
 	if (!result && e) {
-		s8 errs[] = {s8("os_get_module(\""), c_str_to_s8(name), s8("\"): ")};
-		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+		stream_append_s8s(e, s8("os_get_module(\""), c_str_to_s8(name), s8("\"): "));
 		stream_append_i64(e, GetLastError());
 		stream_append_byte(e, '\n');
 	}
@@ -269,8 +268,7 @@ os_load_library(char *name, char *temp_name, Stream *e)
 
 	void *result = LoadLibraryA(name);
 	if (!result && e) {
-		s8 errs[] = {s8("os_load_library(\""), c_str_to_s8(name), s8("\"): ")};
-		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+		stream_append_s8s(e, s8("os_load_library(\""), c_str_to_s8(name), s8("\"): "));
 		stream_append_i64(e, GetLastError());
 		stream_append_byte(e, '\n');
 	}
@@ -288,8 +286,8 @@ os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 	if (h) {
 		result = GetProcAddress(h, name);
 		if (!result && e) {
-			s8 errs[] = {s8("os_lookup_dynamic_symbol(\""), c_str_to_s8(name), s8("\"): ")};
-			stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+			stream_append_s8s(e, s8("os_lookup_dynamic_symbol(\""), c_str_to_s8(name),
+			                  s8("\"): "));
 			stream_append_i64(e, GetLastError());
 			stream_append_byte(e, '\n');
 		}

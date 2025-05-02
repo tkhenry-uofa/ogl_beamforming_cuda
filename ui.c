@@ -654,11 +654,9 @@ function TableCell
 table_variable_cell(Arena *a, Variable *var)
 {
 	TableCell result = {.var = var, .kind = TCK_VARIABLE};
-	Arena  tmp  = *a;
-	Stream text = arena_stream(&tmp);
+	Stream text = arena_stream(*a);
 	stream_append_variable(&text, var);
-	result.text = stream_to_s8(&text);
-	arena_commit(a, text.widx);
+	result.text = arena_stream_commit(a, &text);
 	return result;
 }
 
@@ -1487,8 +1485,9 @@ draw_title_bar(BeamformerUI *ui, Arena arena, Variable *ui_view, Rect r, v2 mous
 
 	s8 title = ui_view->name;
 	if (view->flags & UI_VIEW_CUSTOM_TEXT) {
-		Stream buf = arena_stream(&arena);
-		title      = push_custom_view_title(&buf, ui_view->u.group.first);
+		Stream buf = arena_stream(arena);
+		push_custom_view_title(&buf, ui_view->u.group.first);
+		title = arena_stream_commit(&arena, &buf);
 	}
 
 	Rect result, title_rect;
@@ -1539,7 +1538,7 @@ draw_title_bar(BeamformerUI *ui, Arena arena, Variable *ui_view, Rect r, v2 mous
 /* TODO(rnp): once this has more callers decide if it would be better for this to take
  * an orientation rather than force CCW/right-handed */
 function void
-draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
+draw_ruler(BeamformerUI *ui, Arena arena, v2 start_point, v2 end_point,
            f32 start_value, f32 end_value, f32 *markers, u32 marker_count,
            u32 segments, s8 suffix, v4 marker_colour, v4 txt_colour)
 {
@@ -1556,6 +1555,7 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 	f32 value_inc = (end_value - start_value) / segments;
 	f32 value     = start_value;
 
+	Stream buf = arena_stream(arena);
 	v2 sp = {0}, ep = {.y = RULER_TICK_LENGTH};
 	v2 tp = {.x = ui->small_font.baseSize / 2, .y = ep.y + RULER_TEXT_PAD};
 	TextSpec text_spec = {.font = &ui->small_font, .rotation = 90, .colour = txt_colour, .flags = TF_ROTATED};
@@ -1563,11 +1563,11 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 	for (u32 j = 0; j <= segments; j++) {
 		DrawLineEx(sp.rl, ep.rl, 3, rl_txt_colour);
 
-		stream_reset(buf, 0);
-		if (draw_plus && value > 0) stream_append_byte(buf, '+');
-		stream_append_f64(buf, value, 10);
-		stream_append_s8(buf, suffix);
-		draw_text(stream_to_s8(buf), tp, &text_spec);
+		stream_reset(&buf, 0);
+		if (draw_plus && value > 0) stream_append_byte(&buf, '+');
+		stream_append_f64(&buf, value, 10);
+		stream_append_s8(&buf, suffix);
+		draw_text(stream_to_s8(&buf), tp, &text_spec);
 
 		value += value_inc;
 		sp.x  += inc;
@@ -1589,7 +1589,7 @@ draw_ruler(BeamformerUI *ui, Stream *buf, v2 start_point, v2 end_point,
 }
 
 function void
-do_scale_bar(BeamformerUI *ui, Stream *buf, Variable *scale_bar, v2 mouse, Rect draw_rect,
+do_scale_bar(BeamformerUI *ui, Arena arena, Variable *scale_bar, v2 mouse, Rect draw_rect,
              f32 start_value, f32 end_value, s8 suffix)
 {
 	ASSERT(scale_bar->type == VT_SCALE_BAR);
@@ -1628,11 +1628,11 @@ do_scale_bar(BeamformerUI *ui, Stream *buf, Variable *scale_bar, v2 mouse, Rect 
 	if (hover_var(ui, mouse, tick_rect, scale_bar))
 		marker_count = 2;
 
-	draw_ruler(ui, buf, start_pos, end_pos, start_value, end_value, markers, marker_count,
+	draw_ruler(ui, arena, start_pos, end_pos, start_value, end_value, markers, marker_count,
 	           tick_count, suffix, RULER_COLOUR, lerp_v4(FG_COLOUR, HOVERED_COLOUR, scale_bar->hover_t));
 }
 
-static v2
+function v2
 draw_radio_button(BeamformerUI *ui, Variable *var, v2 at, v2 mouse, v4 base_colour, f32 size)
 {
 	ASSERT(var->type == VT_B32 || var->type == VT_BEAMFORMER_VARIABLE);
@@ -1665,9 +1665,10 @@ draw_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, v4 
 	if (var->flags & V_RADIO_BUTTON) {
 		result = draw_radio_button(ui, var, at, mouse, base_colour, text_spec.font->baseSize);
 	} else {
-		Stream buf = arena_stream(&arena);
+		Stream buf = arena_stream(arena);
 		stream_append_variable(&buf, var);
-		result = measure_text(*text_spec.font, stream_to_s8(&buf));
+		s8 text = arena_stream_commit(&arena, &buf);
+		result = measure_text(*text_spec.font, text);
 
 		if (var->flags & V_INPUT) {
 			Rect text_rect = {.pos = at, .size = result};
@@ -1677,7 +1678,7 @@ draw_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, v4 
 			text_spec.colour = lerp_v4(base_colour, HOVERED_COLOUR, var->hover_t);
 		}
 
-		draw_text(stream_to_s8(&buf), at, &text_spec);
+		draw_text(text, at, &text_spec);
 	}
 	return result;
 }
@@ -1823,9 +1824,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	start_pos.y  += vr.size.y;
 
 	if (vr.size.w > 0 && view->lateral_scale_bar_active->u.b32) {
-		Arena  tmp = a;
-		Stream buf = arena_stream(&tmp);
-		do_scale_bar(ui, &buf, &view->lateral_scale_bar, mouse,
+		do_scale_bar(ui, a, &view->lateral_scale_bar, mouse,
 		             (Rect){.pos = start_pos, .size = vr.size},
 		             *view->lateral_scale_bar.u.scale_bar.min_value * 1e3,
 		             *view->lateral_scale_bar.u.scale_bar.max_value * 1e3, s8(" mm"));
@@ -1835,9 +1834,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	start_pos.x += vr.size.x;
 
 	if (vr.size.h > 0 && view->axial_scale_bar_active->u.b32) {
-		Arena  tmp = a;
-		Stream buf = arena_stream(&tmp);
-		do_scale_bar(ui, &buf, &view->axial_scale_bar, mouse,
+		do_scale_bar(ui, a, &view->axial_scale_bar, mouse,
 		             (Rect){.pos = start_pos, .size = vr.size},
 		             *view->axial_scale_bar.u.scale_bar.max_value * 1e3,
 		             *view->axial_scale_bar.u.scale_bar.min_value * 1e3, s8(" mm"));
@@ -1855,8 +1852,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		v2 world = screen_point_to_world_2d(mouse, vr.pos, add_v2(vr.pos, vr.size),
 		                                    XZ(view->min_coordinate),
 		                                    XZ(view->max_coordinate));
-		Arena  tmp = a;
-		Stream buf = arena_stream(&tmp);
+		Stream buf = arena_stream(a);
 		stream_append_v2(&buf, scale_v2(world, 1e3));
 
 		text_spec.limits.size.w -= 4;
@@ -1871,8 +1867,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	}
 
 	{
-		Arena  tmp = a;
-		Stream buf = arena_stream(&tmp);
+		Stream buf = arena_stream(a);
 		s8 shader  = push_das_shader_id(&buf, frame->das_shader_id, frame->compound_count);
 		text_spec.font = &ui->font;
 		text_spec.limits.size.w -= 16;
@@ -1910,8 +1905,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		DrawLineEx(end_p.rl, start_p.rl, 2, rl_colour);
 		DrawCircleV(end_p.rl, 3, rl_colour);
 
-		Arena  tmp = a;
-		Stream buf = arena_stream(&tmp);
+		Stream buf = arena_stream(a);
 		stream_append_f64(&buf, 1e3 * magnitude_v2(m_delta), 100);
 		stream_append_s8(&buf, s8(" mm"));
 
@@ -1974,24 +1968,26 @@ draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *sta
 	u32 stages           = ctx->shared_memory->compute_stages_count;
 	TextSpec text_spec   = {.font = &ui->font, .colour = FG_COLOUR, .flags = TF_LIMITED};
 
-	Stream sb    = stream_alloc(&arena, 256);
 	Table *table = table_new(&arena, stages + 1, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_LEFT});
 	for (u32 i = 0; i < stages; i++) {
-		u32 index = ctx->shared_memory->compute_stages[i];
+		TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
 
+
+		Stream sb = arena_stream(arena);
+		u32 index = ctx->shared_memory->compute_stages[i];
 		compute_time_sum += stats->times[index];
 		stream_append_f64_e(&sb, stats->times[index]);
 
-		TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
 		cells[0].text = labels[index];
-		cells[1].text = stream_chop_head(&sb);
+		cells[1].text = arena_stream_commit(&arena, &sb);
 		cells[2].text = s8("[s]");
 	}
 
-	stream_append_f64_e(&sb, compute_time_sum);
 	TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
+	Stream sb = arena_stream(arena);
+	stream_append_f64_e(&sb, compute_time_sum);
 	cells[0].text = s8("Compute Total:");
-	cells[1].text = stream_chop_head(&sb);
+	cells[1].text = arena_stream_commit(&arena, &sb);
 	cells[2].text = s8("[s]");
 
 	table_extent(table, arena, text_spec.font);
@@ -2042,8 +2038,7 @@ draw_ui_view_listing(BeamformerUI *ui, Variable *group, Arena arena, Rect r, v2 
 				/* NOTE(rnp): assume the suffix is the same for all elements */
 				if (v) cells[2].text = v->u.beamformer_variable.suffix;
 
-				Arena tmp = arena;
-				Stream sb = arena_stream(&tmp);
+				Stream sb = arena_stream(arena);
 				switch (g->type) {
 				case VG_LIST: break;
 				case VG_V2:
@@ -2057,9 +2052,8 @@ draw_ui_view_listing(BeamformerUI *ui, Variable *group, Arena arena, Rect r, v2 
 					stream_append_s8(&sb, s8("}"));
 				} break;
 				}
-				arena_commit(&arena, sb.widx);
 				cells[1].kind = TCK_VARIABLE_GROUP;
-				cells[1].text = stream_to_s8(&sb);
+				cells[1].text = arena_stream_commit(&arena, &sb);
 				cells[1].var  = var;
 
 				var = var->next;

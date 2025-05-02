@@ -18,10 +18,10 @@ static void *debug_lib;
 DEBUG_ENTRY_POINTS
 #undef X
 
-static FILE_WATCH_CALLBACK_FN(debug_reload)
+function FILE_WATCH_CALLBACK_FN(debug_reload)
 {
 	BeamformerInput *input = (BeamformerInput *)user_data;
-	Stream err             = arena_stream(&tmp);
+	Stream err             = arena_stream(tmp);
 
 	/* NOTE(rnp): spin until compute thread finishes its work (we will probably
 	 * never reload while compute is in progress but just incase). */
@@ -48,8 +48,7 @@ debug_init(OS *os, iptr input, Arena *arena)
 	os->add_file_watch(os, arena, s8(OS_DEBUG_LIB_NAME), debug_reload, input);
 	debug_reload(os, (s8){0}, input, *arena);
 
-	Arena  tmp = *arena;
-	Stream err = arena_stream(&tmp);
+	Stream err = arena_stream(*arena);
 	void *rdoc = os_get_module(OS_RENDERDOC_SONAME, 0);
 	if (rdoc) {
 		renderdoc_get_api_fn *get_api = os_lookup_dynamic_symbol(rdoc, "RENDERDOC_GetAPI", &err);
@@ -114,9 +113,7 @@ get_gl_params(GLParams *gl, Stream *err)
 	/* NOTE(rnp): Microsoft Corporation - weird win32 thing (microsoft is just using mesa for the driver) */
 	case 'M': gl->vendor_id = GL_VENDOR_ARM;    break;
 	default:
-		stream_append_s8(err, s8("Unknown GL Vendor: "));
-		stream_append_s8(err, c_str_to_s8(vendor));
-		stream_append_byte(err, '\n');
+		stream_append_s8s(err, s8("Unknown GL Vendor: "), c_str_to_s8(vendor), s8("\n"));
 		os_fatal(stream_to_s8(err));
 	}
 
@@ -131,10 +128,10 @@ get_gl_params(GLParams *gl, Stream *err)
 		gl->version_minor = 5;
 }
 
-static void
+function void
 validate_gl_requirements(GLParams *gl, Arena a)
 {
-	Stream s = arena_stream(&a);
+	Stream s = arena_stream(a);
 
 	if (gl->max_ubo_size < sizeof(BeamformerParameters)) {
 		stream_append_s8(&s, s8("GPU must support UBOs of at least "));
@@ -160,9 +157,8 @@ dump_gl_params(GLParams *gl, Arena a, OS *os)
 	#undef X
 	max_width++;
 
-	Stream s = arena_stream(&a);
-	stream_append_s8(&s, s8("---- GL Parameters ----\n"));
-	stream_append_s8(&s, vendor);
+	Stream s = arena_stream(a);
+	stream_append_s8s(&s, s8("---- GL Parameters ----\n"), vendor);
 	stream_pad(&s, ' ', max_width - vendor.len);
 	switch (gl->vendor_id) {
 	case GL_VENDOR_AMD:    stream_append_s8(&s, s8("AMD\n"));    break;
@@ -202,19 +198,17 @@ function FILE_WATCH_CALLBACK_FN(reload_render_shader)
 	"\tgl_Position = vec4(vertex_position, 0, 1);\n"
 	"}\n");
 
-	Arena *a = &tmp;
-	s8 header = {.data = a->beg};
-	push_s8(a, s8("#version 460 core\n\n"));
-	push_s8(a, s8("layout(location = 0) in  vec2 fragment_texture_coordinate;\n"));
-	push_s8(a, s8("layout(location = 0) out vec4 v_out_colour;\n\n"));
-	push_s8(a, s8("layout(location = " str(FRAME_VIEW_RENDER_DYNAMIC_RANGE_LOC) ") uniform float u_db_cutoff = 60;\n"));
-	push_s8(a, s8("layout(location = " str(FRAME_VIEW_RENDER_THRESHOLD_LOC)     ") uniform float u_threshold = 40;\n"));
-	push_s8(a, s8("layout(location = " str(FRAME_VIEW_RENDER_GAMMA_LOC)         ") uniform float u_gamma     = 1;\n"));
-	push_s8(a, s8("layout(location = " str(FRAME_VIEW_RENDER_LOG_SCALE_LOC)     ") uniform bool  u_log_scale;\n"));
-	push_s8(a, s8("\n#line 1\n"));
-	header.len = a->beg - header.data;
+	s8 header = push_s8(&tmp, s8(""
+	"#version 460 core\n\n"
+	"layout(location = 0) in  vec2 fragment_texture_coordinate;\n"
+	"layout(location = 0) out vec4 v_out_colour;\n\n"
+	"layout(location = " str(FRAME_VIEW_RENDER_DYNAMIC_RANGE_LOC) ") uniform float u_db_cutoff = 60;\n"
+	"layout(location = " str(FRAME_VIEW_RENDER_THRESHOLD_LOC)     ") uniform float u_threshold = 40;\n"
+	"layout(location = " str(FRAME_VIEW_RENDER_GAMMA_LOC)         ") uniform float u_gamma     = 1;\n"
+	"layout(location = " str(FRAME_VIEW_RENDER_LOG_SCALE_LOC)     ") uniform bool  u_log_scale;\n"
+	"\n#line 1\n"));
 
-	s8 fragment    = os->read_whole_file(a, (c8 *)path.data);
+	s8 fragment    = os->read_whole_file(&tmp, (c8 *)path.data);
 	fragment.data -= header.len;
 	fragment.len  += header.len;
 	ASSERT(fragment.data == header.data);
@@ -248,7 +242,7 @@ static FILE_WATCH_CALLBACK_FN(load_cuda_lib)
 	CudaLib *cl = (CudaLib *)user_data;
 	b32 result  = os_file_exists((c8 *)path.data);
 	if (result) {
-		Stream err = arena_stream(&tmp);
+		Stream err = arena_stream(tmp);
 
 		stream_append_s8(&err, s8("loading CUDA lib: " OS_CUDA_LIB_NAME "\n"));
 		os_unload_library(cl->lib);

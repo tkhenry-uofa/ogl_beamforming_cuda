@@ -314,22 +314,21 @@ check_rebuild_self(Arena arena, i32 argc, char *argv[])
 {
 	char *binary = shift(argv, argc);
 	if (needs_rebuild(binary, BUILD_DEPS)) {
-		Stream name = stream_alloc(&arena, KB(1));
-		stream_append_s8(&name, c_str_to_s8(binary));
-		stream_append_s8(&name, s8(".old"));
-		stream_append_byte(&name, 0);
+		Stream name_buffer = arena_stream(arena);
+		stream_append_s8s(&name_buffer, c_str_to_s8(binary), s8(".old"));
+		char *old_name = (char *)arena_stream_commit_zero(&arena, &name_buffer).data;
 
-		if (!os_rename_file(binary, (char *)name.data))
-			die("failed to move: %s -> %s\n", binary, (char *)name.data);
+		if (!os_rename_file(binary, old_name))
+			die("failed to move: %s -> %s\n", binary, old_name);
 
 		CommandList c = {0};
 		cmd_append(&arena, &c, BUILD_COMMAND(binary, __FILE__));
 		cmd_append(&arena, &c, "-O3", "-Wno-unused-function", (void *)0);
 		if (!run_synchronous(arena, &c)) {
-			os_rename_file((char *)name.data, binary);
+			os_rename_file(old_name, binary);
 			die("failed to rebuild self\n");
 		}
-		os_remove_file((char *)name.data);
+		os_remove_file(old_name);
 
 		c.count = 0;
 		cmd_append(&arena, &c, binary);

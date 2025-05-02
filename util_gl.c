@@ -10,9 +10,8 @@ compile_shader(OS *os, Arena a, u32 type, s8 shader, s8 name)
 	glGetShaderiv(sid, GL_COMPILE_STATUS, &res);
 
 	if (res == GL_FALSE) {
-		Stream buf = arena_stream(&a);
-		stream_append_s8(&buf, name);
-		stream_append_s8(&buf, s8(": failed to compile\n"));
+		Stream buf = arena_stream(a);
+		stream_append_s8s(&buf, name, s8(": failed to compile\n"));
 
 		i32 len = 0, out_len = 0;
 		glGetShaderiv(sid, GL_INFO_LOG_LENGTH, &len);
@@ -38,7 +37,7 @@ link_program(OS *os, Arena a, u32 *shader_ids, u32 shader_id_count)
 	glGetProgramiv(result, GL_LINK_STATUS, &success);
 	if (success == GL_FALSE) {
 		i32 len    = 0;
-		Stream buf = arena_stream(&a);
+		Stream buf = arena_stream(a);
 		stream_append_s8(&buf, s8("shader link error: "));
 		glGetProgramInfoLog(result, buf.cap - buf.widx, &len, (c8 *)(buf.data + buf.widx));
 		stream_reset(&buf, len);
@@ -67,10 +66,8 @@ load_shader(OS *os, Arena arena, b32 compute, s8 vs_text, s8 fs_text, s8 cs_text
 	}
 
 	if (result) {
-		Stream buf = arena_stream(&arena);
-		stream_append_s8(&buf, s8("loaded: "));
-		stream_append_s8(&buf, info_name);
-		stream_append_byte(&buf, '\n');
+		Stream buf = arena_stream(arena);
+		stream_append_s8s(&buf, s8("loaded: "), info_name, s8("\n"));
 		os->write_file(os->stderr, stream_to_s8(&buf));
 		LABEL_GL_OBJECT(GL_PROGRAM, result, label);
 	}

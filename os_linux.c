@@ -26,9 +26,8 @@ os_get_module(char *name, Stream *e)
 {
 	void *result = dlopen(name, RTLD_NOW|RTLD_LOCAL|RTLD_NOLOAD);
 	if (!result && e) {
-		s8 errs[] = {s8("os_get_module(\""), c_str_to_s8(name), s8("\"): "),
-		             c_str_to_s8(dlerror()), s8("\n")};
-		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+		stream_append_s8s(e, s8("os_get_module(\""), c_str_to_s8(name), s8("\"): "),
+		                  c_str_to_s8(dlerror()), s8("\n"));
 	}
 	return result;
 }
@@ -192,9 +191,8 @@ os_load_library(char *name, char *temp_name, Stream *e)
 
 	void *result = dlopen(name, RTLD_NOW|RTLD_LOCAL);
 	if (!result && e) {
-		s8 errs[] = {s8("os_load_library(\""), c_str_to_s8(name), s8("\"): "),
-		             c_str_to_s8(dlerror()), s8("\n")};
-		stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+		stream_append_s8s(e, s8("os_load_library(\""), c_str_to_s8(name), s8("\"): "),
+		                  c_str_to_s8(dlerror()), s8("\n"));
 	}
 
 	if (temp_name)
@@ -210,9 +208,8 @@ os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 	if (h) {
 		result = dlsym(h, name);
 		if (!result && e) {
-			s8 errs[] = {s8("os_lookup_dynamic_symbol(\""), c_str_to_s8(name),
-			             s8("\"): "), c_str_to_s8(dlerror()), s8("\n")};
-			stream_append_s8_array(e, errs, ARRAY_COUNT(errs));
+			stream_append_s8s(e, s8("os_lookup_dynamic_symbol(\""), c_str_to_s8(name),
+			                  s8("\"): "), c_str_to_s8(dlerror()), s8("\n"));
 		}
 	}
 	return result;
