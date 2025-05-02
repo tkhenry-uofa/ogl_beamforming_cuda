@@ -823,7 +823,7 @@ make_hadamard_transpose(Arena *a, u32 dim)
 	iz elements        = dim * dim;
 
 	if (dim && (power_of_2 || multiple_of_12) &&
-	    arena_capacity(a, i32) >= elements * (1 + multiple_of_12))
+	    arena_capacity(a, i32) >= elements * (1 + !power_of_2))
 	{
 		if (!power_of_2) dim /= 12;
 		result = push_array(a, i32, elements);
