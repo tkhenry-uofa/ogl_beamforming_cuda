@@ -1,5 +1,19 @@
 #!/bin/sh
 
+
+copy_if_exists() {
+    local src="$1"
+    local dest_dir="$2"
+
+    if [[ -f "$src" ]]; then
+        cp "$src" "$dest_dir" \
+          && echo "Copied $(basename "$src") to $dest_dir"
+    else
+        echo "ERROR: '$src' not found."
+        exit 1
+    fi
+}
+
 cflags="-march=native -Wall -std=c11 -I ./external/include"
 ldflags="-lm -lgdi32 -lwinmm -lSynchronization -lcuda_toolkit"
 output_path="../x64"
@@ -26,4 +40,8 @@ else
 fi
 output="${output_path}${app_name}"
 
+cuda_toolkit_path="${output_path}/cuda_toolkit.dll"
+
 ${cc} $cflags -o $output main_w32.c $ldflags
+
+copy_if_exists $cuda_toolkit_path "./external/"
