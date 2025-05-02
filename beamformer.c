@@ -369,7 +369,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		u32 base_index   = (u32)(frame - ctx->beamform_frames);
 		u32 to_average   = ctx->shared_memory->parameters.output_points.w;
 		u32 frame_count  = 0;
-		u32 *in_textures = alloc(&arena, u32, MAX_BEAMFORMED_SAVED_FRAMES);
+		u32 *in_textures = push_array(&arena, u32, MAX_BEAMFORMED_SAVED_FRAMES);
 		ComputeFrameIterator cfi = compute_frame_iterator(ctx, 1 + base_index - to_average,
 		                                                  to_average);
 		for (BeamformComputeFrame *it = frame_next(&cfi); it; it = frame_next(&cfi))

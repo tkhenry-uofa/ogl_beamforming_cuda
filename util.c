@@ -53,10 +53,10 @@ arena_pop(Arena *a, iz length)
 	a->beg -= length;
 }
 
-#define alloc(a, t, n)    (t *)alloc_(a, sizeof(t), _Alignof(t), n)
-#define push_struct(a, t) (t *)alloc_(a, sizeof(t), _Alignof(t), 1)
-static void *
-alloc_(Arena *a, iz len, iz align, iz count)
+#define push_array(a, t, n) (t *)arena_alloc(a, sizeof(t), _Alignof(t), n)
+#define push_struct(a, t)   (t *)arena_alloc(a, sizeof(t), _Alignof(t), 1)
+function void *
+arena_alloc(Arena *a, iz len, iz align, iz count)
 {
 	/* NOTE: special case 0 arena */
 	if (a->beg == 0)
@@ -101,14 +101,14 @@ da_reserve_(Arena *a, void *data, iz *capacity, iz needed, iz align, iz size)
 	/* NOTE(rnp): handle both 0 initialized DAs and DAs that need to be moved (they started
 	 * on the stack or someone allocated something in the middle of the arena during usage) */
 	if (!data || a->beg != (u8 *)data + cap * size) {
-		void *copy = alloc_(a, size, align, cap);
+		void *copy = arena_alloc(a, size, align, cap);
 		if (data) mem_copy(copy, data, cap * size);
 		data = copy;
 	}
 
 	if (!cap) cap = DA_INITIAL_CAP;
 	while (cap < needed) cap *= 2;
-	alloc_(a, size, align, cap - *capacity);
+	arena_alloc(a, size, align, cap - *capacity);
 	*capacity = cap;
 	return data;
 }
@@ -208,7 +208,7 @@ function Stream
 stream_alloc(Arena *a, iz cap)
 {
 	Stream result = {.cap = cap};
-	result.data = alloc(a, u8, cap);
+	result.data = push_array(a, u8, cap);
 	return result;
 }
 
@@ -453,13 +453,14 @@ s8_cut_head(s8 s, iz cut)
 	return result;
 }
 
-static s8
+function s8
 s8_alloc(Arena *a, iz len)
 {
-	return (s8){ .data = alloc(a, u8, len), .len = len };
+	s8 result = {.data = push_array(a, u8, len), .len = len};
+	return result;
 }
 
-static s8
+function s8
 s16_to_s8(Arena *a, s16 in)
 {
 	s8 result = s8("");
@@ -487,7 +488,7 @@ s8_to_s16(Arena *a, s8 in)
 	s16 result = {0};
 	if (in.len) {
 		iz required = 2 * in.len + 1;
-		u16 *data   = alloc(a, u16, required);
+		u16 *data   = push_array(a, u16, required);
 		iz length   = 0;
 		/* TODO(rnp): utf8_decode */
 		for (iz i = 0; i < in.len; i++) {
@@ -825,10 +826,10 @@ make_hadamard_transpose(Arena *a, u32 dim)
 	    arena_capacity(a, i32) >= elements * (1 + multiple_of_12))
 	{
 		if (!power_of_2) dim /= 12;
-		result = alloc(a, i32, elements);
+		result = push_array(a, i32, elements);
 
 		Arena tmp = *a;
-		i32 *m = power_of_2 ? result : alloc(&tmp, i32, elements);
+		i32 *m = power_of_2 ? result : push_array(&tmp, i32, elements);
 
 		#define IND(i, j) ((i) * dim + (j))
 		m[0] = 1;

@@ -21,11 +21,11 @@
 
 #include "static.c"
 
-static void
+function void
 dispatch_file_watch_events(OS *os, Arena arena)
 {
 	FileWatchContext *fwctx = &os->file_watch_context;
-	u8 *mem     = alloc_(&arena, 4096, 64, 1);
+	u8 *mem     = arena_alloc(&arena, 4096, 16, 1);
 	Stream path = stream_alloc(&arena, 256);
 	struct inotify_event *event;
 

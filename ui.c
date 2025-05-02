@@ -523,8 +523,8 @@ table_new(Arena *a, i32 initial_capacity, i32 columns, TextAlignment *alignment)
 	Table *result = push_struct(a, Table);
 	da_reserve(a, result, initial_capacity);
 	result->columns   = columns;
-	result->alignment = alloc(a, TextAlignment, columns);
-	result->widths    = alloc(a, f32, columns);
+	result->alignment = push_array(a, TextAlignment, columns);
+	result->widths    = push_array(a, f32, columns);
 	mem_copy(result->alignment, alignment, sizeof(*alignment) * columns);
 	return result;
 }
@@ -665,7 +665,7 @@ table_push_row(Table *t, Arena *a, TableRowKind kind)
 {
 	TableRow *result = da_push(a, t);
 	if (kind == TRK_CELLS) {
-		result->data = alloc(a, TableCell, t->columns);
+		result->data = push_array(a, TableCell, t->columns);
 		/* NOTE(rnp): do not increase rows for an empty subtable */
 		t->rows++;
 	}
@@ -2480,7 +2480,7 @@ scale_bar_interaction(BeamformerUI *ui, ScaleBar *sb, v2 mouse)
 		                                          add_v2(is->rect.pos, is->rect.size),
 		                                          (v2){{*sb->min_value, *sb->min_value}},
 		                                          (v2){{*sb->max_value, *sb->max_value}});
-		f32 new_coord;
+		f32 new_coord = F32_INFINITY;
 		switch (sb->direction) {
 		case SB_LATERAL: new_coord = world_mouse.x; break;
 		case SB_AXIAL:   new_coord = world_mouse.y; break;
