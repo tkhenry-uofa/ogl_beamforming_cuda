@@ -46,7 +46,7 @@ static void
 debug_init(OS *os, iptr input, Arena *arena)
 {
 	os->add_file_watch(os, arena, s8(OS_DEBUG_LIB_NAME), debug_reload, input);
-	debug_reload(os, (s8){0}, input, *arena);
+	debug_reload(os, s8(""), input, *arena);
 
 	Stream err = arena_stream(*arena);
 	void *rdoc = os_get_module(OS_RENDERDOC_SONAME, 0);
@@ -212,7 +212,7 @@ function FILE_WATCH_CALLBACK_FN(reload_render_shader)
 	fragment.data -= header.len;
 	fragment.len  += header.len;
 	ASSERT(fragment.data == header.data);
-	u32 new_program = load_shader(os, tmp, 0, vertex, fragment, (s8){0}, path, s8("Render Shader"));
+	u32 new_program = load_shader(os, tmp, 0, vertex, fragment, s8(""), path, s8("Render Shader"));
 	if (new_program) {
 		glDeleteProgram(ctx->shader);
 		ctx->shader  = new_program;

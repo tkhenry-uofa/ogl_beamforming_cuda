@@ -190,9 +190,9 @@ static OS_OPEN_FOR_WRITE_FN(os_open_for_write)
 	return result;
 }
 
-static OS_READ_WHOLE_FILE_FN(os_read_whole_file)
+function OS_READ_WHOLE_FILE_FN(os_read_whole_file)
 {
-	s8 result = {0};
+	s8 result = s8("");
 
 	w32_file_info fileinfo;
 	iptr h = CreateFileA(file, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0);
@@ -205,7 +205,7 @@ static OS_READ_WHOLE_FILE_FN(os_read_whole_file)
 
 		i32 rlen;
 		if (!ReadFile(h, result.data, result.len, &rlen, 0) || rlen != result.len)
-			result = (s8){0};
+			result = s8("");
 	}
 	if (h >= 0) CloseHandle(h);
 

@@ -215,7 +215,7 @@ stream_alloc(Arena *a, iz cap)
 function s8
 stream_to_s8(Stream *s)
 {
-	s8 result = {0};
+	s8 result = s8("");
 	if (!s->errors) result = (s8){.len = s->widx, .data = s->data};
 	return result;
 }
@@ -462,7 +462,7 @@ s8_alloc(Arena *a, iz len)
 static s8
 s16_to_s8(Arena *a, s16 in)
 {
-	s8 result = {0};
+	s8 result = s8("");
 	if (in.len) {
 		iz commit = in.len * 4;
 		iz length = 0;

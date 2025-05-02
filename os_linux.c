@@ -92,9 +92,9 @@ static OS_OPEN_FOR_WRITE_FN(os_open_for_write)
 	return result;
 }
 
-static OS_READ_WHOLE_FILE_FN(os_read_whole_file)
+function OS_READ_WHOLE_FILE_FN(os_read_whole_file)
 {
-	s8 result = {0};
+	s8 result = s8("");
 
 	struct stat sb;
 	i32 fd = open(file, O_RDONLY);
@@ -102,7 +102,7 @@ static OS_READ_WHOLE_FILE_FN(os_read_whole_file)
 		result = s8_alloc(arena, sb.st_size);
 		iz rlen = read(fd, result.data, result.len);
 		if (rlen != result.len)
-			result = (s8){0};
+			result = s8("");
 	}
 	if (fd >= 0) close(fd);
 
