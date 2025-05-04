@@ -1,18 +1,28 @@
 /* See LICENSE for license details. */
 /* NOTE: inspired by nob: https://github.com/tsoding/nob.h */
 
-#define BASE_CFLAGS "-march=native", "-std=c11", "-Wall", "-Iexternal/include"
-
-#define BUILD_DEPS __FILE__, "os_win32.c", "os_linux.c", "util.c", "util.h"
+#define COMMON_FLAGS "-std=c11", "-Wall", "-Iexternal/include"
 
 #include "util.h"
 
 #include <stdarg.h>
 #include <stdio.h>
 
-#define is_unix  0
-#define is_w32   0
-#define is_clang 0
+#define is_aarch64 0
+#define is_amd64   0
+#define is_unix    0
+#define is_w32     0
+#define is_clang   0
+
+#ifdef __ARM_ARCH_ISA_A64
+#undef is_aarch64
+#define is_aarch64 1
+#elif __x86_64__
+#undef is_amd64
+#define is_amd64 1
+#else
+#error unsupported architecture
+#endif
 
 #if defined(__linux__)
   #undef  is_unix
@@ -44,9 +54,9 @@
 #ifdef __clang__
 #undef  is_clang
 #define is_clang 1
-#define BUILD_COMMAND(output, input) "clang", BASE_CFLAGS, "-o", output, input
+#define COMPILER "clang"
 #else
-#define BUILD_COMMAND(output, input) "cc",    BASE_CFLAGS, "-o", output, input
+#define COMPILER "cc"
 #endif
 
 #define shift(list, count) ((count)--, *(list)++)
@@ -69,6 +79,7 @@ typedef struct {
 
 typedef struct {
 	b32   debug;
+	b32   generic;
 	b32   report;
 	b32   sanitize;
 } Options;
@@ -313,7 +324,7 @@ function void
 check_rebuild_self(Arena arena, i32 argc, char *argv[])
 {
 	char *binary = shift(argv, argc);
-	if (needs_rebuild(binary, BUILD_DEPS)) {
+	if (needs_rebuild(binary, __FILE__, "os_win32.c", "os_linux.c", "util.c", "util.h")) {
 		Stream name_buffer = arena_stream(arena);
 		stream_append_s8s(&name_buffer, c_str_to_s8(binary), s8(".old"));
 		char *old_name = (char *)arena_stream_commit_zero(&arena, &name_buffer).data;
@@ -322,8 +333,8 @@ check_rebuild_self(Arena arena, i32 argc, char *argv[])
 			die("failed to move: %s -> %s\n", binary, old_name);
 
 		CommandList c = {0};
-		cmd_append(&arena, &c, BUILD_COMMAND(binary, __FILE__));
-		cmd_append(&arena, &c, "-O3", "-Wno-unused-function", (void *)0);
+		cmd_append(&arena, &c, COMPILER, "-march=native", "-O3", COMMON_FLAGS);
+		cmd_append(&arena, &c, "-Wno-unused-function", __FILE__, "-o", binary, (void *)0);
 		if (!run_synchronous(arena, &c)) {
 			os_rename_file(old_name, binary);
 			die("failed to rebuild self\n");
@@ -355,6 +366,7 @@ usage(char *argv0)
 {
 	die("%s [--debug] [--report] [--sanitize]\n"
 	    "    --debug:       dynamically link and build with debug symbols\n"
+	    "    --generic:     compile for a generic target (x86-64-v3 or aarch64 with NEON)\n"
 	    "    --report:      print compilation stats (clang only)\n"
 	    "    --sanitize:    build with ASAN and UBSAN\n"
 	    , argv0);
@@ -371,6 +383,8 @@ parse_options(i32 argc, char *argv[])
 		s8 str    = c_str_to_s8(arg);
 		if (s8_equal(str, s8("--debug"))) {
 			result.debug = 1;
+		} else if (s8_equal(str, s8("--generic"))) {
+			result.generic = 1;
 		} else if (s8_equal(str, s8("--report"))) {
 			result.report = 1;
 		} else if (s8_equal(str, s8("--sanitize"))) {
@@ -387,7 +401,16 @@ function CommandList
 cmd_base(Arena *a, Options *o)
 {
 	CommandList result = {0};
-	cmd_append(a, &result, is_clang ? "clang" : "cc", BASE_CFLAGS);
+	cmd_append(a, &result, COMPILER);
+	if (o->generic)  {
+		/* TODO(rnp): support cross compiling with clang */
+		if (is_amd64)   cmd_append(a, &result, "-march=x86-64-v3");
+		if (is_aarch64) cmd_append(a, &result, "-march=aarch64");
+	} else {
+		cmd_append(a, &result, "-march=native");
+	}
+	cmd_append(a, &result, COMMON_FLAGS);
+
 	if (o->debug) cmd_append(a, &result, "-O0", "-D_DEBUG", "-Wno-unused-function");
 	else          cmd_append(a, &result, "-O3");
 
@@ -443,7 +466,6 @@ build_static_library(Arena a, CommandList cc, char *name, char **deps, char **ou
 	/* TODO(rnp): refactor to not need outputs */
 	b32 result = 0;
 	b32 all_success = 1;
-	cmd_append(&a, &cc, "-static");
 	for (iz i = 0; i < count; i++) {
 		cmd_append(&a, &cc, "-c", deps[i], "-o", outputs[i], (void *)0);
 		all_success &= run_synchronous(a, &cc);
