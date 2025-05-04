@@ -66,6 +66,7 @@ typedef enum {
 #define DAS_CYCLE_T_UNIFORM_LOC      3
 
 #define MAX_BEAMFORMED_SAVED_FRAMES 16
+#define MAX_COMPUTE_SHADER_STAGES   16
 
 /* TODO(rnp): actually use a substruct but generate a header compatible with MATLAB */
 /* X(name, type, size, gltype, glsize, comment) */

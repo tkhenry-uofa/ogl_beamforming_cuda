@@ -84,7 +84,7 @@ typedef struct {
 		};
 	};
 
-	ComputeShaderID compute_stages[16];
+	ComputeShaderID compute_stages[MAX_COMPUTE_SHADER_STAGES];
 	u32             compute_stages_count;
 
 	i32 parameters_sync;

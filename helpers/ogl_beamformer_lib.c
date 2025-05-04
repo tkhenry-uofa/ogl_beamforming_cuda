@@ -6,6 +6,7 @@
 #define PIPE_RETRY_PERIOD_MS (100ULL)
 
 global BeamformerSharedMemory *g_bp;
+global BeamformerLibErrorKind  g_lib_last_error;
 
 #if defined(__linux__)
 #include "../os_linux.c"
@@ -162,50 +163,91 @@ check_shared_memory(void)
 	b32 result = 1;
 	if (!g_bp) {
 		g_bp = os_open_shared_memory_area(OS_SHARED_MEMORY_NAME);
-		if (!g_bp) result = 0;
+		if (!g_bp) {
+			result = 0;
+			g_lib_last_error = BF_LIB_ERR_KIND_SHARED_MEMORY;
+		}
 	}
 	return result;
+}
+
+function BeamformWork *
+try_push_work_queue(void)
+{
+	BeamformWork *result = beamform_work_queue_push(&g_bp->external_work_queue);
+	if (!result) g_lib_last_error = BF_LIB_ERR_KIND_WORK_QUEUE_FULL;
+	return result;
+}
+
+function b32
+lib_try_wait_sync(i32 *sync, i32 timeout_ms, os_wait_on_value_fn *os_wait_on_value)
+{
+	b32 result = try_wait_sync(sync, timeout_ms, os_wait_on_value);
+	if (!result) g_lib_last_error = BF_LIB_ERR_KIND_SYNC_VARIABLE;
+	return result;
+}
+
+
+const char *
+beamformer_error_string(BeamformerLibErrorKind kind)
+{
+	#define X(type, num, string) string,
+	local_persist const char *error_string_table[] = {BEAMFORMER_LIB_ERRORS "invalid error kind"};
+	#undef X
+	return error_string_table[MIN(kind, countof(error_string_table) - 1)];
+}
+
+BeamformerLibErrorKind
+beamformer_get_last_error(void)
+{
+	return g_lib_last_error;
+}
+
+const char *
+beamformer_get_last_error_string(void)
+{
+	return beamformer_error_string(beamformer_get_last_error());
 }
 
 b32
 set_beamformer_pipeline(i32 *stages, i32 stages_count)
 {
-	if (stages_count > ARRAY_COUNT(g_bp->compute_stages)) {
-		//error_msg("maximum stage count is %lu", ARRAY_COUNT(g_bp->compute_stages));
-		return 0;
-	}
+	b32 result = 0;
+	if (stages_count <= countof(g_bp->compute_stages)) {
+		if (check_shared_memory()) {
+			g_bp->compute_stages_count = 0;
+			for (i32 i = 0; i < stages_count; i++)
+				if (BETWEEN(stages[i], 0, CS_LAST))
+					g_bp->compute_stages[g_bp->compute_stages_count++] = stages[i];
 
-	if (!check_shared_memory())
-		return 0;
-
-	for (i32 i = 0; i < stages_count; i++) {
-		b32 valid = 0;
-		#define X(en, number, sfn, nh, pn) if (number == stages[i]) valid = 1;
-		COMPUTE_SHADERS
-		#undef X
-
-		if (!valid) {
-			//error_msg("invalid shader stage: %d", stages[i]);
-			return 0;
+			result = g_bp->compute_stages_count == stages_count;
+			if (!result) {
+				g_lib_last_error = BF_LIB_ERR_KIND_INVALID_COMPUTE_STAGE;
+				g_bp->compute_stages_count = 0;
+			}
 		}
-
-		g_bp->compute_stages[i] = stages[i];
+	} else {
+		g_lib_last_error = BF_LIB_ERR_KIND_COMPUTE_STAGE_OVERFLOW;
 	}
-	g_bp->compute_stages_count = stages_count;
-
-	return 1;
+	return result;
 }
 
 b32
 beamformer_start_compute(u32 image_plane_tag)
 {
-	b32 result = image_plane_tag < IPT_LAST && check_shared_memory();
-	if (result) {
-		result = !atomic_load(&g_bp->dispatch_compute_sync);
-		if (result) {
-			g_bp->current_image_plane = image_plane_tag;
-			atomic_store(&g_bp->dispatch_compute_sync, 1);
+	b32 result = 0;
+	if (image_plane_tag < IPT_LAST) {
+		if (check_shared_memory()) {
+			if (atomic_load(&g_bp->dispatch_compute_sync) == 0) {
+				g_bp->current_image_plane = image_plane_tag;
+				atomic_store(&g_bp->dispatch_compute_sync, 1);
+				result = 1;
+			} else {
+				g_lib_last_error = BF_LIB_ERR_KIND_SYNC_VARIABLE;
+			}
 		}
+	} else {
+		g_lib_last_error = BF_LIB_ERR_KIND_INVALID_IMAGE_PLANE;
 	}
 	return result;
 }
@@ -214,10 +256,10 @@ function b32
 beamformer_upload_buffer(void *data, u32 size, i32 store_offset, i32 sync_offset,
                          BeamformerUploadKind kind, i32 timeout_ms)
 {
-	b32 result = check_shared_memory();
-	if (result) {
-		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
-		result = work && try_wait_sync((i32 *)((u8 *)g_bp + sync_offset), timeout_ms, os_wait_on_value);
+	b32 result = 0;
+	if (check_shared_memory()) {
+		BeamformWork *work = try_push_work_queue();
+		result = work && lib_try_wait_sync((i32 *)((u8 *)g_bp + sync_offset), timeout_ms, os_wait_on_value);
 		if (result) {
 			BeamformerUploadContext *uc = &work->upload_context;
 			uc->shared_memory_offset = store_offset;
@@ -239,12 +281,14 @@ beamformer_upload_buffer(void *data, u32 size, i32 store_offset, i32 sync_offset
 
 #define X(name, dtype, elements, command) \
 b32 beamformer_push_##name (dtype *data, u32 count, i32 timeout_ms) { \
-	b32 result = count <= ARRAY_COUNT(g_bp->name);                                           \
-	if (result) {                                                                            \
+	b32 result = 0;                                                                          \
+	if (count <= countof(g_bp->name)) {                                                      \
 		result = beamformer_upload_buffer(data, count * elements * sizeof(dtype),        \
 		                                  offsetof(BeamformerSharedMemory, name),        \
 		                                  offsetof(BeamformerSharedMemory, name##_sync), \
 		                                  BU_KIND_##command, timeout_ms);                \
+	} else {                                                                                 \
+		g_lib_last_error = BF_LIB_ERR_KIND_BUFFER_OVERFLOW;                              \
 	}                                                                                        \
 	return result;                                                                           \
 }
@@ -264,11 +308,13 @@ beamformer_push_parameters(BeamformerParameters *bp, i32 timeout_ms)
 b32
 beamformer_push_data(void *data, u32 data_size, i32 timeout_ms)
 {
-	b32 result = data_size <= BEAMFORMER_MAX_RF_DATA_SIZE;
-	if (result) {
+	b32 result = 0;
+	if (data_size <= BEAMFORMER_MAX_RF_DATA_SIZE) {
 		result = beamformer_upload_buffer(data, data_size, BEAMFORMER_RF_DATA_OFF,
 		                                  offsetof(BeamformerSharedMemory, raw_data_sync),
 		                                  BU_KIND_RF_DATA, timeout_ms);
+	} else {
+		g_lib_last_error = BF_LIB_ERR_KIND_BUFFER_OVERFLOW;
 	}
 	return result;
 }
@@ -276,10 +322,10 @@ beamformer_push_data(void *data, u32 data_size, i32 timeout_ms)
 b32
 beamformer_push_parameters_ui(BeamformerUIParameters *bp, i32 timeout_ms)
 {
-	b32 result = check_shared_memory();
-	if (result) {
-		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
-		result = work && try_wait_sync(&g_bp->parameters_ui_sync, timeout_ms, os_wait_on_value);
+	b32 result = 0;
+	if (check_shared_memory()) {
+		BeamformWork *work = try_push_work_queue();
+		result = work && lib_try_wait_sync(&g_bp->parameters_ui_sync, timeout_ms, os_wait_on_value);
 		if (result) {
 			BeamformerUploadContext *uc = &work->upload_context;
 			uc->shared_memory_offset = offsetof(BeamformerSharedMemory, parameters);
@@ -297,10 +343,10 @@ beamformer_push_parameters_ui(BeamformerUIParameters *bp, i32 timeout_ms)
 b32
 beamformer_push_parameters_head(BeamformerParametersHead *bp, i32 timeout_ms)
 {
-	b32 result = check_shared_memory();
-	if (result) {
-		BeamformWork *work = beamform_work_queue_push(&g_bp->external_work_queue);
-		result = work && try_wait_sync(&g_bp->parameters_head_sync, timeout_ms, os_wait_on_value);
+	b32 result = 0;
+	if (check_shared_memory()) {
+		BeamformWork *work = try_push_work_queue();
+		result = work && lib_try_wait_sync(&g_bp->parameters_head_sync, timeout_ms, os_wait_on_value);
 		if (result) {
 			BeamformerUploadContext *uc = &work->upload_context;
 			uc->shared_memory_offset = offsetof(BeamformerSharedMemory, parameters);
@@ -334,19 +380,13 @@ set_beamformer_parameters(BeamformerParametersV0 *new_bp)
 b32
 send_data(void *data, u32 data_size)
 {
-	b32 result = beamformer_push_data(data, data_size, 0);
-	if (result) {
-		if (beamformer_start_compute(0)) {
+	b32 result = 0;
+	if (beamformer_push_data(data, data_size, 0)) {
+		result = beamformer_start_compute(0);
+		if (result) {
 			/* TODO(rnp): should we just set timeout on acquiring the lock instead of this? */
 			try_wait_sync(&g_bp->raw_data_sync, -1, os_wait_on_value);
 			atomic_store(&g_bp->raw_data_sync, 1);
-		} else {
-			result = 0;
-			/* TODO(rnp): HACK: this is strictly meant for matlab; we need a real
-			 * recovery method. for most (all?) old api uses this won't be hit */
-			//warning_msg("failed to start compute after sending data\n"
-			//            "library in a borked state\n"
-			//            "try calling beamformer_start_compute()");
 		}
 	}
 	return result;
@@ -355,34 +395,31 @@ send_data(void *data, u32 data_size)
 b32
 beamform_data_synchronized(void *data, u32 data_size, u32 output_points[3], f32 *out_data, i32 timeout_ms)
 {
-	if (!check_shared_memory())
-		return 0;
+	b32 result = 0;
+	if (check_shared_memory()) {
+		output_points[0] = MIN(1, output_points[0]);
+		output_points[1] = MIN(1, output_points[1]);
+		output_points[2] = MIN(1, output_points[2]);
 
-	output_points[0] = MIN(1, output_points[0]);
-	output_points[1] = MIN(1, output_points[1]);
-	output_points[2] = MIN(1, output_points[2]);
+		g_bp->parameters.output_points[0] = output_points[0];
+		g_bp->parameters.output_points[1] = output_points[1];
+		g_bp->parameters.output_points[2] = output_points[2];
+		g_bp->export_next_frame = 1;
 
-	g_bp->parameters.output_points[0] = output_points[0];
-	g_bp->parameters.output_points[1] = output_points[1];
-	g_bp->parameters.output_points[2] = output_points[2];
-	g_bp->export_next_frame = 1;
+		Pipe export_pipe = os_open_read_pipe(OS_EXPORT_PIPE_NAME);
+		if (export_pipe.file != INVALID_FILE) {
+			if (send_data(data, data_size)) {
+				iz output_size = output_points[0] * output_points[1] *
+				                 output_points[2] * sizeof(f32) * 2;
+				result = os_wait_read_pipe(export_pipe, out_data, output_size, timeout_ms);
+				if (!result) g_lib_last_error = BF_LIB_ERR_KIND_READ_EXPORT_PIPE;
+			}
 
-	Pipe export_pipe = os_open_read_pipe(OS_EXPORT_PIPE_NAME);
-	if (export_pipe.file == INVALID_FILE) {
-		//error_msg("failed to open export pipe");
-		return 0;
+			os_disconnect_pipe(export_pipe);
+			os_close_pipe(&export_pipe.file, export_pipe.name);
+		} else {
+			g_lib_last_error = BF_LIB_ERR_KIND_OPEN_EXPORT_PIPE;
+		}
 	}
-
-	b32 result = send_data(data, data_size);
-	if (result) {
-		iz output_size = output_points[0] * output_points[1] * output_points[2] * sizeof(f32) * 2;
-		result = os_wait_read_pipe(export_pipe, out_data, output_size, timeout_ms);
-		//if (!result)
-		//	warning_msg("failed to read full export data from pipe");
-	}
-
-	os_disconnect_pipe(export_pipe);
-	os_close_pipe(&export_pipe.file, export_pipe.name);
-
 	return result;
 }
