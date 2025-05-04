@@ -313,7 +313,7 @@ static OS_ADD_FILE_WATCH_FN(os_add_file_watch)
 	if (!dir) {
 		ASSERT(path.data[directory.len] == '\\');
 
-		dir         = fwctx->directory_watches + fwctx->directory_watch_count++;
+		dir = da_push(a, fwctx);
 		dir->hash   = hash;
 		dir->name   = push_s8_zero(a, directory);
 		dir->handle = CreateFileA((c8 *)dir->name.data, GENERIC_READ, FILE_SHARE_READ, 0,
@@ -334,10 +334,13 @@ static OS_ADD_FILE_WATCH_FN(os_add_file_watch)
 		                      FILE_NOTIFY_CHANGE_LAST_WRITE, 0, overlapped, 0);
 	}
 
-	insert_file_watch(dir, s8_cut_head(path, dir->name.len + 1), user_data, callback);
+	FileWatch *fw = da_push(a, dir);
+	fw->user_data = user_data;
+	fw->callback  = callback;
+	fw->hash      = s8_hash(s8_cut_head(path, dir->name.len + 1));
 }
 
-static iptr
+function iptr
 os_create_thread(Arena arena, iptr user_context, s8 name, os_thread_entry_point_fn *fn)
 {
 	iptr result = CreateThread(0, 0, (iptr)fn, user_context, 0, 0);

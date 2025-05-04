@@ -51,8 +51,8 @@ dispatch_file_watch(OS *os, FileWatchDirectory *fw_dir, u8 *buf, Arena arena)
 		stream_commit(&path, -1);
 
 		u64 hash = s8_hash(file_name);
-		for (u32 i = 0; i < fw_dir->file_watch_count; i++) {
-			FileWatch *fw = fw_dir->file_watches + i;
+		for (u32 i = 0; i < fw_dir->count; i++) {
+			FileWatch *fw = fw_dir->data + i;
 			if (fw->hash == hash) {
 				fw->callback(os, stream_to_s8(&path), fw->user_data, arena);
 				break;

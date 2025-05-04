@@ -33,15 +33,15 @@ dispatch_file_watch_events(OS *os, Arena arena)
 	while ((rlen = read(fwctx->handle, mem, 4096)) > 0) {
 		for (u8 *data = mem; data < mem + rlen; data += sizeof(*event) + event->len) {
 			event = (struct inotify_event *)data;
-			for (u32 i = 0; i < fwctx->directory_watch_count; i++) {
-				FileWatchDirectory *dir = fwctx->directory_watches + i;
+			for (u32 i = 0; i < fwctx->count; i++) {
+				FileWatchDirectory *dir = fwctx->data + i;
 				if (event->wd != dir->handle)
 					continue;
 
 				s8  file = c_str_to_s8(event->name);
 				u64 hash = s8_hash(file);
-				for (u32 i = 0; i < dir->file_watch_count; i++) {
-					FileWatch *fw = dir->file_watches + i;
+				for (u32 i = 0; i < dir->count; i++) {
+					FileWatch *fw = dir->data + i;
 					if (fw->hash == hash) {
 						stream_append_s8s(&path, dir->name, s8("/"), file);
 						stream_append_byte(&path, 0);

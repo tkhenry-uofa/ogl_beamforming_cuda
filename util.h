@@ -230,16 +230,18 @@ typedef struct {
 	u64       hash;
 	iptr      handle;
 	s8        name;
-	/* TODO(rnp): just push these as a linked list */
-	FileWatch file_watches[16];
-	u32       file_watch_count;
-	Arena     buffer;
+
+	FileWatch *data;
+	iz         count;
+	iz         capacity;
+	Arena      buffer;
 } FileWatchDirectory;
 
 typedef struct {
-	FileWatchDirectory directory_watches[4];
-	iptr               handle;
-	u32                directory_watch_count;
+	FileWatchDirectory *data;
+	iz    count;
+	iz    capacity;
+	iptr  handle;
 } FileWatchContext;
 
 #define OS_ALLOC_ARENA_FN(name) Arena name(Arena old, iz capacity)

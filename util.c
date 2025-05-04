@@ -82,7 +82,7 @@ arena_capacity_(Arena *a, iz size, iz alignment)
 	return result;
 }
 
-enum { DA_INITIAL_CAP = 8 };
+enum { DA_INITIAL_CAP = 4 };
 #define da_reserve(a, s, n) \
   (s)->data = da_reserve_((a), (s)->data, &(s)->capacity, (s)->count + n, \
                           _Alignof(typeof(*(s)->data)), sizeof(*(s)->data))
@@ -757,33 +757,21 @@ parse_f64(s8 s)
 	return result;
 }
 
-static FileWatchDirectory *
+function FileWatchDirectory *
 lookup_file_watch_directory(FileWatchContext *ctx, u64 hash)
 {
 	FileWatchDirectory *result = 0;
-
-	for (u32 i = 0; i < ctx->directory_watch_count; i++) {
-		FileWatchDirectory *test = ctx->directory_watches + i;
+	for (u32 i = 0; i < ctx->count; i++) {
+		FileWatchDirectory *test = ctx->data + i;
 		if (test->hash == hash) {
 			result = test;
 			break;
 		}
 	}
-
 	return result;
 }
 
-static void
-insert_file_watch(FileWatchDirectory *dir, s8 name, iptr user_data, file_watch_callback *callback)
-{
-	ASSERT(dir->file_watch_count < ARRAY_COUNT(dir->file_watches));
-	FileWatch *fw = dir->file_watches + dir->file_watch_count++;
-	fw->hash      = s8_hash(name);
-	fw->user_data = user_data;
-	fw->callback  = callback;
-}
-
-static void
+function void
 fill_kronecker_sub_matrix(i32 *out, i32 out_stride, i32 scale, i32 *b, uv2 b_dim)
 {
 	f32x4 vscale = dup_f32x4(scale);
