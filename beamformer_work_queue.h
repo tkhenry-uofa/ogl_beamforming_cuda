@@ -101,9 +101,6 @@ typedef struct {
 	/* TODO(rnp): these shouldn't be needed */
 	b32 export_next_frame;
 
-	/* TODO(rnp): probably remove this */
-	c8  export_pipe_name[256];
-
 	BeamformWorkQueue external_work_queue;
 } BeamformerSharedMemory;
 

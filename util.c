@@ -649,13 +649,35 @@ magnitude_v2(v2 a)
 	return result;
 }
 
-static b32
+function uv4
+uv4_from_u32_array(u32 v[4])
+{
+	uv4 result;
+	result.E[0] = v[0];
+	result.E[1] = v[1];
+	result.E[2] = v[2];
+	result.E[3] = v[3];
+	return result;
+}
+
+function b32
 uv4_equal(uv4 a, uv4 b)
 {
 	return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
 }
 
-static v4
+function v4
+v4_from_f32_array(f32 v[4])
+{
+	v4 result;
+	result.E[0] = v[0];
+	result.E[1] = v[1];
+	result.E[2] = v[2];
+	result.E[3] = v[3];
+	return result;
+}
+
+function v4
 sub_v4(v4 a, v4 b)
 {
 	v4 result;

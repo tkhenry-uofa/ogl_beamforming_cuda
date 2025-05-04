@@ -70,44 +70,44 @@ typedef enum {
 /* TODO(rnp): actually use a substruct but generate a header compatible with MATLAB */
 /* X(name, type, size, gltype, glsize, comment) */
 #define BEAMFORMER_UI_PARAMS \
-	X(output_min_coordinate, v4,  , vec4,  , "/* [m] Back-Top-Left corner of output region */")                    \
-	X(output_max_coordinate, v4,  , vec4,  , "/* [m] Front-Bottom-Right corner of output region */")               \
-	X(output_points,         uv4, , uvec4, , "/* Width * Height * Depth * (Frame Average Count) */")               \
-	X(sampling_frequency,    f32, , float, , "/* [Hz]  */")                                                        \
-	X(center_frequency,      f32, , float, , "/* [Hz]  */")                                                        \
-	X(speed_of_sound,        f32, , float, , "/* [m/s] */")                                                        \
-	X(off_axis_pos,          f32, , float, , "/* [m] Position on screen normal to beamform in TPW/VLSHERCULES */") \
-	X(beamform_plane,        i32, , int,   , "/* Plane to Beamform in TPW/VLS/HERCULES */")                        \
-	X(f_number,              f32, , float, , "/* F# (set to 0 to disable) */")                                     \
-	X(interpolate,           b32, , bool,  , "/* Perform Cubic Interpolation of RF Samples */")
+	X(output_min_coordinate, float,    [4], vec4,    , "/* [m] Back-Top-Left corner of output region */")                    \
+	X(output_max_coordinate, float,    [4], vec4,    , "/* [m] Front-Bottom-Right corner of output region */")               \
+	X(output_points,         uint32_t, [4], uvec4,   , "/* Width * Height * Depth * (Frame Average Count) */")               \
+	X(sampling_frequency,    float,       , float,   , "/* [Hz]  */")                                                        \
+	X(center_frequency,      float,       , float,   , "/* [Hz]  */")                                                        \
+	X(speed_of_sound,        float,       , float,   , "/* [m/s] */")                                                        \
+	X(off_axis_pos,          float,       , float,   , "/* [m] Position on screen normal to beamform in TPW/VLSHERCULES */") \
+	X(beamform_plane,        int32_t,     , int,     , "/* Plane to Beamform in TPW/VLS/HERCULES */")                        \
+	X(f_number,              float,       , float,   , "/* F# (set to 0 to disable) */")                                     \
+	X(interpolate,           uint32_t,    , bool,    , "/* Perform Cubic Interpolation of RF Samples */")
 
 #define BEAMFORMER_PARAMS_HEAD_V0 \
-	X(channel_mapping,   u16, [256], uvec4, [32], "/* Transducer Channel to Verasonics Channel */")                           \
-	X(uforces_channels,  u16, [256], uvec4, [32], "/* Channels used for virtual UFORCES elements */")                         \
-	X(focal_depths,      f32, [256], vec4,  [64], "/* [m] Focal Depths for each transmit of a RCA imaging scheme*/")          \
-	X(transmit_angles,   f32, [256], vec4,  [64], "/* [degrees] Transmit Angles for each transmit of a RCA imaging scheme*/") \
-	X(xdc_transform,     f32, [16] , mat4,      , "/* IMPORTANT: column major order */")                                      \
-	X(dec_data_dim,      uv4,      , uvec4,     , "/* Samples * Channels * Acquisitions; last element ignored */")            \
-	X(xdc_element_pitch, f32, [2]  , vec2,      , "/* [m] Transducer Element Pitch {row, col} */")                            \
-	X(rf_raw_dim,        uv2,      , uvec2,     , "/* Raw Data Dimensions */")                                                \
-	X(transmit_mode,     i32,      , int,       , "/* Method/Orientation of Transmit */")                                     \
-	X(decode,            u32,      , uint,      , "/* Decode or just reshape data */")                                        \
-	X(das_shader_id,     u32,      , uint,      , "")                                                                         \
-	X(time_offset,       f32,      , float,     , "/* pulse length correction time [s] */")
+	X(channel_mapping,   uint16_t, [256], uvec4, [32], "/* Transducer Channel to Verasonics Channel */")                           \
+	X(uforces_channels,  uint16_t, [256], uvec4, [32], "/* Channels used for virtual UFORCES elements */")                         \
+	X(focal_depths,      float,    [256], vec4,  [64], "/* [m] Focal Depths for each transmit of a RCA imaging scheme*/")          \
+	X(transmit_angles,   float,    [256], vec4,  [64], "/* [degrees] Transmit Angles for each transmit of a RCA imaging scheme*/") \
+	X(xdc_transform,     float,    [16] , mat4,      , "/* IMPORTANT: column major order */")                                      \
+	X(dec_data_dim,      uint32_t, [4]  , uvec4,     , "/* Samples * Channels * Acquisitions; last element ignored */")            \
+	X(xdc_element_pitch, float,    [2]  , vec2,      , "/* [m] Transducer Element Pitch {row, col} */")                            \
+	X(rf_raw_dim,        uint32_t, [2]  , uvec2,     , "/* Raw Data Dimensions */")                                                \
+	X(transmit_mode,     int32_t,       , int,       , "/* Method/Orientation of Transmit */")                                     \
+	X(decode,            uint32_t,      , uint,      , "/* Decode or just reshape data */")                                        \
+	X(das_shader_id,     uint32_t,      , uint,      , "")                                                                         \
+	X(time_offset,       float,         , float,     , "/* pulse length correction time [s] */")
 
 #define BEAMFORMER_PARAMS_HEAD \
-	X(xdc_transform,     f32, [16] , mat4,      , "/* IMPORTANT: column major order */")                                      \
-	X(dec_data_dim,      uv4,      , uvec4,     , "/* Samples * Channels * Acquisitions; last element ignored */")            \
-	X(xdc_element_pitch, f32, [2]  , vec2,      , "/* [m] Transducer Element Pitch {row, col} */")                            \
-	X(rf_raw_dim,        uv2,      , uvec2,     , "/* Raw Data Dimensions */")                                                \
-	X(transmit_mode,     i32,      , int,       , "/* Method/Orientation of Transmit */")                                     \
-	X(decode,            u32,      , uint,      , "/* Decode or just reshape data */")                                        \
-	X(das_shader_id,     u32,      , uint,      , "")                                                                         \
-	X(time_offset,       f32,      , float,     , "/* pulse length correction time [s] */")
+	X(xdc_transform,     float,    [16], mat4,       , "/* IMPORTANT: column major order */")                                      \
+	X(dec_data_dim,      uint32_t, [4] , uvec4,      , "/* Samples * Channels * Acquisitions; last element ignored */")            \
+	X(xdc_element_pitch, float,    [2] , vec2,       , "/* [m] Transducer Element Pitch {row, col} */")                            \
+	X(rf_raw_dim,        uint32_t, [2] , uvec2,      , "/* Raw Data Dimensions */")                                                \
+	X(transmit_mode,     int32_t,      , int,        , "/* Method/Orientation of Transmit */")                                     \
+	X(decode,            uint32_t,     , uint,       , "/* Decode or just reshape data */")                                        \
+	X(das_shader_id,     uint32_t,     , uint,       , "")                                                                         \
+	X(time_offset,       float,        , float,      , "/* pulse length correction time [s] */")
 
 #define BEAMFORMER_PARAMS_TAIL \
-	X(readi_group_id,   u32, , uint, , "/* Which readi group this data is from */") \
-	X(readi_group_size, u32, , uint, , "/* Size of readi transmit group */")
+	X(readi_group_id,   uint32_t, , uint, , "/* Which readi group this data is from */") \
+	X(readi_group_size, uint32_t, , uint, , "/* Size of readi transmit group */")
 
 #define X(name, type, size, gltype, glsize, comment) type name size;
 typedef struct { BEAMFORMER_UI_PARAMS }    BeamformerUIParameters;
@@ -118,7 +118,7 @@ typedef struct {
 	BEAMFORMER_PARAMS_HEAD_V0
 	BEAMFORMER_UI_PARAMS
 	BEAMFORMER_PARAMS_TAIL
-	f32 _pad[3];
+	float _pad[3];
 } BeamformerParametersV0;
 
 /* NOTE: This struct follows the OpenGL std140 layout. DO NOT modify unless you have
@@ -127,7 +127,7 @@ typedef struct {
 	BEAMFORMER_PARAMS_HEAD
 	BEAMFORMER_UI_PARAMS
 	BEAMFORMER_PARAMS_TAIL
-	f32 _pad[3];
+	float _pad[3];
 } BeamformerParameters;
 #undef X
 

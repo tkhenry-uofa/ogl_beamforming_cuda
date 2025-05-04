@@ -323,7 +323,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 
 	ctx->beamform_work_queue = push_struct(memory, BeamformWorkQueue);
 
-	ctx->shared_memory = os_open_shared_memory_area(OS_SMEM_NAME, BEAMFORMER_SHARED_MEMORY_SIZE);
+	ctx->shared_memory = os_create_shared_memory_area(OS_SHARED_MEMORY_NAME, BEAMFORMER_SHARED_MEMORY_SIZE);
 	if (!ctx->shared_memory)
 		os_fatal(s8("Get more ram lol\n"));
 	mem_clear(ctx->shared_memory, 0, sizeof(*ctx->shared_memory));

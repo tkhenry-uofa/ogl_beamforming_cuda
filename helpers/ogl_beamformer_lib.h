@@ -1,17 +1,5 @@
 /* See LICENSE for license details. */
-#include <stddef.h>
 #include <stdint.h>
-
-typedef int16_t   i16;
-typedef uint16_t  u16;
-typedef int32_t   i32;
-typedef uint32_t  u32;
-typedef uint32_t  b32;
-typedef float     f32;
-typedef struct { u32 x, y; }       uv2;
-typedef struct { u32 x, y, z, w; } uv4;
-typedef struct { f32 x, y, z, w; } v4;
-
 #include "../beamformer_parameters.h"
 
 #if defined(_WIN32)
@@ -22,22 +10,22 @@ typedef struct { f32 x, y, z, w; } v4;
 
 /* IMPORTANT: timeout of -1 will block forever */
 
-LIB_FN b32 set_beamformer_parameters(char *shm_name, BeamformerParametersV0 *);
-LIB_FN b32 set_beamformer_pipeline(char *shm_name, i32 *stages, i32 stages_count);
-LIB_FN b32 send_data(char *pipe_name, char *shm_name, void *data, u32 data_size);
-
+LIB_FN uint32_t set_beamformer_parameters(BeamformerParametersV0 *);
+LIB_FN uint32_t set_beamformer_pipeline(int32_t *stages, int32_t stages_count);
+LIB_FN uint32_t send_data(void *data, uint32_t data_size);
 /* NOTE: sends data and waits for (complex) beamformed data to be returned.
- * out_data: must be allocated by the caller as 2 f32s per output point. */
-LIB_FN b32 beamform_data_synchronized(char *pipe_name, char *shm_name, void *data, u32 data_size,
-                                      uv4 output_points, f32 *out_data, i32 timeout_ms);
+ * out_data: must be allocated by the caller as 2 floats per output point. */
+LIB_FN uint32_t beamform_data_synchronized(void *data, uint32_t data_size, uint32_t output_points[3],
+                                           float *out_data, int32_t timeout_ms);
 
-LIB_FN b32 beamformer_start_compute(char *shm_name, u32 image_plane_tag);
+LIB_FN uint32_t beamformer_start_compute(uint32_t image_plane_tag);
 
 /* NOTE: these functions only queue an upload; you must flush (old data functions or start_compute) */
-LIB_FN b32 beamformer_push_data(char *shm_name, void *data, u32 data_size, i32 timeout_ms);
-LIB_FN b32 beamformer_push_channel_mapping(char *shm_name, i16 *mapping, u32 count, i32 timeout_ms);
-LIB_FN b32 beamformer_push_sparse_elements(char *shm_name, i16 *elements, u32 count, i32 timeout_ms);
-LIB_FN b32 beamformer_push_focal_vectors(char *shm_name, f32 *vectors, u32 count, i32 timeout_ms);
-LIB_FN b32 beamformer_push_parameters(char *shm_name, BeamformerParameters *bp, i32 timeout_ms);
-LIB_FN b32 beamformer_push_parameters_ui(char *shm_name, BeamformerUIParameters *, i32 timeout_ms);
-LIB_FN b32 beamformer_push_parameters_head(char *shm_name, BeamformerParametersHead *, i32 timeout_ms);
+LIB_FN uint32_t beamformer_push_data(void *data, uint32_t size, int32_t timeout_ms);
+LIB_FN uint32_t beamformer_push_channel_mapping(int16_t *mapping,  uint32_t count, int32_t timeout_ms);
+LIB_FN uint32_t beamformer_push_sparse_elements(int16_t *elements, uint32_t count, int32_t timeout_ms);
+LIB_FN uint32_t beamformer_push_focal_vectors(float     *vectors,  uint32_t count, int32_t timeout_ms);
+
+LIB_FN uint32_t beamformer_push_parameters(BeamformerParameters *, int32_t timeout_ms);
+LIB_FN uint32_t beamformer_push_parameters_ui(BeamformerUIParameters *, int32_t timeout_ms);
+LIB_FN uint32_t beamformer_push_parameters_head(BeamformerParametersHead *, int32_t timeout_ms);

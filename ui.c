@@ -923,11 +923,11 @@ add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 	group = add_variable_group(ui, group, &ui->arena, s8("Lateral Extent:"), VG_V2, ui->font);
 	{
 		add_beamformer_variable_f32(ui, group, &ui->arena, s8("Min:"), s8("[mm]"),
-		                            &bp->output_min_coordinate.x, v2_inf, 1e3, 0.5e-3,
+		                            bp->output_min_coordinate + 0, v2_inf, 1e3, 0.5e-3,
 		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
 		add_beamformer_variable_f32(ui, group, &ui->arena, s8("Max:"), s8("[mm]"),
-		                            &bp->output_max_coordinate.x, v2_inf, 1e3, 0.5e-3,
+		                            bp->output_max_coordinate + 0, v2_inf, 1e3, 0.5e-3,
 		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 	}
 	group = end_variable_group(group);
@@ -935,11 +935,11 @@ add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 	group = add_variable_group(ui, group, &ui->arena, s8("Axial Extent:"), VG_V2, ui->font);
 	{
 		add_beamformer_variable_f32(ui, group, &ui->arena, s8("Min:"), s8("[mm]"),
-		                            &bp->output_min_coordinate.z, v2_inf, 1e3, 0.5e-3,
+		                            bp->output_min_coordinate + 2, v2_inf, 1e3, 0.5e-3,
 		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
 		add_beamformer_variable_f32(ui, group, &ui->arena, s8("Max:"), s8("[mm]"),
-		                            &bp->output_max_coordinate.z, v2_inf, 1e3, 0.5e-3,
+		                            bp->output_max_coordinate + 2, v2_inf, 1e3, 0.5e-3,
 		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 	}
 	group = end_variable_group(group);
@@ -1085,10 +1085,10 @@ ui_fill_live_frame_view(BeamformerUI *ui, BeamformerFrameView *bv)
 {
 	ScaleBar *lateral = &bv->lateral_scale_bar.u.scale_bar;
 	ScaleBar *axial   = &bv->axial_scale_bar.u.scale_bar;
-	lateral->min_value = &ui->params.output_min_coordinate.x;
-	lateral->max_value = &ui->params.output_max_coordinate.x;
-	axial->min_value   = &ui->params.output_min_coordinate.z;
-	axial->max_value   = &ui->params.output_max_coordinate.z;
+	lateral->min_value = ui->params.output_min_coordinate + 0;
+	lateral->max_value = ui->params.output_max_coordinate + 0;
+	axial->min_value   = ui->params.output_min_coordinate + 2;
+	axial->max_value   = ui->params.output_max_coordinate + 2;
 	bv->axial_scale_bar_active->u.b32   = 1;
 	bv->lateral_scale_bar_active->u.b32 = 1;
 	bv->ctx = ui->frame_view_render_context;
@@ -1165,15 +1165,15 @@ view_update(BeamformerUI *ui, BeamformerFrameView *view)
 		view->needs_update |= view->frame != ui->latest_plane[index];
 		view->frame         = ui->latest_plane[index];
 		if (view->needs_update) {
-			view->min_coordinate = ui->params.output_min_coordinate;
-			view->max_coordinate = ui->params.output_max_coordinate;
+			view->min_coordinate = v4_from_f32_array(ui->params.output_min_coordinate);
+			view->max_coordinate = v4_from_f32_array(ui->params.output_max_coordinate);
 		}
 	}
 
 	/* TODO(rnp): x-z or y-z */
 	/* TODO(rnp): add method of setting a target size in frame view */
 	uv2 current = view->texture_dim;
-	uv2 target  = {.w = ui->params.output_points.x, .h = ui->params.output_points.z};
+	uv2 target  = {.w = ui->params.output_points[0], .h = ui->params.output_points[2]};
 	if (view->type != FVT_COPY && !uv2_equal(current, target) && !uv2_equal(target, (uv2){0})) {
 		resize_frame_view(view, target);
 		view->needs_update = 1;
@@ -2808,16 +2808,16 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	ASSERT(ui->arena.beg - (u8 *)ui < KB(64));
 }
 
-static void
+function void
 validate_ui_parameters(BeamformerUIParameters *p)
 {
-	if (p->output_min_coordinate.x > p->output_max_coordinate.x)
-		SWAP(p->output_min_coordinate.x, p->output_max_coordinate.x)
-	if (p->output_min_coordinate.z > p->output_max_coordinate.z)
-		SWAP(p->output_min_coordinate.z, p->output_max_coordinate.z)
+	if (p->output_min_coordinate[0] > p->output_max_coordinate[0])
+		SWAP(p->output_min_coordinate[0], p->output_max_coordinate[0])
+	if (p->output_min_coordinate[2] > p->output_max_coordinate[2])
+		SWAP(p->output_min_coordinate[2], p->output_max_coordinate[2])
 }
 
-static void
+function void
 draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw, ImagePlaneTag frame_plane,
         ComputeShaderStats *latest_compute_stats)
 {

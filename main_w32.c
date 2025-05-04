@@ -15,8 +15,6 @@
 
 #define OS_RENDERDOC_SONAME    "renderdoc.dll"
 
-#define OS_SMEM_NAME           "Local\\ogl_beamformer_parameters"
-
 #define OS_PATH_SEPERATOR      "\\"
 
 #include "static.c"
@@ -109,6 +107,7 @@ main(void)
 	ctx.os.context               = (iptr)&w32_ctx;
 	ctx.os.compute_worker.asleep = 1;
 	ctx.os.stderr                = GetStdHandle(STD_ERROR_HANDLE);
+	ctx.os.export_pipe_name      = OS_EXPORT_PIPE_NAME;
 
 	debug_init(&ctx.os, (iptr)&input, &temp_memory);
 	setup_beamformer(&ctx, &temp_memory);

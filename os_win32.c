@@ -1,4 +1,8 @@
 /* See LICENSE for license details. */
+
+#define OS_SHARED_MEMORY_NAME "Local\\ogl_beamformer_parameters"
+#define OS_EXPORT_PIPE_NAME   "\\\\.\\pipe\\beamformer_output_pipe"
+
 #include "util.h"
 
 #define STD_INPUT_HANDLE  -10
@@ -244,8 +248,8 @@ os_file_exists(char *path)
 	return result;
 }
 
-static void *
-os_open_shared_memory_area(char *name, iz cap)
+function void *
+os_create_shared_memory_area(char *name, iz cap)
 {
 	void *result = 0;
 	iptr h = CreateFileMappingA(-1, 0, PAGE_READWRITE, 0, cap, name);

@@ -15,8 +15,6 @@
 
 #define OS_RENDERDOC_SONAME    "librenderdoc.so"
 
-#define OS_SMEM_NAME           "/ogl_beamformer_shared_memory"
-
 #define OS_PATH_SEPERATOR      "/"
 
 #include "static.c"
@@ -75,6 +73,7 @@ main(void)
 	ctx.os.file_watch_context.handle = inotify_init1(IN_NONBLOCK|IN_CLOEXEC);
 	ctx.os.compute_worker.asleep     = 1;
 	ctx.os.stderr                    = STDERR_FILENO;
+	ctx.os.export_pipe_name          = OS_EXPORT_PIPE_NAME;
 
 	debug_init(&ctx.os, (iptr)&input, &temp_memory);
 	setup_beamformer(&ctx, &temp_memory);
@@ -99,5 +98,5 @@ main(void)
 
 	/* NOTE: make sure this will get cleaned up after external
 	 * programs release their references */
-	shm_unlink(OS_SMEM_NAME);
+	shm_unlink(OS_SHARED_MEMORY_NAME);
 }

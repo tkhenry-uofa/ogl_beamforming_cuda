@@ -35,17 +35,17 @@ typedef struct {
 	u32 needed_frames;
 } ComputeFrameIterator;
 
-static uv3
-make_valid_test_dim(uv3 in)
+function uv3
+make_valid_test_dim(u32 in[3])
 {
 	uv3 result;
-	result.x = MAX(in.x, 1);
-	result.y = MAX(in.y, 1);
-	result.z = MAX(in.z, 1);
+	result.E[0] = MAX(in[0], 1);
+	result.E[1] = MAX(in[1], 1);
+	result.E[2] = MAX(in[2], 1);
 	return result;
 }
 
-static ComputeFrameIterator
+function ComputeFrameIterator
 compute_frame_iterator(BeamformerCtx *ctx, u32 start_index, u32 needed_frames)
 {
 	start_index = start_index % ARRAY_COUNT(ctx->beamform_frames);
@@ -112,8 +112,7 @@ alloc_shader_storage(BeamformerCtx *ctx, u32 rf_raw_size, Arena a)
 	ComputeShaderCtx     *cs = &ctx->csctx;
 	BeamformerParameters *bp = &ctx->shared_memory->parameters;
 
-	uv4 dec_data_dim = bp->dec_data_dim;
-	cs->dec_data_dim = dec_data_dim;
+	cs->dec_data_dim = uv4_from_u32_array(bp->dec_data_dim);
 	cs->rf_raw_size  = rf_raw_size;
 
 	glDeleteBuffers(ARRAY_COUNT(cs->rf_data_ssbos), cs->rf_data_ssbos);
@@ -139,21 +138,22 @@ alloc_shader_storage(BeamformerCtx *ctx, u32 rf_raw_size, Arena a)
 	/* NOTE(rnp): these are stubs when CUDA isn't supported */
 	ctx->cuda_lib.register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
 		                            cs->raw_data_ssbo);
-	ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E,
+	ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim, bp->dec_data_dim,
 		                              ctx->shared_memory->channel_mapping);
 
-	i32 *hadamard = make_hadamard_transpose(&a, dec_data_dim.z);
+	u32  order    = cs->dec_data_dim.z;
+	i32 *hadamard = make_hadamard_transpose(&a, order);
 	if (hadamard) {
 		glDeleteTextures(1, &cs->hadamard_texture);
 		glCreateTextures(GL_TEXTURE_2D, 1, &cs->hadamard_texture);
-		glTextureStorage2D(cs->hadamard_texture, 1, GL_R8I, dec_data_dim.z, dec_data_dim.z);
-		glTextureSubImage2D(cs->hadamard_texture, 0, 0, 0, dec_data_dim.z, dec_data_dim.z,
-		                    GL_RED_INTEGER, GL_INT, hadamard);
+		glTextureStorage2D(cs->hadamard_texture, 1, GL_R8I, order, order);
+		glTextureSubImage2D(cs->hadamard_texture, 0, 0, 0,  order, order, GL_RED_INTEGER,
+		                    GL_INT, hadamard);
 		LABEL_GL_OBJECT(GL_TEXTURE, cs->hadamard_texture, s8("Hadamard_Matrix"));
 	}
 }
 
-static b32
+function b32
 fill_frame_compute_work(BeamformerCtx *ctx, BeamformWork *work, ImagePlaneTag plane)
 {
 	b32 result = 0;
@@ -367,7 +367,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		ASSERT(frame >= ctx->beamform_frames);
 		ASSERT(frame < ctx->beamform_frames + ARRAY_COUNT(ctx->beamform_frames));
 		u32 base_index   = (u32)(frame - ctx->beamform_frames);
-		u32 to_average   = ctx->shared_memory->parameters.output_points.w;
+		u32 to_average   = ctx->shared_memory->parameters.output_points[3];
 		u32 frame_count  = 0;
 		u32 *in_textures = push_array(&arena, u32, MAX_BEAMFORMED_SAVED_FRAMES);
 		ComputeFrameIterator cfi = compute_frame_iterator(ctx, 1 + base_index - to_average,
@@ -536,7 +536,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			} break;
 			case BU_KIND_RF_DATA: {
 				if (cs->rf_raw_size != uc->size ||
-				    !uv4_equal(cs->dec_data_dim, bp->dec_data_dim))
+				    !uv4_equal(cs->dec_data_dim, uv4_from_u32_array(bp->dec_data_dim)))
 				{
 					alloc_shader_storage(ctx, uc->size, arena);
 				}
@@ -560,12 +560,12 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			start_renderdoc_capture(gl_context);
 
 			BeamformComputeFrame *frame = work->frame;
-			uv3 try_dim = make_valid_test_dim(bp->output_points.xyz);
+			uv3 try_dim = make_valid_test_dim(bp->output_points);
 			if (!uv3_equal(try_dim, frame->frame.dim))
 				alloc_beamform_frame(&ctx->gl, &frame->frame, &frame->stats, try_dim,
 				                     s8("Beamformed_Data"), arena);
 
-			if (bp->output_points.w > 1) {
+			if (bp->output_points[3] > 1) {
 				if (!uv3_equal(try_dim, ctx->averaged_frames[0].frame.dim)) {
 					alloc_beamform_frame(&ctx->gl, &ctx->averaged_frames[0].frame,
 					                     &ctx->averaged_frames[0].stats,
@@ -577,10 +577,10 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			}
 
 			frame->in_flight = 1;
-			frame->frame.min_coordinate = bp->output_min_coordinate;
-			frame->frame.max_coordinate = bp->output_max_coordinate;
+			frame->frame.min_coordinate = v4_from_f32_array(bp->output_min_coordinate);
+			frame->frame.max_coordinate = v4_from_f32_array(bp->output_max_coordinate);
 			frame->frame.das_shader_id  = bp->das_shader_id;
-			frame->frame.compound_count = bp->dec_data_dim.z;
+			frame->frame.compound_count = bp->dec_data_dim[2];
 
 			b32 did_sum_shader = 0;
 			u32 stage_count = sm->compute_stages_count;
@@ -703,10 +703,10 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 				BeamformWork *export = beamform_work_queue_push(ctx->beamform_work_queue);
 				if (export) {
 					/* TODO: we don't really want the beamformer opening/closing files */
-					iptr f = ctx->os.open_for_write(ctx->shared_memory->export_pipe_name);
+					iptr f = ctx->os.open_for_write(ctx->os.export_pipe_name);
 					export->type = BW_SAVE_FRAME;
 					export->output_frame_ctx.file_handle = f;
-					if (bp->output_points.w > 1) {
+					if (bp->output_points[3] > 1) {
 						u32 a_index = !(ctx->averaged_frame_index %
 						                ARRAY_COUNT(ctx->averaged_frames));
 						BeamformComputeFrame *aframe = ctx->averaged_frames + a_index;
@@ -750,7 +750,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 	}
 
 	BeamformComputeFrame *frame_to_draw;
-	if (bp->output_points.w > 1) {
+	if (bp->output_points[3] > 1) {
 		u32 a_index = !(ctx->averaged_frame_index % ARRAY_COUNT(ctx->averaged_frames));
 		frame_to_draw = ctx->averaged_frames + a_index;
 	} else {

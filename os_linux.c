@@ -3,6 +3,9 @@
 /* NOTE(rnp): provides the platform layer for the beamformer. This code must
  * be provided by any platform the beamformer is ported to. */
 
+#define OS_SHARED_MEMORY_NAME "/ogl_beamformer_shared_memory"
+#define OS_EXPORT_PIPE_NAME   "/tmp/beamformer_output_pipe"
+
 #include "util.h"
 
 #include <dlfcn.h>
@@ -138,19 +141,17 @@ static OS_READ_FILE_FN(os_read_file)
 	return total_read;
 }
 
-static void *
-os_open_shared_memory_area(char *name, iz cap)
+function void *
+os_create_shared_memory_area(char *name, iz cap)
 {
 	void *result = 0;
 	i32 fd = shm_open(name, O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
-	if (fd > 0) {
-		if (ftruncate(fd, cap) != -1) {
-			void *new = mmap(NULL, cap, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-			if (new != MAP_FAILED)
-				result = new;
-		}
-		close(fd);
+	if (fd > 0 && ftruncate(fd, cap) != -1) {
+		void *new = mmap(NULL, cap, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+		if (new != MAP_FAILED)
+			result = new;
 	}
+	if (fd > 0) close(fd);
 	return result;
 }
 

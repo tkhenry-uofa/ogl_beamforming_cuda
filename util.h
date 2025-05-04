@@ -316,6 +316,8 @@ struct OS {
 	iptr             stderr;
 	GLWorkerThreadContext compute_worker;
 
+	char *export_pipe_name;
+
 	DEBUG_DECL(renderdoc_start_frame_capture_fn *start_frame_capture);
 	DEBUG_DECL(renderdoc_end_frame_capture_fn   *end_frame_capture);
 };
