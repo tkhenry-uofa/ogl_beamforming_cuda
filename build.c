@@ -3,6 +3,9 @@
 
 #define COMMON_FLAGS "-std=c11", "-Wall", "-Iexternal/include"
 
+#define OUTDIR    "out"
+#define OUTPUT(s) OUTDIR "/" s
+
 #include "util.h"
 
 #include <stdarg.h>
@@ -25,6 +28,7 @@
 #endif
 
 #if defined(__linux__)
+
   #undef  is_unix
   #define is_unix 1
 
@@ -35,17 +39,18 @@
 
   #include "os_linux.c"
 
-  #define OS_MAIN    "main_linux.c"
-  #define OS_LIB_EXT ".so"
+  #define OS_SHARED_LIB(s)  s ".so"
+  #define OS_MAIN "main_linux.c"
 
 #elif defined(_WIN32)
+
   #undef  is_w32
   #define is_w32 1
 
   #include "os_win32.c"
 
-  #define OS_MAIN    "main_w32.c"
-  #define OS_LIB_EXT ".dll"
+  #define OS_SHARED_LIB(s)  s ".dll"
+  #define OS_MAIN "main_w32.c"
 
 #else
   #error Unsupported Platform
@@ -485,8 +490,8 @@ function void
 check_build_raylib(Arena a, CommandList cc, b32 shared)
 {
 	iz cc_count_start = cc.count;
-	char *libraylib[] = {"out/libraylib.a", "libraylib" OS_LIB_EXT};
-	char *libglfw[]   = {"out/libglfw.a",   "libglfw"   OS_LIB_EXT};
+	char *libraylib[] = {OUTPUT("libraylib.a"), OS_SHARED_LIB("libraylib")};
+	char *libglfw[]   = {OUTPUT("libglfw.a"),   OS_SHARED_LIB("libglfw")  };
 
 	b32 rebuild_raylib = needs_rebuild(libraylib[shared], __FILE__, "external/include/rlgl.h",
 	                                   "external/raylib");
@@ -495,7 +500,6 @@ check_build_raylib(Arena a, CommandList cc, b32 shared)
 	if (rebuild_glfw || rebuild_raylib) {
 		git_submodule_update(a, "external/raylib");
 		os_copy_file("external/raylib/src/rlgl.h", "external/include/rlgl.h");
-		if (!shared) os_make_directory("out");
 	}
 
 	if (rebuild_raylib) {
@@ -512,8 +516,8 @@ check_build_raylib(Arena a, CommandList cc, b32 shared)
 		#define X(name) "external/raylib/src/" #name ".c",
 		char *srcs[] = {"external/rcore_extended.c", RAYLIB_SOURCES};
 		#undef X
-		#define X(name) "out/" #name ".o",
-		char *outs[] = {"out/rcore_extended.o", RAYLIB_SOURCES};
+		#define X(name) OUTPUT(#name ".o"),
+		char *outs[] = {OUTPUT("rcore_extended.o"), RAYLIB_SOURCES};
 		#undef X
 
 		b32 success;
@@ -532,7 +536,7 @@ check_build_raylib(Arena a, CommandList cc, b32 shared)
 		cc.count = cc_count_start;
 		if (is_unix) cmd_append(&a, &cc, "-D_GLFW_X11");
 		char *srcs[] = {"external/raylib/src/rglfw.c"};
-		char *outs[] = {"out/rglfw.o"};
+		char *outs[] = {OUTPUT("rglfw.o")};
 
 		b32 success;
 		if (shared) {
@@ -557,6 +561,24 @@ cmd_append_ldflags(Arena *a, CommandList *cc, b32 shared)
 	if (is_w32) cmd_append(a, cc, "-lgdi32", "-lwinmm", "-lSynchronization");
 }
 
+function b32
+build_helper_library(Arena *arena, CommandList *cc)
+{
+	/////////////
+	// library
+	char *library = OUTPUT(OS_SHARED_LIB("ogl_beamformer_lib"));
+	char *srcs[]  = {"helpers/ogl_beamformer_lib.c"};
+
+	cmd_append(arena, cc, "-Wno-unused-function");
+	b32 result = build_shared_library(*arena, *cc, library, srcs, countof(srcs));
+	if (!result) fprintf(stderr, "failed to build: %s\n", library);
+
+	/////////////
+	// TODO(rnp): header
+
+	return result;
+}
+
 i32
 main(i32 argc, char *argv[])
 {
@@ -565,25 +587,21 @@ main(i32 argc, char *argv[])
 
 	Options options = parse_options(argc, argv);
 
+	os_make_directory(OUTDIR);
+
 	CommandList c = cmd_base(&arena, &options);
 	check_build_raylib(arena, c, options.debug);
 
-	cmd_append(&arena, &c, "-Wno-unused-function");
-	if (!build_shared_library(arena, c, "helpers/ogl_beamformer_lib" OS_LIB_EXT,
-	                          (char *[]){"helpers/ogl_beamformer_lib.c"}, 1))
-	{
-		die("failed to build: helpers/ogl_beamformer_lib" OS_LIB_EXT "\n");
-	}
-	c.count--;
+	build_helper_library(&arena, &c);
 
-	if (options.debug && !build_shared_library(arena, c, "beamformer" OS_LIB_EXT,
+	if (options.debug && !build_shared_library(arena, c, OS_SHARED_LIB("beamformer"),
 	                                           (char *[]){"beamformer.c"}, 1))
 	{
-		die("failed to build: beamfomer" OS_LIB_EXT "\n");
+		die("failed to build: " OS_SHARED_LIB("beamfomer") "\n");
 	}
 
 	cmd_append(&arena, &c, "-o", "ogl", OS_MAIN);
-	if (!options.debug) cmd_append(&arena, &c, "out/libglfw.a", "out/libraylib.a");
+	if (!options.debug) cmd_append(&arena, &c, OUTPUT("libglfw.a"), OUTPUT("libraylib.a"));
 	cmd_append_ldflags(&arena, &c, options.debug);
 	cmd_append(&arena, &c, (void *)0);
 
