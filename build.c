@@ -574,7 +574,27 @@ build_helper_library(Arena *arena, CommandList *cc)
 	if (!result) fprintf(stderr, "failed to build: %s\n", library);
 
 	/////////////
-	// TODO(rnp): header
+	// header
+	char *lib_header_out = OUTPUT("ogl_beamformer_lib.h");
+
+	b32 rebuild_lib_header = needs_rebuild(lib_header_out, "beamformer_parameters.h",
+	                                       "helpers/ogl_beamformer_lib_base.h");
+	if (rebuild_lib_header) {
+		TempArena temp = begin_temp_arena(arena);
+		s8 parameters_header = os_read_whole_file(arena, "beamformer_parameters.h");
+		s8 base_header       = os_read_whole_file(arena, "helpers/ogl_beamformer_lib_base.h");
+		if (parameters_header.len != 0 && base_header.len != 0 &&
+		    parameters_header.data + parameters_header.len == base_header.data)
+		{
+			s8 output_file   = parameters_header;
+			output_file.len += base_header.len;
+			os_write_new_file(lib_header_out, output_file);
+		} else {
+			result = 0;
+			fprintf(stderr, "failed to build: %s\n", lib_header_out);
+		}
+		end_temp_arena(temp);
+	}
 
 	return result;
 }
@@ -582,7 +602,7 @@ build_helper_library(Arena *arena, CommandList *cc)
 i32
 main(i32 argc, char *argv[])
 {
-	Arena arena = os_alloc_arena((Arena){0}, MB(2));
+	Arena arena = os_alloc_arena((Arena){0}, MB(8));
 	check_rebuild_self(arena, argc, argv);
 
 	Options options = parse_options(argc, argv);

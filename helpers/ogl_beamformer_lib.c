@@ -1,6 +1,7 @@
 /* See LICENSE for license details. */
 #include "../util.h"
-#include "ogl_beamformer_lib.h"
+#include "../beamformer_parameters.h"
+#include "ogl_beamformer_lib_base.h"
 #include "../beamformer_work_queue.c"
 
 #define PIPE_RETRY_PERIOD_MS (100ULL)

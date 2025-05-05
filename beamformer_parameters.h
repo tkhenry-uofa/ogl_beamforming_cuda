@@ -1,4 +1,5 @@
 /* See LICENSE for license details. */
+#include <stdint.h>
 
 /* TODO(rnp):
  * [ ]: Have a method for the library caller to take ownership of a "compute context"

@@ -1,7 +1,4 @@
 /* See LICENSE for license details. */
-#include <stdint.h>
-#include "../beamformer_parameters.h"
-
 #if defined(_WIN32)
 #define LIB_FN __declspec(dllexport)
 #else
