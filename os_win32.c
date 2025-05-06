@@ -364,11 +364,3 @@ static OS_WAKE_WAITERS_FN(os_wake_waiters)
 		WakeByAddressAll(sync);
 	}
 }
-
-iptr glfwGetWGLContext(iptr);
-
-static iptr
-os_get_native_gl_context(iptr window)
-{
-	return glfwGetWGLContext(window);
-}

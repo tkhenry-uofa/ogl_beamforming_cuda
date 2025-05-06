@@ -17,9 +17,17 @@
 
 #define OS_PATH_SEPERATOR      "\\"
 
+iptr glfwGetWGLContext(iptr);
+
+function iptr
+os_get_native_gl_context(iptr window)
+{
+	return glfwGetWGLContext(window);
+}
+
 #include "static.c"
 
-static void
+function void
 dispatch_file_watch(OS *os, FileWatchDirectory *fw_dir, u8 *buf, Arena arena)
 {
 	i64 offset = 0;

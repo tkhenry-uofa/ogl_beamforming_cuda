@@ -17,6 +17,15 @@
 
 #define OS_PATH_SEPERATOR      "/"
 
+/* TODO(rnp): what do if not X11? */
+iptr glfwGetGLXContext(iptr);
+
+function iptr
+os_get_native_gl_context(iptr window)
+{
+	return glfwGetGLXContext(window);
+}
+
 #include "static.c"
 
 function void

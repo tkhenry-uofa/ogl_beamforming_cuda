@@ -276,12 +276,3 @@ static OS_WAKE_WAITERS_FN(os_wake_waiters)
 		syscall(SYS_futex, sync, FUTEX_WAKE, I32_MAX, 0, 0, 0);
 	}
 }
-
-/* TODO(rnp): what do if not X11? */
-iptr glfwGetGLXContext(iptr);
-
-static iptr
-os_get_native_gl_context(iptr window)
-{
-	return glfwGetGLXContext(window);
-}
