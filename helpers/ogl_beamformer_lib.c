@@ -398,9 +398,9 @@ beamform_data_synchronized(void *data, u32 data_size, u32 output_points[3], f32 
 {
 	b32 result = 0;
 	if (check_shared_memory()) {
-		output_points[0] = MIN(1, output_points[0]);
-		output_points[1] = MIN(1, output_points[1]);
-		output_points[2] = MIN(1, output_points[2]);
+		output_points[0] = MAX(1, output_points[0]);
+		output_points[1] = MAX(1, output_points[1]);
+		output_points[2] = MAX(1, output_points[2]);
 
 		g_bp->parameters.output_points[0] = output_points[0];
 		g_bp->parameters.output_points[1] = output_points[1];
