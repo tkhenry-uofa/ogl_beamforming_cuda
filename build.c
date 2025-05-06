@@ -502,6 +502,23 @@ check_build_raylib(Arena a, CommandList cc, b32 shared)
 		os_copy_file("external/raylib/src/rlgl.h", "external/include/rlgl.h");
 	}
 
+	if (rebuild_glfw) {
+		cc.count = cc_count_start;
+		if (is_unix) cmd_append(&a, &cc, "-D_GLFW_X11");
+		char *srcs[] = {"external/raylib/src/rglfw.c"};
+		char *outs[] = {OUTPUT("rglfw.o")};
+
+		b32 success;
+		if (shared) {
+			cmd_pdb(&a, &cc);
+			if (is_w32) cmd_append(&a, &cc, "-lgdi32", "-lwinmm");
+			success = build_shared_library(a, cc, libglfw[shared], srcs, countof(srcs));
+		} else {
+			success = build_static_library(a, cc, libglfw[shared], srcs, outs, countof(srcs));
+		}
+		if (!success) die("failed to build libary: %s\n", libglfw[shared]);
+	}
+
 	if (rebuild_raylib) {
 		cc.count = cc_count_start;
 		cmd_append(&a, &cc, "-Wno-unused-but-set-variable");
@@ -522,31 +539,14 @@ check_build_raylib(Arena a, CommandList cc, b32 shared)
 
 		b32 success;
 		if (shared) {
-			cmd_pdb(&a, &cc);
 			cmd_append(&a, &cc, "-DBUILD_LIBTYPE_SHARED");
+			cmd_pdb(&a, &cc);
+			if (is_w32) cmd_append(&a, &cc, "-L.", "-lglfw", "-lgdi32", "-lwinmm");
 			success = build_shared_library(a, cc, libraylib[shared], srcs, countof(srcs));
-			cc.count--;
 		} else {
 			success = build_static_library(a, cc, libraylib[shared], srcs, outs, countof(srcs));
 		}
 		if (!success) die("failed to build libary: %s\n", libraylib[shared]);
-	}
-
-	if (rebuild_glfw) {
-		cc.count = cc_count_start;
-		if (is_unix) cmd_append(&a, &cc, "-D_GLFW_X11");
-		char *srcs[] = {"external/raylib/src/rglfw.c"};
-		char *outs[] = {OUTPUT("rglfw.o")};
-
-		b32 success;
-		if (shared) {
-			cmd_pdb(&a, &cc);
-			if (is_w32) cmd_append(&a, &cc, "-lgdi32", "-lwinmm");
-			success = build_shared_library(a, cc, libglfw[shared], srcs, countof(srcs));
-		} else {
-			success = build_static_library(a, cc, libglfw[shared], srcs, outs, countof(srcs));
-		}
-		if (!success) die("failed to build libary: %s\n", libglfw[shared]);
 	}
 }
 
@@ -614,12 +614,21 @@ main(i32 argc, char *argv[])
 
 	build_helper_library(&arena, &c);
 
-	if (options.debug && !build_shared_library(arena, c, OS_SHARED_LIB("beamformer"),
-	                                           (char *[]){"beamformer.c"}, 1))
-	{
-		die("failed to build: " OS_SHARED_LIB("beamfomer") "\n");
+	/////////////////////////
+	// hot reloadable portion
+	if (options.debug) {
+		iz c_count = c.count;
+		if (is_w32) cmd_append_ldflags(&arena, &c, 1);
+		if (!build_shared_library(arena, c, OS_SHARED_LIB("beamformer"),
+	                                  (char *[]){"beamformer.c"}, 1))
+		{
+			die("failed to build: " OS_SHARED_LIB("beamfomer") "\n");
+		}
+		c.count = c_count;
 	}
 
+	//////////////////
+	// static portion
 	cmd_append(&arena, &c, "-o", "ogl", OS_MAIN);
 	if (!options.debug) cmd_append(&arena, &c, OUTPUT("libglfw.a"), OUTPUT("libraylib.a"));
 	cmd_append_ldflags(&arena, &c, options.debug);
