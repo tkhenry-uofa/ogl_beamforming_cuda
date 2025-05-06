@@ -510,9 +510,13 @@ check_build_raylib(Arena a, CommandList cc, b32 shared)
 
 		b32 success;
 		if (shared) {
+			cmd_append(&a, &cc, "-fPIC", "-shared");
 			cmd_pdb(&a, &cc);
+			cmd_append_count(&a, &cc, srcs, countof(srcs));
+			cmd_append(&a, &cc, "-o", libglfw[shared]);
 			if (is_w32) cmd_append(&a, &cc, "-lgdi32", "-lwinmm");
-			success = build_shared_library(a, cc, libglfw[shared], srcs, countof(srcs));
+			cmd_append(&a, &cc, (void *)0);
+			success = run_synchronous(a, &cc);
 		} else {
 			success = build_static_library(a, cc, libglfw[shared], srcs, outs, countof(srcs));
 		}
@@ -540,9 +544,13 @@ check_build_raylib(Arena a, CommandList cc, b32 shared)
 		b32 success;
 		if (shared) {
 			cmd_append(&a, &cc, "-DBUILD_LIBTYPE_SHARED");
+			cmd_append(&a, &cc, "-fPIC", "-shared");
 			cmd_pdb(&a, &cc);
+			cmd_append_count(&a, &cc, srcs, countof(srcs));
+			cmd_append(&a, &cc, "-o", libraylib[shared]);
 			if (is_w32) cmd_append(&a, &cc, "-L.", "-lglfw", "-lgdi32", "-lwinmm");
-			success = build_shared_library(a, cc, libraylib[shared], srcs, countof(srcs));
+			cmd_append(&a, &cc, (void *)0);
+			success = run_synchronous(a, &cc);
 		} else {
 			success = build_static_library(a, cc, libraylib[shared], srcs, outs, countof(srcs));
 		}
@@ -562,15 +570,19 @@ cmd_append_ldflags(Arena *a, CommandList *cc, b32 shared)
 }
 
 function b32
-build_helper_library(Arena *arena, CommandList *cc)
+build_helper_library(Arena arena, CommandList cc)
 {
 	/////////////
 	// library
 	char *library = OUTPUT(OS_SHARED_LIB("ogl_beamformer_lib"));
 	char *srcs[]  = {"helpers/ogl_beamformer_lib.c"};
 
-	cmd_append(arena, cc, "-Wno-unused-function");
-	b32 result = build_shared_library(*arena, *cc, library, srcs, countof(srcs));
+	cmd_append(&arena, &cc, "-Wno-unused-function", "-fPIC", "-shared");
+	cmd_append_count(&arena, &cc, srcs, countof(srcs));
+	cmd_append(&arena, &cc, "-o", library);
+	if (is_w32) cmd_append(&arena, &cc, "-lSynchronization");
+	cmd_append(&arena, &cc, (void *)0);
+	b32 result = run_synchronous(arena, &cc);
 	if (!result) fprintf(stderr, "failed to build: %s\n", library);
 
 	/////////////
@@ -580,9 +592,8 @@ build_helper_library(Arena *arena, CommandList *cc)
 	b32 rebuild_lib_header = needs_rebuild(lib_header_out, "beamformer_parameters.h",
 	                                       "helpers/ogl_beamformer_lib_base.h");
 	if (rebuild_lib_header) {
-		TempArena temp = begin_temp_arena(arena);
-		s8 parameters_header = os_read_whole_file(arena, "beamformer_parameters.h");
-		s8 base_header       = os_read_whole_file(arena, "helpers/ogl_beamformer_lib_base.h");
+		s8 parameters_header = os_read_whole_file(&arena, "beamformer_parameters.h");
+		s8 base_header       = os_read_whole_file(&arena, "helpers/ogl_beamformer_lib_base.h");
 		if (parameters_header.len != 0 && base_header.len != 0 &&
 		    parameters_header.data + parameters_header.len == base_header.data)
 		{
@@ -593,7 +604,6 @@ build_helper_library(Arena *arena, CommandList *cc)
 			result = 0;
 			fprintf(stderr, "failed to build: %s\n", lib_header_out);
 		}
-		end_temp_arena(temp);
 	}
 
 	return result;
@@ -612,7 +622,7 @@ main(i32 argc, char *argv[])
 	CommandList c = cmd_base(&arena, &options);
 	check_build_raylib(arena, c, options.debug);
 
-	build_helper_library(&arena, &c);
+	build_helper_library(arena, c);
 
 	/////////////////////////
 	// hot reloadable portion
