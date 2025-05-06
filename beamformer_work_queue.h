@@ -98,9 +98,10 @@ typedef struct {
 	i32           dispatch_compute_sync;
 	ImagePlaneTag current_image_plane;
 
-	/* TODO(rnp): these shouldn't be needed */
+	/* TODO(rnp): this shouldn't be needed */
 	b32 export_next_frame;
 
+	u32 version;
 	BeamformWorkQueue external_work_queue;
 } BeamformerSharedMemory;
 

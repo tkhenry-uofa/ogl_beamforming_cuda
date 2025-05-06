@@ -7,19 +7,22 @@
 
 #define BEAMFORMER_LIB_ERRORS \
 	X(NONE,                    0, "None") \
-	X(COMPUTE_STAGE_OVERFLOW,  1, "compute stage overflow: maximum stages: " str(MAX_COMPUTE_SHADER_STAGES)) \
-	X(INVALID_COMPUTE_STAGE,   2, "invalid compute shader stage")                 \
-	X(INVALID_IMAGE_PLANE,     3, "invalid image plane")                          \
-	X(BUFFER_OVERFLOW,         4, "passed buffer size exceeds available space")   \
-	X(WORK_QUEUE_FULL,         5, "work queue full")                              \
-	X(OPEN_EXPORT_PIPE,        6, "failed to open export pipe")                   \
-	X(READ_EXPORT_PIPE,        7, "failed to read full export data from pipe")    \
-	X(SHARED_MEMORY,           8, "failed to open shared memory region")          \
-	X(SYNC_VARIABLE,           9, "failed to acquire lock within timeout period")
+	X(VERSION_MISMATCH,        1, "host-library version mismatch")                \
+	X(COMPUTE_STAGE_OVERFLOW,  2, "compute stage overflow: maximum stages: " str(MAX_COMPUTE_SHADER_STAGES)) \
+	X(INVALID_COMPUTE_STAGE,   3, "invalid compute shader stage")                 \
+	X(INVALID_IMAGE_PLANE,     4, "invalid image plane")                          \
+	X(BUFFER_OVERFLOW,         5, "passed buffer size exceeds available space")   \
+	X(WORK_QUEUE_FULL,         6, "work queue full")                              \
+	X(OPEN_EXPORT_PIPE,        7, "failed to open export pipe")                   \
+	X(READ_EXPORT_PIPE,        8, "failed to read full export data from pipe")    \
+	X(SHARED_MEMORY,           9, "failed to open shared memory region")          \
+	X(SYNC_VARIABLE,          10, "failed to acquire lock within timeout period")
 
 #define X(type, num, string) BF_LIB_ERR_KIND_ ##type = num,
 typedef enum {BEAMFORMER_LIB_ERRORS} BeamformerLibErrorKind;
 #undef X
+
+LIB_FN uint32_t beamformer_get_api_version(void);
 
 LIB_FN BeamformerLibErrorKind beamformer_get_last_error(void);
 LIB_FN const char *beamformer_get_last_error_string(void);

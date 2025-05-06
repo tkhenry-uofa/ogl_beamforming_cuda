@@ -168,6 +168,9 @@ check_shared_memory(void)
 			result = 0;
 			g_lib_last_error = BF_LIB_ERR_KIND_SHARED_MEMORY;
 		}
+	} else if (g_bp->version != BEAMFORMER_PARAMETERS_VERSION) {
+		g_lib_last_error = BF_LIB_ERR_KIND_VERSION_MISMATCH;
+		result = 0;
 	}
 	return result;
 }
@@ -188,6 +191,11 @@ lib_try_wait_sync(i32 *sync, i32 timeout_ms, os_wait_on_value_fn *os_wait_on_val
 	return result;
 }
 
+u32
+beamformer_get_api_version(void)
+{
+	return BEAMFORMER_PARAMETERS_VERSION;
+}
 
 const char *
 beamformer_error_string(BeamformerLibErrorKind kind)
