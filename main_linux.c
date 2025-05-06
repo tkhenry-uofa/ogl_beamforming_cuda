@@ -93,7 +93,7 @@ main(void)
 	fds[0].events = POLLIN;
 
 	while (!ctx.should_exit) {
-		poll(fds, 2, 0);
+		poll(fds, countof(fds), 0);
 		if (fds[0].revents & POLLIN)
 			dispatch_file_watch_events(&ctx.os, temp_memory);
 
