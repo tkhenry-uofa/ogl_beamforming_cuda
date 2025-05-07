@@ -1,6 +1,14 @@
 /* See LICENSE for license details. */
 /* NOTE: inspired by nob: https://github.com/tsoding/nob.h */
 
+/* TODO(rnp):
+ * [ ]: bake shaders and font data into binary
+ *      - for shaders there is a way of making a separate data section and referring
+ *        to it with extern from the C source (bake both data and size)
+ *      - use objcopy, maybe need linker script maybe command line flags for ld will work
+ * [ ]: cross compile/override baked compiler
+ */
+
 #define COMMON_FLAGS "-std=c11", "-Wall", "-Iexternal/include"
 
 #define OUTDIR    "out"
@@ -205,7 +213,9 @@ os_wait_close_process(iptr handle)
 
 #elif defined(_WIN32)
 
-#define MOVEFILE_REPLACE_EXISTING 0x01
+enum {
+	MOVEFILE_REPLACE_EXISTING = 0x01,
+};
 
 W32(b32) CreateDirectoryA(c8 *, void *);
 W32(b32) CreateProcessA(u8 *, u8 *, iptr, iptr, b32, u32, iptr, u8 *, iptr, iptr);
@@ -407,13 +417,12 @@ cmd_base(Arena *a, Options *o)
 {
 	CommandList result = {0};
 	cmd_append(a, &result, COMPILER);
-	if (o->generic)  {
-		/* TODO(rnp): support cross compiling with clang */
-		if (is_amd64)   cmd_append(a, &result, "-march=x86-64-v3");
-		if (is_aarch64) cmd_append(a, &result, "-march=aarch64");
-	} else {
-		cmd_append(a, &result, "-march=native");
-	}
+
+	/* TODO(rnp): support cross compiling with clang */
+	if (!o->generic)     cmd_append(a, &result, "-march=native");
+	else if (is_amd64)   cmd_append(a, &result, "-march=x86-64-v3");
+	else if (is_aarch64) cmd_append(a, &result, "-march=aarch64");
+
 	cmd_append(a, &result, COMMON_FLAGS);
 
 	if (o->debug) cmd_append(a, &result, "-O0", "-D_DEBUG", "-Wno-unused-function");
@@ -489,47 +498,18 @@ build_static_library(Arena a, CommandList cc, char *name, char **deps, char **ou
 function void
 check_build_raylib(Arena a, CommandList cc, b32 shared)
 {
-	iz cc_count_start = cc.count;
-	char *libraylib[] = {OUTPUT("libraylib.a"), OS_SHARED_LIB("libraylib")};
-	char *libglfw[]   = {OUTPUT("libglfw.a"),   OS_SHARED_LIB("libglfw")  };
+	char *libraylib = shared ? OS_SHARED_LIB("libraylib") : OUTPUT("libraylib.a");
 
-	b32 rebuild_raylib = needs_rebuild(libraylib[shared], __FILE__, "external/include/rlgl.h",
-	                                   "external/raylib");
-	b32 rebuild_glfw   = needs_rebuild(libglfw[shared],   __FILE__, "external/include/rlgl.h",
-	                                   "external/raylib");
-	if (rebuild_glfw || rebuild_raylib) {
+	if (needs_rebuild(libraylib, __FILE__, "external/include/rlgl.h", "external/raylib")) {
 		git_submodule_update(a, "external/raylib");
 		os_copy_file("external/raylib/src/rlgl.h", "external/include/rlgl.h");
-	}
 
-	if (rebuild_glfw) {
-		cc.count = cc_count_start;
 		if (is_unix) cmd_append(&a, &cc, "-D_GLFW_X11");
-		char *srcs[] = {"external/raylib/src/rglfw.c"};
-		char *outs[] = {OUTPUT("rglfw.o")};
-
-		b32 success;
-		if (shared) {
-			cmd_append(&a, &cc, "-fPIC", "-shared");
-			cmd_pdb(&a, &cc);
-			cmd_append_count(&a, &cc, srcs, countof(srcs));
-			cmd_append(&a, &cc, "-o", libglfw[shared]);
-			if (is_w32) cmd_append(&a, &cc, "-lgdi32", "-lwinmm");
-			cmd_append(&a, &cc, (void *)0);
-			success = run_synchronous(a, &cc);
-		} else {
-			success = build_static_library(a, cc, libglfw[shared], srcs, outs, countof(srcs));
-		}
-		if (!success) die("failed to build libary: %s\n", libglfw[shared]);
-	}
-
-	if (rebuild_raylib) {
-		cc.count = cc_count_start;
-		cmd_append(&a, &cc, "-Wno-unused-but-set-variable");
 		cmd_append(&a, &cc, "-DPLATFORM_DESKTOP_GLFW", "-DGRAPHICS_API_OPENGL_43");
+		cmd_append(&a, &cc, "-Wno-unused-but-set-variable");
 		cmd_append(&a, &cc, "-Iexternal/raylib/src", "-Iexternal/raylib/src/external/glfw/include");
-
 		#define RAYLIB_SOURCES \
+			X(rglfw)     \
 			X(rshapes)   \
 			X(rtext)     \
 			X(rtextures) \
@@ -543,18 +523,18 @@ check_build_raylib(Arena a, CommandList cc, b32 shared)
 
 		b32 success;
 		if (shared) {
-			cmd_append(&a, &cc, "-DBUILD_LIBTYPE_SHARED");
+			cmd_append(&a, &cc, "-DBUILD_LIBTYPE_SHARED", "-D_GLFW_BUILD_DLL");
 			cmd_append(&a, &cc, "-fPIC", "-shared");
 			cmd_pdb(&a, &cc);
 			cmd_append_count(&a, &cc, srcs, countof(srcs));
-			cmd_append(&a, &cc, "-o", libraylib[shared]);
-			if (is_w32) cmd_append(&a, &cc, "-L.", "-lglfw", "-lgdi32", "-lwinmm");
+			cmd_append(&a, &cc, "-o", libraylib);
+			if (is_w32) cmd_append(&a, &cc, "-L.", "-lgdi32", "-lwinmm");
 			cmd_append(&a, &cc, (void *)0);
 			success = run_synchronous(a, &cc);
 		} else {
-			success = build_static_library(a, cc, libraylib[shared], srcs, outs, countof(srcs));
+			success = build_static_library(a, cc, libraylib, srcs, outs, countof(srcs));
 		}
-		if (!success) die("failed to build libary: %s\n", libraylib[shared]);
+		if (!success) die("failed to build libary: %s\n", libraylib);
 	}
 }
 
@@ -565,7 +545,7 @@ cmd_append_ldflags(Arena *a, CommandList *cc, b32 shared)
 	cmd_pdb(a, cc);
 	cmd_append(a, cc, "-lm");
 	if (shared && !is_w32) cmd_append(a, cc, "-Wl,-rpath,.");
-	if (shared) cmd_append(a, cc, "-L.", "-lglfw", "-lraylib");
+	if (shared) cmd_append(a, cc, "-L.", "-lraylib");
 	if (is_w32) cmd_append(a, cc, "-lgdi32", "-lwinmm", "-lSynchronization");
 }
 
@@ -639,8 +619,8 @@ main(i32 argc, char *argv[])
 
 	//////////////////
 	// static portion
-	cmd_append(&arena, &c, "-o", "ogl", OS_MAIN);
-	if (!options.debug) cmd_append(&arena, &c, OUTPUT("libglfw.a"), OUTPUT("libraylib.a"));
+	cmd_append(&arena, &c, OS_MAIN, "-o", "ogl");
+	if (!options.debug) cmd_append(&arena, &c, OUTPUT("libraylib.a"));
 	cmd_append_ldflags(&arena, &c, options.debug);
 	cmd_append(&arena, &c, (void *)0);
 
