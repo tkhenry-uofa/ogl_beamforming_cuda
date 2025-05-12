@@ -3,6 +3,9 @@
 #define OS_SHARED_MEMORY_NAME "Local\\ogl_beamformer_parameters"
 #define OS_EXPORT_PIPE_NAME   "\\\\.\\pipe\\beamformer_output_pipe"
 
+#define OS_PATH_SEPARATOR_CHAR '\\'
+#define OS_PATH_SEPARATOR      "\\"
+
 #include "util.h"
 
 #define STD_INPUT_HANDLE  -10

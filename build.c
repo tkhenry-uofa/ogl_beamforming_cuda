@@ -452,10 +452,15 @@ cmd_pdb(Arena *a, CommandList *cmd)
 function void
 git_submodule_update(Arena a, char *name)
 {
+	Stream sb = arena_stream(a);
+	stream_append_s8s(&sb, c_str_to_s8(name), s8(OS_PATH_SEPARATOR), s8(".git"));
+	stream_append_byte(&sb, 0);
+	arena_commit(&a, sb.widx);
+
 	CommandList git = {0};
 	/* NOTE(rnp): cryptic bs needed to get a simple exit code if name is dirty */
 	cmd_append(&a, &git, "git", "diff-index", "--quiet", "HEAD", "--", name, (void *)0);
-	if (!run_synchronous(a, &git)) {
+	if (!os_file_exists((c8 *)sb.data) || !run_synchronous(a, &git)) {
 		git.count = 1;
 		cmd_append(&a, &git, "submodule", "update", "--init", "--depth=1", name, (void *)0);
 		if (!run_synchronous(a, &git))

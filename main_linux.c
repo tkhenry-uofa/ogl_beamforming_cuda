@@ -15,8 +15,6 @@
 
 #define OS_RENDERDOC_SONAME    "librenderdoc.so"
 
-#define OS_PATH_SEPERATOR      "/"
-
 /* TODO(rnp): what do if not X11? */
 iptr glfwGetGLXContext(iptr);
 

@@ -6,6 +6,9 @@
 #define OS_SHARED_MEMORY_NAME "/ogl_beamformer_shared_memory"
 #define OS_EXPORT_PIPE_NAME   "/tmp/beamformer_output_pipe"
 
+#define OS_PATH_SEPARATOR_CHAR '/'
+#define OS_PATH_SEPARATOR      "/"
+
 #include "util.h"
 
 #include <dlfcn.h>

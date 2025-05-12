@@ -15,8 +15,6 @@
 
 #define OS_RENDERDOC_SONAME    "renderdoc.dll"
 
-#define OS_PATH_SEPERATOR      "\\"
-
 iptr glfwGetWGLContext(iptr);
 
 function iptr

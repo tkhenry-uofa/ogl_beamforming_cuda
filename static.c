@@ -67,7 +67,7 @@ debug_init(OS *os, iptr input, Arena *arena)
 
 #endif /* _DEBUG */
 
-#define static_path_join(a, b) (a OS_PATH_SEPERATOR b)
+#define static_path_join(a, b) (a OS_PATH_SEPARATOR b)
 
 struct gl_debug_ctx {
 	Stream  stream;
