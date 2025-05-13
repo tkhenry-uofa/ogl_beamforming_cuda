@@ -1917,9 +1917,10 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	}
 
 	Table *table = table_new(&a, 3, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_LEFT});
-	table_push_parameter_row(table, &a, view->gamma.name,         &view->gamma,         s8(""));
-	table_push_parameter_row(table, &a, view->threshold.name,     &view->threshold,     s8(""));
-	table_push_parameter_row(table, &a, view->dynamic_range.name, &view->dynamic_range, s8("[dB]"));
+	table_push_parameter_row(table, &a, view->gamma.name,     &view->gamma,     s8(""));
+	table_push_parameter_row(table, &a, view->threshold.name, &view->threshold, s8(""));
+	if (view->log_scale->u.b32)
+		table_push_parameter_row(table, &a, view->dynamic_range.name, &view->dynamic_range, s8("[dB]"));
 
 	Rect table_rect = vr;
 	f32 height      = table_extent(table, a, text_spec.font).y;
