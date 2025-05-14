@@ -179,7 +179,7 @@ export_frame(BeamformerCtx *ctx, iptr handle, BeamformFrame *frame)
 	glGetTextureImage(frame->texture, 0, GL_RG, GL_FLOAT, out_size, ctx->export_buffer.beg);
 	s8 raw = {.len = out_size, .data = ctx->export_buffer.beg};
 	if (!ctx->os.write_file(handle, raw))
-		ctx->os.write_file(ctx->os.stderr, s8("failed to export frame\n"));
+		ctx->os.write_file(ctx->os.error_handle, s8("failed to export frame\n"));
 	ctx->os.close(handle);
 }
 
@@ -469,7 +469,7 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, s8 extra, ComputeShaderReload
 	} else {
 		Stream sb = arena_stream(tmp);
 		stream_append_s8s(&sb, s8("failed to load: "), path, extra, s8("\n"));
-		ctx->os.write_file(ctx->os.stderr, stream_to_s8(&sb));
+		ctx->os.write_file(ctx->os.error_handle, stream_to_s8(&sb));
 	}
 
 	return result;

@@ -41,7 +41,7 @@ dispatch_file_watch(OS *os, FileWatchDirectory *fw_dir, u8 *buf, Arena arena)
 			stream_append_s8(&path, s8("unknown file watch event: "));
 			stream_append_u64(&path, fni->action);
 			stream_append_byte(&path, '\n');
-			os->write_file(os->stderr, stream_to_s8(&path));
+			os->write_file(os->error_handle, stream_to_s8(&path));
 			stream_reset(&path, 0);
 		}
 
@@ -92,7 +92,7 @@ clear_io_queue(OS *os, BeamformerInput *input, Arena arena)
 	}
 }
 
-int
+extern i32
 main(void)
 {
 	BeamformerCtx   ctx   = {0};
@@ -112,7 +112,7 @@ main(void)
 
 	ctx.os.context               = (iptr)&w32_ctx;
 	ctx.os.compute_worker.asleep = 1;
-	ctx.os.stderr                = GetStdHandle(STD_ERROR_HANDLE);
+	ctx.os.error_handle          = GetStdHandle(STD_ERROR_HANDLE);
 	ctx.os.export_pipe_name      = OS_EXPORT_PIPE_NAME;
 
 	debug_init(&ctx.os, (iptr)&input, &temp_memory);

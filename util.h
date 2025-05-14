@@ -313,7 +313,7 @@ struct OS {
 #undef X
 	FileWatchContext file_watch_context;
 	iptr             context;
-	iptr             stderr;
+	iptr             error_handle;
 	GLWorkerThreadContext compute_worker;
 
 	char *export_pipe_name;

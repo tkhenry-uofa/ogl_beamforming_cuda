@@ -35,7 +35,7 @@ function FILE_WATCH_CALLBACK_FN(debug_reload)
 	#undef X
 
 	stream_append_s8(&err, s8("Reloaded Main Executable\n"));
-	os->write_file(os->stderr, stream_to_s8(&err));
+	os->write_file(os->error_handle, stream_to_s8(&err));
 
 	input->executable_reloaded = 1;
 
@@ -62,7 +62,7 @@ debug_init(OS *os, iptr input, Arena *arena)
 		}
 	}
 
-	os->write_file(os->stderr, stream_to_s8(&err));
+	os->write_file(os->error_handle, stream_to_s8(&err));
 }
 
 #endif /* _DEBUG */
@@ -91,7 +91,7 @@ gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, co
 	}
 	stream_append(e, (char *)msg, len);
 	stream_append_byte(e, '\n');
-	ctx->os->write_file(ctx->os->stderr, stream_to_s8(e));
+	ctx->os->write_file(ctx->os->error_handle, stream_to_s8(e));
 	stream_reset(e, 0);
 }
 
@@ -176,7 +176,7 @@ dump_gl_params(GLParams *gl, Arena a, OS *os)
 	GL_PARAMETERS
 	#undef X
 	stream_append_s8(&s, s8("-----------------------\n"));
-	os->write_file(os->stderr, stream_to_s8(&s));
+	os->write_file(os->error_handle, stream_to_s8(&s));
 #endif
 }
 
@@ -251,7 +251,7 @@ static FILE_WATCH_CALLBACK_FN(load_cuda_lib)
 		CUDA_LIB_FNS
 		#undef X
 
-		os->write_file(os->stderr, stream_to_s8(&err));
+		os->write_file(os->error_handle, stream_to_s8(&err));
 	}
 
 	#define X(name) if (!cl->name) cl->name = name ## _stub;

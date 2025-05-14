@@ -62,7 +62,7 @@ dispatch_file_watch_events(OS *os, Arena arena)
 	}
 }
 
-int
+extern i32
 main(void)
 {
 	BeamformerCtx   ctx   = {0};
@@ -79,7 +79,7 @@ main(void)
 
 	ctx.os.file_watch_context.handle = inotify_init1(IN_NONBLOCK|IN_CLOEXEC);
 	ctx.os.compute_worker.asleep     = 1;
-	ctx.os.stderr                    = STDERR_FILENO;
+	ctx.os.error_handle              = STDERR_FILENO;
 	ctx.os.export_pipe_name          = OS_EXPORT_PIPE_NAME;
 
 	debug_init(&ctx.os, (iptr)&input, &temp_memory);
