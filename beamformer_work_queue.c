@@ -1,7 +1,7 @@
 /* See LICENSE for license details. */
 #include "beamformer_work_queue.h"
 
-static BeamformWork *
+function BeamformWork *
 beamform_work_queue_pop(BeamformWorkQueue *q)
 {
 	BeamformWork *result = 0;
@@ -18,7 +18,7 @@ beamform_work_queue_pop(BeamformWorkQueue *q)
 	return result;
 }
 
-static void
+function void
 beamform_work_queue_pop_commit(BeamformWorkQueue *q)
 {
 	atomic_add(&q->queue, 0x100000000ULL);
@@ -51,7 +51,7 @@ DEBUG_EXPORT BEAMFORM_WORK_QUEUE_PUSH_COMMIT_FN(beamform_work_queue_push_commit)
 	atomic_add(&q->queue, 1);
 }
 
-static b32
+function b32
 try_wait_sync(i32 *sync, i32 timeout_ms, os_wait_on_value_fn *os_wait_on_value)
 {
 	b32 result = 0;

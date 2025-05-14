@@ -5,7 +5,7 @@
 #define debug_init(...)
 
 #else
-static void *debug_lib;
+global void *debug_lib;
 
 #define DEBUG_ENTRY_POINTS \
 	X(beamformer_frame_step)           \
@@ -14,7 +14,7 @@ static void *debug_lib;
 	X(beamform_work_queue_push)        \
 	X(beamform_work_queue_push_commit)
 
-#define X(name) static name ##_fn *name;
+#define X(name) global name ##_fn *name;
 DEBUG_ENTRY_POINTS
 #undef X
 
@@ -42,7 +42,7 @@ function FILE_WATCH_CALLBACK_FN(debug_reload)
 	return 1;
 }
 
-static void
+function void
 debug_init(OS *os, iptr input, Arena *arena)
 {
 	os->add_file_watch(os, arena, s8(OS_DEBUG_LIB_NAME), debug_reload, input);
@@ -74,7 +74,7 @@ struct gl_debug_ctx {
 	OS     *os;
 };
 
-static void
+function void
 gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, const void *userctx)
 {
 	(void)src; (void)type; (void)id;
@@ -95,7 +95,7 @@ gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, co
 	stream_reset(e, 0);
 }
 
-static void
+function void
 get_gl_params(GLParams *gl, Stream *err)
 {
 	char *vendor = (char *)glGetString(GL_VENDOR);
@@ -145,7 +145,7 @@ validate_gl_requirements(GLParams *gl, Arena a)
 	if (s.widx) os_fatal(stream_to_s8(&s));
 }
 
-static void
+function void
 dump_gl_params(GLParams *gl, Arena a, OS *os)
 {
 	(void)gl; (void)a;
@@ -223,7 +223,7 @@ function FILE_WATCH_CALLBACK_FN(reload_render_shader)
 }
 
 
-static FILE_WATCH_CALLBACK_FN(queue_compute_shader_reload)
+function FILE_WATCH_CALLBACK_FN(queue_compute_shader_reload)
 {
 	ComputeShaderReloadContext *csr = (typeof(csr))user_data;
 	BeamformerCtx *ctx = csr->beamformer_ctx;
@@ -237,7 +237,7 @@ static FILE_WATCH_CALLBACK_FN(queue_compute_shader_reload)
 	return 1;
 }
 
-static FILE_WATCH_CALLBACK_FN(load_cuda_lib)
+function FILE_WATCH_CALLBACK_FN(load_cuda_lib)
 {
 	CudaLib *cl = (CudaLib *)user_data;
 	b32 result  = os_file_exists((c8 *)path.data);
@@ -267,7 +267,7 @@ void glfwWindowHint(i32, i32);
 iptr glfwCreateWindow(i32, i32, char *, iptr, iptr);
 void glfwMakeContextCurrent(iptr);
 
-static OS_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
+function OS_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
 {
 	GLWorkerThreadContext *ctx = (GLWorkerThreadContext *)_ctx;
 
@@ -294,7 +294,7 @@ static OS_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
 	return 0;
 }
 
-static void
+function void
 setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 {
 	ctx->window_size  = (uv2){.w = 1280, .h = 840};

@@ -1,36 +1,21 @@
 /* See LICENSE for license details. */
-static i32 hadamard_12_12_transpose[] = {
-	1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
-	1, -1, -1,  1, -1, -1, -1,  1,  1,  1, -1,  1,
-	1,  1, -1, -1,  1, -1, -1, -1,  1,  1,  1, -1,
-	1, -1,  1, -1, -1,  1, -1, -1, -1,  1,  1,  1,
-	1,  1, -1,  1, -1, -1,  1, -1, -1, -1,  1,  1,
-	1,  1,  1, -1,  1, -1, -1,  1, -1, -1, -1,  1,
-	1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1, -1,
-	1, -1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1,
-	1, -1, -1,  1,  1,  1, -1,  1, -1, -1,  1, -1,
-	1, -1, -1, -1,  1,  1,  1, -1,  1, -1, -1,  1,
-	1,  1, -1, -1, -1,  1,  1,  1, -1,  1, -1, -1,
-	1, -1,  1, -1, -1, -1,  1,  1,  1, -1,  1, -1,
-};
-
 #define zero_struct(s) mem_clear(s, 0, sizeof(*s))
-static void *
-mem_clear(void *p_, u8 c, iz size)
+function void *
+mem_clear(void *restrict p_, u8 c, iz size)
 {
 	u8 *p = p_;
 	while (size > 0) p[--size] = c;
 	return p;
 }
 
-static void
+function void
 mem_copy(void *restrict dest, void *restrict src, uz n)
 {
 	u8 *s = src, *d = dest;
 	for (; n; n--) *d++ = *s++;
 }
 
-static void
+function void
 mem_move(u8 *dest, u8 *src, iz n)
 {
 	if (dest < src) mem_copy(dest, src, n);
@@ -38,7 +23,7 @@ mem_move(u8 *dest, u8 *src, iz n)
 }
 
 
-static u8 *
+function u8 *
 arena_commit(Arena *a, iz size)
 {
 	ASSERT(a->end - a->beg >= size);
@@ -47,7 +32,7 @@ arena_commit(Arena *a, iz size)
 	return result;
 }
 
-static void
+function void
 arena_pop(Arena *a, iz length)
 {
 	a->beg -= length;
@@ -93,7 +78,7 @@ enum { DA_INITIAL_CAP = 4 };
       (s)->data + (s)->count++  \
     : (s)->data + (s)->count++)
 
-static void *
+function void *
 da_reserve_(Arena *a, void *data, iz *capacity, iz needed, iz align, iz size)
 {
 	iz cap = *capacity;
@@ -113,7 +98,7 @@ da_reserve_(Arena *a, void *data, iz *capacity, iz needed, iz align, iz size)
 	return data;
 }
 
-static Arena
+function Arena
 sub_arena(Arena *a, iz len, iz align)
 {
 	Arena result = {0};
@@ -126,14 +111,14 @@ sub_arena(Arena *a, iz len, iz align)
 	return result;
 }
 
-static TempArena
+function TempArena
 begin_temp_arena(Arena *a)
 {
 	TempArena result = {.arena = a, .old_beg = a->beg};
 	return result;
 }
 
-static void
+function void
 end_temp_arena(TempArena ta)
 {
 	Arena *a = ta.arena;
@@ -143,7 +128,7 @@ end_temp_arena(TempArena ta)
 	}
 }
 
-static u32
+function u32
 utf8_encode(u8 *out, u32 cp)
 {
 	u32 result = 1;
@@ -170,7 +155,7 @@ utf8_encode(u8 *out, u32 cp)
 	return result;
 }
 
-static UnicodeDecode
+function UnicodeDecode
 utf16_decode(u16 *data, iz length)
 {
 	UnicodeDecode result = {.cp = U32_MAX};
@@ -187,7 +172,7 @@ utf16_decode(u16 *data, iz length)
 	return result;
 }
 
-static u32
+function u32
 utf16_encode(u16 *out, u32 cp)
 {
 	u32 result = 1;
@@ -228,7 +213,7 @@ stream_reset(Stream *s, iz index)
 		s->widx = index;
 }
 
-static void
+function void
 stream_commit(Stream *s, iz count)
 {
 	s->errors |= !BETWEEN(s->widx + count, 0, s->cap);
@@ -236,7 +221,7 @@ stream_commit(Stream *s, iz count)
 		s->widx += count;
 }
 
-static void
+function void
 stream_append(Stream *s, void *data, iz count)
 {
 	s->errors |= (s->cap - s->widx) < count;
@@ -246,19 +231,19 @@ stream_append(Stream *s, void *data, iz count)
 	}
 }
 
-static void
+function void
 stream_append_byte(Stream *s, u8 b)
 {
 	stream_append(s, &b, 1);
 }
 
-static void
+function void
 stream_pad(Stream *s, u8 b, i32 n)
 {
 	while (n > 0) stream_append_byte(s, b), n--;
 }
 
-static void
+function void
 stream_append_s8(Stream *s, s8 str)
 {
 	stream_append(s, str.data, str.len);
@@ -273,7 +258,7 @@ stream_append_s8s_(Stream *s, s8 *strs, iz count)
 		stream_append(s, strs[i].data, strs[i].len);
 }
 
-static void
+function void
 stream_append_u64(Stream *s, u64 n)
 {
 	u8 tmp[64];
@@ -283,16 +268,15 @@ stream_append_u64(Stream *s, u64 n)
 	stream_append(s, beg, end - beg);
 }
 
-static void
+function void
 stream_append_hex_u64(Stream *s, u64 n)
 {
 	if (!s->errors) {
-		static u8 hex[16] = {"0123456789abcdef"};
 		u8  buf[16];
 		u8 *end = buf + sizeof(buf);
 		u8 *beg = end;
 		while (n) {
-			*--beg = hex[n & 0x0F];
+			*--beg = "0123456789abcdef"[n & 0x0F];
 			n >>= 4;
 		}
 		while (end - beg < 2)
@@ -301,7 +285,7 @@ stream_append_hex_u64(Stream *s, u64 n)
 	}
 }
 
-static void
+function void
 stream_append_i64(Stream *s, i64 n)
 {
 	if (n < 0) {
@@ -311,7 +295,7 @@ stream_append_i64(Stream *s, i64 n)
 	stream_append_u64(s, n);
 }
 
-static void
+function void
 stream_append_f64(Stream *s, f64 f, i64 prec)
 {
 	if (f < 0) {
@@ -337,7 +321,7 @@ stream_append_f64(Stream *s, f64 f, i64 prec)
 	}
 }
 
-static void
+function void
 stream_append_f64_e(Stream *s, f64 f)
 {
 	/* TODO: there should be a better way of doing this */
@@ -373,7 +357,7 @@ stream_append_f64_e(Stream *s, f64 f)
 	stream_append_u64(s, ABS(scale));
 }
 
-static void
+function void
 stream_append_v2(Stream *s, v2 v)
 {
 	stream_append_byte(s, '{');
@@ -424,7 +408,7 @@ s8_hash(s8 v)
 	return h;
 }
 
-static s8
+function s8
 c_str_to_s8(char *cstr)
 {
 	s8 result = {.data = (u8 *)cstr};
@@ -433,7 +417,7 @@ c_str_to_s8(char *cstr)
 }
 
 /* NOTE(rnp): returns < 0 if byte is not found */
-static iz
+function iz
 s8_scan_backwards(s8 s, u8 byte)
 {
 	iz result = s.len;
@@ -442,7 +426,7 @@ s8_scan_backwards(s8 s, u8 byte)
 	return result;
 }
 
-static s8
+function s8
 s8_cut_head(s8 s, iz cut)
 {
 	s8 result = s;
@@ -482,7 +466,7 @@ s16_to_s8(Arena *a, s16 in)
 	return result;
 }
 
-static s16
+function s16
 s8_to_s16(Arena *a, s8 in)
 {
 	s16 result = {0};
@@ -501,7 +485,7 @@ s8_to_s16(Arena *a, s8 in)
 	return result;
 }
 
-static s8
+function s8
 push_s8(Arena *a, s8 str)
 {
 	s8 result = s8_alloc(a, str.len);
@@ -509,7 +493,7 @@ push_s8(Arena *a, s8 str)
 	return result;
 }
 
-static s8
+function s8
 push_s8_zero(Arena *a, s8 str)
 {
 	s8 result   = s8_alloc(a, str.len + 1);
@@ -518,26 +502,26 @@ push_s8_zero(Arena *a, s8 str)
 	return result;
 }
 
-static u32
+function u32
 round_down_power_of_2(u32 a)
 {
 	u32 result = 0x80000000UL >> clz_u32(a);
 	return result;
 }
 
-static b32
+function b32
 uv2_equal(uv2 a, uv2 b)
 {
 	return a.x == b.x && a.y == b.y;
 }
 
-static b32
+function b32
 uv3_equal(uv3 a, uv3 b)
 {
 	return a.x == b.x && a.y == b.y && a.z == b.z;
 }
 
-static v3
+function v3
 cross(v3 a, v3 b)
 {
 	v3 result = {
@@ -548,7 +532,7 @@ cross(v3 a, v3 b)
 	return result;
 }
 
-static v3
+function v3
 sub_v3(v3 a, v3 b)
 {
 	v3 result = {
@@ -559,14 +543,14 @@ sub_v3(v3 a, v3 b)
 	return result;
 }
 
-static f32
+function f32
 length_v3(v3 a)
 {
 	f32 result = a.x * a.x + a.y * a.y + a.z * a.z;
 	return result;
 }
 
-static v3
+function v3
 normalize_v3(v3 a)
 {
 	f32 length = length_v3(a);
@@ -574,7 +558,7 @@ normalize_v3(v3 a)
 	return result;
 }
 
-static v2
+function v2
 clamp_v2_rect(v2 v, Rect r)
 {
 	v2 result = v;
@@ -583,7 +567,7 @@ clamp_v2_rect(v2 v, Rect r)
 	return result;
 }
 
-static v2
+function v2
 add_v2(v2 a, v2 b)
 {
 	v2 result = {
@@ -593,7 +577,7 @@ add_v2(v2 a, v2 b)
 	return result;
 }
 
-static v2
+function v2
 sub_v2(v2 a, v2 b)
 {
 	v2 result = {
@@ -603,7 +587,7 @@ sub_v2(v2 a, v2 b)
 	return result;
 }
 
-static v2
+function v2
 scale_v2(v2 a, f32 scale)
 {
 	v2 result = {
@@ -613,7 +597,7 @@ scale_v2(v2 a, f32 scale)
 	return result;
 }
 
-static v2
+function v2
 mul_v2(v2 a, v2 b)
 {
 	v2 result = {
@@ -633,7 +617,7 @@ div_v2(v2 a, v2 b)
 }
 
 
-static v2
+function v2
 floor_v2(v2 a)
 {
 	v2 result;
@@ -642,7 +626,7 @@ floor_v2(v2 a)
 	return result;
 }
 
-static f32
+function f32
 magnitude_v2(v2 a)
 {
 	f32 result = sqrt_f32(a.x * a.x + a.y * a.y);
@@ -688,7 +672,7 @@ sub_v4(v4 a, v4 b)
 	return result;
 }
 
-static void
+function void
 split_rect_horizontal(Rect rect, f32 fraction, Rect *left, Rect *right)
 {
 	if (left) {
@@ -704,7 +688,7 @@ split_rect_horizontal(Rect rect, f32 fraction, Rect *left, Rect *right)
 	}
 }
 
-static void
+function void
 split_rect_vertical(Rect rect, f32 fraction, Rect *top, Rect *bot)
 {
 	if (top) {
@@ -720,7 +704,7 @@ split_rect_vertical(Rect rect, f32 fraction, Rect *top, Rect *bot)
 	}
 }
 
-static void
+function void
 cut_rect_horizontal(Rect rect, f32 at, Rect *left, Rect *right)
 {
 	at = MIN(at, rect.size.w);
@@ -735,7 +719,7 @@ cut_rect_horizontal(Rect rect, f32 at, Rect *left, Rect *right)
 	}
 }
 
-static void
+function void
 cut_rect_vertical(Rect rect, f32 at, Rect *top, Rect *bot)
 {
 	at = MIN(at, rect.size.h);
@@ -750,7 +734,7 @@ cut_rect_vertical(Rect rect, f32 at, Rect *top, Rect *bot)
 	}
 }
 
-static f64
+function f64
 parse_f64(s8 s)
 {
 	f64 integral = 0, fractional = 0, sign = 1;
@@ -807,7 +791,7 @@ fill_kronecker_sub_matrix(i32 *out, i32 out_stride, i32 scale, i32 *b, uv2 b_dim
 }
 
 /* NOTE: this won't check for valid space/etc and assumes row major order */
-static void
+function void
 kronecker_product(i32 *out, i32 *a, uv2 a_dim, i32 *b, uv2 b_dim)
 {
 	uv2 out_dim = {.x = a_dim.x * b_dim.x, .y = a_dim.y * b_dim.y};
@@ -856,6 +840,20 @@ make_hadamard_transpose(Arena *a, u32 dim)
 		#undef IND
 
 		if (!power_of_2) {
+			local_persist i32 hadamard_12_12_transpose[] = {
+				1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
+				1, -1, -1,  1, -1, -1, -1,  1,  1,  1, -1,  1,
+				1,  1, -1, -1,  1, -1, -1, -1,  1,  1,  1, -1,
+				1, -1,  1, -1, -1,  1, -1, -1, -1,  1,  1,  1,
+				1,  1, -1,  1, -1, -1,  1, -1, -1, -1,  1,  1,
+				1,  1,  1, -1,  1, -1, -1,  1, -1, -1, -1,  1,
+				1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1, -1,
+				1, -1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1,
+				1, -1, -1,  1,  1,  1, -1,  1, -1, -1,  1, -1,
+				1, -1, -1, -1,  1,  1,  1, -1,  1, -1, -1,  1,
+				1,  1, -1, -1, -1,  1,  1,  1, -1,  1, -1, -1,
+				1, -1,  1, -1, -1, -1,  1,  1,  1, -1,  1, -1,
+			};
 			kronecker_product(result, m, (uv2){.x = dim, .y = dim},
 			                  hadamard_12_12_transpose, (uv2){.x = 12, .y = 12});
 		}

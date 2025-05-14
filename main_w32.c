@@ -68,7 +68,7 @@ dispatch_file_watch(OS *os, FileWatchDirectory *fw_dir, u8 *buf, Arena arena)
 	} while (offset);
 }
 
-static void
+function void
 clear_io_queue(OS *os, BeamformerInput *input, Arena arena)
 {
 	w32_context *ctx = (w32_context *)os->context;

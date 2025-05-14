@@ -30,7 +30,7 @@
 	#define DEBUG_DECL(a) a
 	#define ASSERT(c) do { if (!(c)) debugbreak(); } while (0);
 #else
-	#define DEBUG_EXPORT static
+	#define DEBUG_EXPORT function
 	#define DEBUG_DECL(a)
 	#define ASSERT(c)
 #endif

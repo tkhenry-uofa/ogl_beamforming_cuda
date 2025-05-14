@@ -726,7 +726,7 @@ resize_frame_view(BeamformerFrameView *view, uv2 dim)
 	LABEL_GL_OBJECT(GL_TEXTURE, view->texture, s8("Frame View Texture"));
 }
 
-static void
+function void
 ui_variable_free(BeamformerUI *ui, Variable *var)
 {
 	if (var) {
@@ -781,7 +781,7 @@ ui_view_free(BeamformerUI *ui, Variable *view)
 	ui_variable_free(ui, view);
 }
 
-static Variable *
+function Variable *
 fill_variable(Variable *var, Variable *group, s8 name, u32 flags, VariableType type, Font font)
 {
 	var->flags      = flags;
@@ -798,7 +798,7 @@ fill_variable(Variable *var, Variable *group, s8 name, u32 flags, VariableType t
 	return var;
 }
 
-static Variable *
+function Variable *
 add_variable(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, u32 flags,
              VariableType type, Font font)
 {
@@ -808,7 +808,7 @@ add_variable(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, u32 flags
 	return fill_variable(result, group, name, flags, type, font);
 }
 
-static Variable *
+function Variable *
 add_variable_group(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, VariableGroupType type, Font font)
 {
 	Variable *result     = add_variable(ui, group, arena, name, V_INPUT, VT_GROUP, font);
@@ -816,7 +816,7 @@ add_variable_group(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, Var
 	return result;
 }
 
-static Variable *
+function Variable *
 end_variable_group(Variable *group)
 {
 	ASSERT(group->type == VT_GROUP);
@@ -843,7 +843,7 @@ add_button(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, UIButtonID 
 	return result;
 }
 
-static Variable *
+function Variable *
 add_ui_split(BeamformerUI *ui, Variable *parent, Arena *arena, s8 name, f32 fraction,
              RegionSplitDirection direction, Font font)
 {
@@ -1224,21 +1224,21 @@ frame_view_ready_to_present(BeamformerFrameView *view)
 	return !uv2_equal((uv2){0}, view->texture_dim) && view->frame;
 }
 
-static Color
+function Color
 colour_from_normalized(v4 rgba)
 {
 	return (Color){.r = rgba.r * 255.0f, .g = rgba.g * 255.0f,
 	               .b = rgba.b * 255.0f, .a = rgba.a * 255.0f};
 }
 
-static Color
+function Color
 fade(Color a, f32 visibility)
 {
 	a.a = (u8)((f32)a.a * visibility);
 	return a;
 }
 
-static v4
+function v4
 lerp_v4(v4 a, v4 b, f32 t)
 {
 	return (v4){
@@ -1249,28 +1249,26 @@ lerp_v4(v4 a, v4 b, f32 t)
 	};
 }
 
-static s8
+function s8
 push_das_shader_id(Stream *s, DASShaderID shader, u32 transmit_count)
 {
 	#define X(type, id, pretty, fixed_tx) s8(pretty),
-	static s8 pretty_names[] = { DAS_TYPES };
+	local_persist s8 pretty_names[DAS_LAST + 1] = {DAS_TYPES s8("Invalid")};
 	#undef X
 	#define X(type, id, pretty, fixed_tx) fixed_tx,
-	static u8 fixed_transmits[] = { DAS_TYPES };
+	local_persist u8 fixed_transmits[DAS_LAST + 1] = {DAS_TYPES 1};
 	#undef X
 
-	if ((u32)shader < (u32)DAS_LAST) {
-		stream_append_s8(s, pretty_names[shader]);
-		if (!fixed_transmits[shader]) {
-			stream_append_byte(s, '-');
-			stream_append_u64(s, transmit_count);
-		}
+	stream_append_s8(s, pretty_names[MIN(shader, DAS_LAST)]);
+	if (!fixed_transmits[MIN(shader, DAS_LAST)]) {
+		stream_append_byte(s, '-');
+		stream_append_u64(s, transmit_count);
 	}
 
 	return stream_to_s8(s);
 }
 
-static s8
+function s8
 push_custom_view_title(Stream *s, Variable *var)
 {
 	switch (var->type) {
@@ -1310,7 +1308,7 @@ push_custom_view_title(Stream *s, Variable *var)
 	return stream_to_s8(s);
 }
 
-static v2
+function v2
 draw_text_base(Font font, s8 text, v2 pos, Color colour)
 {
 	v2 off = pos;
@@ -1340,7 +1338,7 @@ draw_text_base(Font font, s8 text, v2 pos, Color colour)
 }
 
 /* NOTE(rnp): expensive but of the available options in raylib this gives the best results */
-static v2
+function v2
 draw_outlined_text(s8 text, v2 pos, TextSpec *ts)
 {
 	f32 ow = ts->outline_thick;
@@ -1356,7 +1354,7 @@ draw_outlined_text(s8 text, v2 pos, TextSpec *ts)
 	return result;
 }
 
-static v2
+function v2
 draw_text(s8 text, v2 pos, TextSpec *ts)
 {
 	if (ts->flags & TF_ROTATED) {
@@ -1396,7 +1394,7 @@ draw_text(s8 text, v2 pos, TextSpec *ts)
 	return result;
 }
 
-static Rect
+function Rect
 extend_rect_centered(Rect r, v2 delta)
 {
 	r.size.w += delta.x;
@@ -1406,7 +1404,7 @@ extend_rect_centered(Rect r, v2 delta)
 	return r;
 }
 
-static Rect
+function Rect
 shrink_rect_centered(Rect r, v2 delta)
 {
 	delta.x   = MIN(delta.x, r.size.w);
@@ -1418,7 +1416,7 @@ shrink_rect_centered(Rect r, v2 delta)
 	return r;
 }
 
-static Rect
+function Rect
 scale_rect_centered(Rect r, v2 scale)
 {
 	Rect or   = r;
@@ -1477,7 +1475,7 @@ hover_var(BeamformerUI *ui, v2 mouse, Rect rect, Variable *var)
 	return result;
 }
 
-static Rect
+function Rect
 draw_title_bar(BeamformerUI *ui, Arena arena, Variable *ui_view, Rect r, v2 mouse)
 {
 	ASSERT(ui_view->type == VT_UI_VIEW);
@@ -1658,7 +1656,7 @@ draw_radio_button(BeamformerUI *ui, Variable *var, v2 at, v2 mouse, v4 base_colo
 	return result;
 }
 
-static v2
+function v2
 draw_variable(BeamformerUI *ui, Arena arena, Variable *var, v2 at, v2 mouse, v4 base_colour, TextSpec text_spec)
 {
 	v2 result;
@@ -1933,7 +1931,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 	draw_table(ui, a, table, table_rect, text_spec, mouse);
 }
 
-static v2
+function v2
 draw_compute_progress_bar(BeamformerUI *ui, Arena arena, ComputeProgressBar *state, Rect r)
 {
 	if (*state->processing) state->display_t_velocity += 65 * dt_for_frame;
@@ -2179,7 +2177,7 @@ draw_active_text_box(BeamformerUI *ui, Variable *var)
 	DrawRectanglePro(cursor.rl, (Vector2){0}, 0, colour_from_normalized(cursor_colour));
 }
 
-static void
+function void
 draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect window)
 {
 	ASSERT(menu->type == VT_GROUP);
@@ -2238,7 +2236,7 @@ draw_active_menu(BeamformerUI *ui, Arena arena, Variable *menu, v2 mouse, Rect w
 	}
 }
 
-static void
+function void
 draw_layout_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 {
 	if (var->type != VT_UI_REGION_SPLIT) {
@@ -2296,7 +2294,7 @@ draw_layout_variable(BeamformerUI *ui, Variable *var, Rect draw_rect, v2 mouse)
 	EndScissorMode();
 }
 
-static void
+function void
 draw_ui_regions(BeamformerUI *ui, Rect window, v2 mouse)
 {
 	struct region_frame {
@@ -2524,7 +2522,7 @@ scale_bar_interaction(BeamformerUI *ui, ScaleBar *sb, v2 mouse)
 	}
 }
 
-static void
+function void
 ui_button_interaction(BeamformerUI *ui, Variable *button)
 {
 	ASSERT(button->type == VT_UI_BUTTON);
@@ -2565,7 +2563,7 @@ ui_button_interaction(BeamformerUI *ui, Variable *button)
 	}
 }
 
-static void
+function void
 ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll, b32 mouse_left_pressed)
 {
 	InteractionState *is = &ui->interaction;
@@ -2748,7 +2746,7 @@ ui_interact(BeamformerUI *ui, BeamformerInput *input, uv2 window_size)
 	is->hot = 0;
 }
 
-static void
+function void
 ui_init(BeamformerCtx *ctx, Arena store)
 {
 	/* NOTE(rnp): store the ui at the base of the passed in arena and use the rest for

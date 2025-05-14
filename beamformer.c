@@ -21,8 +21,8 @@ global u32 cycle_t;
 #define start_renderdoc_capture(...)
 #define end_renderdoc_capture(...)
 #else
-static renderdoc_start_frame_capture_fn *start_frame_capture;
-static renderdoc_end_frame_capture_fn   *end_frame_capture;
+global renderdoc_start_frame_capture_fn *start_frame_capture;
+global renderdoc_end_frame_capture_fn   *end_frame_capture;
 #define start_renderdoc_capture(gl) if (start_frame_capture) start_frame_capture(gl, 0)
 #define end_renderdoc_capture(gl)   if (end_frame_capture)   end_frame_capture(gl, 0)
 #endif
@@ -59,7 +59,7 @@ compute_frame_iterator(BeamformerCtx *ctx, u32 start_index, u32 needed_frames)
 	return result;
 }
 
-static BeamformComputeFrame *
+function BeamformComputeFrame *
 frame_next(ComputeFrameIterator *bfi)
 {
 	BeamformComputeFrame *result = 0;
@@ -70,7 +70,7 @@ frame_next(ComputeFrameIterator *bfi)
 	return result;
 }
 
-static void
+function void
 alloc_beamform_frame(GLParams *gp, BeamformFrame *out, ComputeShaderStats *out_stats,
                      uv3 out_dim, s8 name, Arena arena)
 {
@@ -170,7 +170,7 @@ fill_frame_compute_work(BeamformerCtx *ctx, BeamformWork *work, ImagePlaneTag pl
 	return result;
 }
 
-static void
+function void
 export_frame(BeamformerCtx *ctx, iptr handle, BeamformFrame *frame)
 {
 	uv3 dim            = frame->dim;
@@ -183,7 +183,7 @@ export_frame(BeamformerCtx *ctx, iptr handle, BeamformFrame *frame)
 	ctx->os.close(handle);
 }
 
-static void
+function void
 do_sum_shader(ComputeShaderCtx *cs, u32 *in_textures, u32 in_texture_count, f32 in_scale,
               u32 out_texture, uv3 out_data_dim)
 {
@@ -211,7 +211,7 @@ struct compute_cursor {
 	u32 total_points;
 };
 
-static struct compute_cursor
+function struct compute_cursor
 start_compute_cursor(uv3 dim, u32 max_points)
 {
 	struct compute_cursor result = {0};
@@ -238,7 +238,7 @@ start_compute_cursor(uv3 dim, u32 max_points)
 	return result;
 }
 
-static iv3
+function iv3
 step_compute_cursor(struct compute_cursor *cursor)
 {
 	cursor->cursor.x += 1;
@@ -261,14 +261,14 @@ step_compute_cursor(struct compute_cursor *cursor)
 	return result;
 }
 
-static b32
+function b32
 compute_cursor_finished(struct compute_cursor *cursor)
 {
 	b32 result = cursor->completed_points >= cursor->total_points;
 	return result;
 }
 
-static void
+function void
 do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, ComputeShaderID shader)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
@@ -442,7 +442,7 @@ push_compute_shader_header(Arena *a, b32 parameters, ComputeShaderID shader)
 	return arena_stream_commit(a, &sb);
 }
 
-static b32
+function b32
 reload_compute_shader(BeamformerCtx *ctx, s8 path, s8 extra, ComputeShaderReloadContext *csr, Arena tmp)
 {
 	ComputeShaderCtx *cs = &ctx->csctx;
@@ -475,7 +475,7 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, s8 extra, ComputeShaderReload
 	return result;
 }
 
-static void
+function void
 complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_context, iz barrier_offset)
 {
 	ComputeShaderCtx       *cs = &ctx->csctx;

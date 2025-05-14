@@ -1,4 +1,4 @@
-#define FORCE_INLINE inline __attribute__((always_inline))
+#define force_inline inline __attribute__((always_inline))
 
 /* TODO(rnp): msvc probably won't build this but there are other things preventing that as well */
 #define sqrt_f32(a)     __builtin_sqrtf(a)
@@ -12,7 +12,7 @@
 #define atomic_inc(ptr, n)       __atomic_fetch_add(ptr,  n, __ATOMIC_ACQ_REL)
 #define atomic_cas(ptr, cptr, n) __atomic_compare_exchange_n(ptr, cptr, n, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
 
-static FORCE_INLINE u32
+function force_inline u32
 clz_u32(u32 a)
 {
 	u32 result = 32;
@@ -20,7 +20,7 @@ clz_u32(u32 a)
 	return result;
 }
 
-static FORCE_INLINE u32
+function force_inline u32
 ctz_u32(u32 a)
 {
 	u32 result = 32;

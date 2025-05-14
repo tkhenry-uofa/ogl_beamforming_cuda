@@ -34,20 +34,6 @@
 
 #define THREAD_SET_LIMITED_INFORMATION 0x0400
 
-typedef struct {
-	u16  wProcessorArchitecture;
-	u16  _pad1;
-	u32  dwPageSize;
-	iz   lpMinimumApplicationAddress;
-	iz   lpMaximumApplicationAddress;
-	u64  dwActiveProcessorMask;
-	u32  dwNumberOfProcessors;
-	u32  dwProcessorType;
-	u32  dwAllocationGranularity;
-	u16  wProcessorLevel;
-	u16  wProcessorRevision;
-} w32_sys_info;
-
 /* NOTE: this is packed because the w32 api designers are dumb and ordered the members
  * incorrectly. They worked around it be making the ft* members a struct {u32, u32} which
  * is aligned on a 4-byte boundary. Then in their documentation they explicitly tell you not
@@ -108,7 +94,7 @@ W32(b32)    DeleteFileA(c8 *);
 W32(void)   ExitProcess(i32);
 W32(b32)    FreeLibrary(void *);
 W32(i32)    GetFileAttributesA(c8 *);
-W32(b32)    GetFileInformationByHandle(iptr, w32_file_info *);
+W32(b32)    GetFileInformationByHandle(iptr, void *);
 W32(i32)    GetLastError(void);
 W32(void *) GetModuleHandleA(c8 *);
 W32(void *) GetProcAddress(void *, c8 *);
@@ -128,7 +114,7 @@ W32(void *) VirtualAlloc(u8 *, iz, u32, u32);
 W32(b32)    VirtualFree(u8 *, iz, u32);
 
 #ifdef _DEBUG
-static void *
+function void *
 os_get_module(char *name, Stream *e)
 {
 	void *result = GetModuleHandleA(name);
@@ -141,10 +127,10 @@ os_get_module(char *name, Stream *e)
 }
 #endif
 
-static OS_WRITE_FILE_FN(os_write_file)
+function OS_WRITE_FILE_FN(os_write_file)
 {
 	i32 wlen = 0;
-	if (raw.len) WriteFile(file, raw.data, raw.len, &wlen, 0);
+	if (raw.len > 0 && raw.len <= U32_MAX) WriteFile(file, raw.data, raw.len, &wlen, 0);
 	return raw.len == wlen;
 }
 
@@ -165,33 +151,46 @@ os_fatal(s8 msg)
 
 function OS_ALLOC_ARENA_FN(os_alloc_arena)
 {
-	Arena result;
-	w32_sys_info Info;
-	GetSystemInfo(&Info);
+	Arena result = old;
 
-	if (capacity % Info.dwPageSize != 0)
-		capacity += (Info.dwPageSize - capacity % Info.dwPageSize);
+	struct {
+		u16  architecture;
+		u16  _pad1;
+		u32  page_size;
+		iz   minimum_application_address;
+		iz   maximum_application_address;
+		u64  active_processor_mask;
+		u32  number_of_processors;
+		u32  processor_type;
+		u32  allocation_granularity;
+		u16  processor_level;
+		u16  processor_revision;
+	} info;
 
-	iz oldsize = old.end - old.beg;
-	if (oldsize > capacity)
-		return old;
+	GetSystemInfo(&info);
 
-	if (old.beg)
-		VirtualFree(old.beg, oldsize, MEM_RELEASE);
+	if (capacity % info.page_size != 0)
+		capacity += (info.page_size - capacity % info.page_size);
 
-	result.beg = VirtualAlloc(0, capacity, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-	if (result.beg == NULL)
-		os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
-	result.end = result.beg + capacity;
+	iz old_size = old.end - old.beg;
+	if (old_size < capacity) {
+		if (old.beg)
+			VirtualFree(old.beg, old_size, MEM_RELEASE);
+
+		result.beg = VirtualAlloc(0, capacity, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+		if (!result.beg)
+			os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
+		result.end = result.beg + capacity;
+	}
 	return result;
 }
 
-static OS_CLOSE_FN(os_close)
+function OS_CLOSE_FN(os_close)
 {
 	CloseHandle(file);
 }
 
-static OS_OPEN_FOR_WRITE_FN(os_open_for_write)
+function OS_OPEN_FOR_WRITE_FN(os_open_for_write)
 {
 	iptr result = CreateFileA(fname, GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
 	return result;
@@ -219,32 +218,33 @@ function OS_READ_WHOLE_FILE_FN(os_read_whole_file)
 	return result;
 }
 
-static OS_READ_FILE_FN(os_read_file)
+function OS_READ_FILE_FN(os_read_file)
 {
 	i32 total_read = 0;
 	ReadFile(file, buf, size, &total_read, 0);
 	return total_read;
 }
 
-static OS_WRITE_NEW_FILE_FN(os_write_new_file)
+function OS_WRITE_NEW_FILE_FN(os_write_new_file)
 {
-	if (raw.len > (iz)U32_MAX) {
-		os_write_file(GetStdHandle(STD_ERROR_HANDLE),
-		              s8("os_write_file: files >4GB are not yet handled on win32\n"));
-		return 0;
-	}
+	enum { CHUNK_SIZE = GB(2) };
 
+	b32 result = 0;
 	iptr h = CreateFileA(fname, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
-	if (h == INVALID_FILE)
-		return  0;
-
-	b32 ret = os_write_file(h, raw);
-	CloseHandle(h);
-
-	return ret;
+	if (h >= 0) {
+		while (raw.len > 0) {
+			s8 chunk  = raw;
+			chunk.len = MIN(chunk.len, CHUNK_SIZE);
+			result    = os_write_file(h, chunk);
+			if (!result) break;
+			raw = s8_cut_head(raw, chunk.len);
+		}
+		CloseHandle(h);
+	}
+	return result;
 }
 
-static b32
+function b32
 os_file_exists(char *path)
 {
 	b32 result = GetFileAttributesA(path) != -1;
@@ -286,7 +286,7 @@ os_load_library(char *name, char *temp_name, Stream *e)
 	return result;
 }
 
-static void *
+function void *
 os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 {
 	void *result = 0;
@@ -302,13 +302,13 @@ os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 	return result;
 }
 
-static void
+function void
 os_unload_library(void *h)
 {
 	FreeLibrary(h);
 }
 
-static OS_ADD_FILE_WATCH_FN(os_add_file_watch)
+function OS_ADD_FILE_WATCH_FN(os_add_file_watch)
 {
 	s8 directory  = path;
 	directory.len = s8_scan_backwards(path, '\\');
@@ -355,12 +355,12 @@ os_create_thread(Arena arena, iptr user_context, s8 name, os_thread_entry_point_
 	return result;
 }
 
-static OS_WAIT_ON_VALUE_FN(os_wait_on_value)
+function OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 {
 	return WaitOnAddress(value, &current, sizeof(*value), timeout_ms);
 }
 
-static OS_WAKE_WAITERS_FN(os_wake_waiters)
+function OS_WAKE_WAITERS_FN(os_wake_waiters)
 {
 	if (sync) {
 		atomic_inc(sync, 1);

@@ -27,7 +27,7 @@ i32 ftruncate(i32, i64);
 i64 syscall(i64, ...);
 
 #ifdef _DEBUG
-static void *
+function void *
 os_get_module(char *name, Stream *e)
 {
 	void *result = dlopen(name, RTLD_NOW|RTLD_LOCAL|RTLD_NOLOAD);
@@ -39,7 +39,7 @@ os_get_module(char *name, Stream *e)
 }
 #endif
 
-static OS_WRITE_FILE_FN(os_write_file)
+function OS_WRITE_FILE_FN(os_write_file)
 {
 	while (raw.len) {
 		iz r = write(file, raw.data, raw.len);
@@ -85,12 +85,12 @@ function OS_ALLOC_ARENA_FN(os_alloc_arena)
 	return result;
 }
 
-static OS_CLOSE_FN(os_close)
+function OS_CLOSE_FN(os_close)
 {
 	close(file);
 }
 
-static OS_OPEN_FOR_WRITE_FN(os_open_for_write)
+function OS_OPEN_FOR_WRITE_FN(os_open_for_write)
 {
 	iptr result = open(fname, O_WRONLY|O_TRUNC);
 	if (result == -1)
@@ -115,7 +115,7 @@ function OS_READ_WHOLE_FILE_FN(os_read_whole_file)
 	return result;
 }
 
-static OS_WRITE_NEW_FILE_FN(os_write_new_file)
+function OS_WRITE_NEW_FILE_FN(os_write_new_file)
 {
 	iptr fd = open(fname, O_WRONLY|O_TRUNC|O_CREAT, 0600);
 	if (fd == INVALID_FILE)
@@ -125,7 +125,7 @@ static OS_WRITE_NEW_FILE_FN(os_write_new_file)
 	return ret;
 }
 
-static b32
+function b32
 os_file_exists(char *path)
 {
 	struct stat st;
@@ -133,7 +133,7 @@ os_file_exists(char *path)
 	return result;
 }
 
-static OS_READ_FILE_FN(os_read_file)
+function OS_READ_FILE_FN(os_read_file)
 {
 	iz r = 0, total_read = 0;
 	do {
@@ -205,7 +205,7 @@ os_load_library(char *name, char *temp_name, Stream *e)
 	return result;
 }
 
-static void *
+function void *
 os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 {
 	void *result = 0;
@@ -219,7 +219,7 @@ os_lookup_dynamic_symbol(void *h, char *name, Stream *e)
 	return result;
 }
 
-static void
+function void
 os_unload_library(void *h)
 {
 	/* NOTE: glibc is buggy gnuware so we need to check this */
@@ -227,7 +227,7 @@ os_unload_library(void *h)
 		dlclose(h);
 }
 
-static OS_ADD_FILE_WATCH_FN(os_add_file_watch)
+function OS_ADD_FILE_WATCH_FN(os_add_file_watch)
 {
 	s8 directory  = path;
 	directory.len = s8_scan_backwards(path, '/');
@@ -261,7 +261,7 @@ os_create_thread(Arena arena, iptr user_context, s8 name, os_thread_entry_point_
 	return (iptr)result;
 }
 
-static OS_WAIT_ON_VALUE_FN(os_wait_on_value)
+function OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 {
 	struct timespec *timeout = 0, timeout_value;
 	if (timeout_ms != (u32)-1) {
@@ -272,7 +272,7 @@ static OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 	return syscall(SYS_futex, value, FUTEX_WAIT, current, timeout, 0, 0) == 0;
 }
 
-static OS_WAKE_WAITERS_FN(os_wake_waiters)
+function OS_WAKE_WAITERS_FN(os_wake_waiters)
 {
 	if (sync) {
 		atomic_inc(sync, 1);
