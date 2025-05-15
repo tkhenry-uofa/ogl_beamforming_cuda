@@ -381,7 +381,7 @@ usage(char *argv0)
 {
 	die("%s [--debug] [--report] [--sanitize]\n"
 	    "    --debug:       dynamically link and build with debug symbols\n"
-	    "    --generic:     compile for a generic target (x86-64-v3 or aarch64 with NEON)\n"
+	    "    --generic:     compile for a generic target (x86-64-v3 or armv8 with NEON)\n"
 	    "    --report:      print compilation stats (clang only)\n"
 	    "    --sanitize:    build with ASAN and UBSAN\n"
 	    , argv0);
@@ -421,7 +421,7 @@ cmd_base(Arena *a, Options *o)
 	/* TODO(rnp): support cross compiling with clang */
 	if (!o->generic)     cmd_append(a, &result, "-march=native");
 	else if (is_amd64)   cmd_append(a, &result, "-march=x86-64-v3");
-	else if (is_aarch64) cmd_append(a, &result, "-march=aarch64");
+	else if (is_aarch64) cmd_append(a, &result, "-march=armv8");
 
 	cmd_append(a, &result, COMMON_FLAGS);
 
