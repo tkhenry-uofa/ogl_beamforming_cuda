@@ -24,7 +24,7 @@ typedef struct {
 	b32  executable_reloaded;
 } BeamformerInput;
 
-#define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims, i16 *channel_mapping)
+#define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims)
 typedef INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_fn);
 INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_stub) {}
 
@@ -40,10 +40,15 @@ CUDA_DECODE_FN(cuda_decode_stub) {}
 typedef CUDA_HILBERT_FN(cuda_hilbert_fn);
 CUDA_HILBERT_FN(cuda_hilbert_stub) {}
 
-#define CUDA_LIB_FNS               \
-	X(cuda_decode)             \
-	X(cuda_hilbert)            \
-	X(init_cuda_configuration) \
+#define CUDA_SET_CHANNEL_MAPPING_FN(name) void name(i16 *channel_mapping)
+typedef CUDA_SET_CHANNEL_MAPPING_FN(cuda_set_channel_mapping_fn);
+CUDA_SET_CHANNEL_MAPPING_FN(cuda_set_channel_mapping_stub) {}
+
+#define CUDA_LIB_FNS \
+	X(cuda_decode)              \
+	X(cuda_hilbert)             \
+	X(cuda_set_channel_mapping) \
+	X(init_cuda_configuration)  \
 	X(register_cuda_buffers)
 
 typedef struct {
