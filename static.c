@@ -247,14 +247,14 @@ function FILE_WATCH_CALLBACK_FN(load_cuda_lib)
 		stream_append_s8(&err, s8("loading CUDA lib: " OS_CUDA_LIB_NAME "\n"));
 		os_unload_library(cl->lib);
 		cl->lib = os_load_library((c8 *)path.data, OS_CUDA_LIB_TEMP_NAME, &err);
-		#define X(name) cl->name = os_lookup_dynamic_symbol(cl->lib, #name, &err);
+		#define X(name, symname) cl->name = os_lookup_dynamic_symbol(cl->lib, symname, &err);
 		CUDA_LIB_FNS
 		#undef X
 
 		os->write_file(os->error_handle, stream_to_s8(&err));
 	}
 
-	#define X(name) if (!cl->name) cl->name = name ## _stub;
+	#define X(name, symname) if (!cl->name) cl->name = cuda_ ## name ## _stub;
 	CUDA_LIB_FNS
 	#undef X
 
@@ -349,7 +349,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 		os_add_file_watch(&ctx->os, memory, s8(OS_CUDA_LIB_NAME), load_cuda_lib,
 		                  (iptr)&ctx->cuda_lib);
 	} else {
-		#define X(name) if (!ctx->cuda_lib.name) ctx->cuda_lib.name = name ## _stub;
+		#define X(name, symname) if (!ctx->cuda_lib.name) ctx->cuda_lib.name = cuda_ ## name ## _stub;
 		CUDA_LIB_FNS
 		#undef X
 	}

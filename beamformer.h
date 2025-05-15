@@ -24,13 +24,13 @@ typedef struct {
 	b32  executable_reloaded;
 } BeamformerInput;
 
-#define INIT_CUDA_CONFIGURATION_FN(name) void name(u32 *input_dims, u32 *decoded_dims)
-typedef INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_fn);
-INIT_CUDA_CONFIGURATION_FN(init_cuda_configuration_stub) {}
+#define CUDA_INIT_FN(name) void name(u32 *input_dims, u32 *decoded_dims)
+typedef CUDA_INIT_FN(cuda_init_fn);
+CUDA_INIT_FN(cuda_init_stub) {}
 
-#define REGISTER_CUDA_BUFFERS_FN(name) void name(u32 *rf_data_ssbos, u32 rf_buffer_count, u32 raw_data_ssbo)
-typedef REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_fn);
-REGISTER_CUDA_BUFFERS_FN(register_cuda_buffers_stub) {}
+#define CUDA_REGISTER_BUFFERS_FN(name) void name(u32 *rf_data_ssbos, u32 rf_buffer_count, u32 raw_data_ssbo)
+typedef CUDA_REGISTER_BUFFERS_FN(cuda_register_buffers_fn);
+CUDA_REGISTER_BUFFERS_FN(cuda_register_buffers_stub) {}
 
 #define CUDA_DECODE_FN(name) void name(size_t input_offset, u32 output_buffer_idx, u32 rf_channel_offset)
 typedef CUDA_DECODE_FN(cuda_decode_fn);
@@ -45,16 +45,15 @@ typedef CUDA_SET_CHANNEL_MAPPING_FN(cuda_set_channel_mapping_fn);
 CUDA_SET_CHANNEL_MAPPING_FN(cuda_set_channel_mapping_stub) {}
 
 #define CUDA_LIB_FNS \
-	X(cuda_decode)              \
-	X(cuda_hilbert)             \
-	X(cuda_set_channel_mapping) \
-	X(init_cuda_configuration)  \
-	X(register_cuda_buffers)
+	X(decode,              "cuda_decode")              \
+	X(hilbert,             "cuda_hilbert")             \
+	X(init,                "init_cuda_configuration")  \
+	X(register_buffers,    "register_cuda_buffers")    \
+	X(set_channel_mapping, "cuda_set_channel_mapping")
 
 typedef struct {
-	void                       *lib;
-	u64                         timestamp;
-	#define X(name) name ## _fn *name;
+	void *lib;
+	#define X(name, symname) cuda_ ## name ## _fn *name;
 	CUDA_LIB_FNS
 	#undef X
 } CudaLib;

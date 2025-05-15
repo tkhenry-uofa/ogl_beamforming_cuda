@@ -136,9 +136,8 @@ alloc_shader_storage(BeamformerCtx *ctx, u32 rf_raw_size, Arena a)
 	}
 
 	/* NOTE(rnp): these are stubs when CUDA isn't supported */
-	ctx->cuda_lib.register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
-		                            cs->raw_data_ssbo);
-	ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim, bp->dec_data_dim);
+	ctx->cuda_lib.register_buffers(cs->rf_data_ssbos, countof(cs->rf_data_ssbos), cs->raw_data_ssbo);
+	ctx->cuda_lib.init(bp->rf_raw_dim, bp->dec_data_dim);
 
 	u32  order    = cs->dec_data_dim.z;
 	i32 *hadamard = make_hadamard_transpose(&a, order);
@@ -291,11 +290,11 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_CUDA_DECODE:
-		ctx->cuda_lib.cuda_decode(0, output_ssbo_idx, 0);
+		ctx->cuda_lib.decode(0, output_ssbo_idx, 0);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_CUDA_HILBERT:
-		ctx->cuda_lib.cuda_hilbert(input_ssbo_idx, output_ssbo_idx);
+		ctx->cuda_lib.hilbert(input_ssbo_idx, output_ssbo_idx);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case CS_DEMOD:
@@ -516,7 +515,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				tex_type          = GL_SHORT;
 				tex_format        = GL_RED_INTEGER;
 				tex_element_count = ARRAY_COUNT(sm->channel_mapping);
-				ctx->cuda_lib.cuda_set_channel_mapping(sm->channel_mapping);
+				ctx->cuda_lib.set_channel_mapping(sm->channel_mapping);
 			} break;
 			case BU_KIND_FOCAL_VECTORS: {
 				tex_1d            = cs->focal_vectors_texture;
