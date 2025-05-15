@@ -138,7 +138,7 @@ alloc_shader_storage(BeamformerCtx *ctx, u32 rf_raw_size, Arena a)
 	/* NOTE(rnp): these are stubs when CUDA isn't supported */
 	ctx->cuda_lib.register_cuda_buffers(cs->rf_data_ssbos, ARRAY_COUNT(cs->rf_data_ssbos),
 		                            cs->raw_data_ssbo);
-	ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim.E, bp->dec_data_dim.E);
+	ctx->cuda_lib.init_cuda_configuration(bp->rf_raw_dim, bp->dec_data_dim);
 
 	u32  order    = cs->dec_data_dim.z;
 	i32 *hadamard = make_hadamard_transpose(&a, order);

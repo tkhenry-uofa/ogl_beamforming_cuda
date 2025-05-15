@@ -74,11 +74,13 @@
     <NMakeBuildCommandLine>C:\msys64\usr\bin\bash.exe  -c "export MSYSTEM=CLANG64 &amp;&amp; source /etc/profile &amp;&amp; cd - &amp;&amp; ./build_win.sh  -d "</NMakeBuildCommandLine>
     <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(SolutionDir)$(Platform)\$(Configuration)\</LibraryPath>
     <IncludePath>$(ProjectDir)external\include;$(IncludePath)</IncludePath>
+    <OutDir>$(ProjectDir)</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>$(ProjectDir)external\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(SolutionDir)$(Platform)\$(Configuration)\</LibraryPath>
     <NMakeBuildCommandLine>C:\msys64\usr\bin\bash.exe  -c "export MSYSTEM=CLANG64 &amp;&amp; source /etc/profile &amp;&amp; cd - &amp;&amp; ./build_win.sh  "</NMakeBuildCommandLine>
+    <OutDir>$(ProjectDir)</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
