@@ -107,7 +107,7 @@ float cylindricalwave_transmit_distance(vec3 point, float focal_depth, float tra
 	return length(orientation_projection(point - f, tx_rows));
 }
 
-vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
+vec3 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 {
 	int ridx      = 0;
 	int direction = beamform_plane;
@@ -119,7 +119,7 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 	vec3 receive_point = world_space_to_rca_space(image_point, !rx_col);
 	delta = orientation_projection(delta, !rx_col);
 
-	vec2 sum = vec2(0);
+	vec3 sum = vec3(0);
 	/* NOTE: For Each Acquistion in Raw Data */
 	// uint i = (dec_data_dim.z - 1) * uint(clamp(u_cycle_t, 0, 1)); {
 	for (int i = 0; i < dec_data_dim.z; i++) {
@@ -142,7 +142,9 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float sidx  = sample_index(transmit_distance + length(receive_distance));
 			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
-			sum        += apodize(sample_rf(ridx, sidx), apodization_arg, length(receive_distance.xy)) * valid;
+			vec2 samp   = valid * apodize(sample_rf(ridx, sidx), apodization_arg,
+			                              length(receive_distance.xy));
+			sum += vec3(samp, length(samp));
 			receive_distance -= delta;
 			ridx             += int(dec_data_dim.x);
 		}
@@ -150,7 +152,7 @@ vec2 RCA(vec3 image_point, vec3 delta, float apodization_arg)
 	return sum;
 }
 
-vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
+vec3 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 {
 	int uhercules  = int(das_shader_id == DAS_ID_UHERCULES);
 	int ridx       = int(dec_data_dim.y * dec_data_dim.x * uhercules);
@@ -174,7 +176,7 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 		                                                      !tx_col);
 	}
 
-	vec2 sum = vec2(0);
+	vec3 sum = vec3(0);
 	/* NOTE: For Each Acquistion in Raw Data */
 	for (int i = uhercules; i < dec_data_dim.z; i++) {
 		int channel = imageLoad(sparse_elements, i - uhercules).x;
@@ -190,15 +192,16 @@ vec2 HERCULES(vec3 image_point, vec3 delta, float apodization_arg)
 			/* NOTE: tribal knowledge */
 			if (i == 0) valid *= inversesqrt(dec_data_dim.z);
 
-			sum  += apodize(sample_rf(ridx, sidx), apodization_arg,
-			                length(receive_distance.xy)) * valid;
+			vec2 samp = valid * apodize(sample_rf(ridx, sidx), apodization_arg,
+			                            length(receive_distance.xy));
+			sum  += vec3(samp, length(samp));
 			ridx += int(dec_data_dim.x);
 		}
 	}
 	return sum;
 }
 
-vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
+vec3 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 {
 	/* NOTE: skip first acquisition in uforces since its garbage */
 	int uforces = int(das_shader_id == DAS_ID_UFORCES);
@@ -206,7 +209,7 @@ vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 
 	image_point  = (xdc_transform * vec4(image_point, 1)).xyz;
 
-	vec2 sum = vec2(0);
+	vec3 sum = vec3(0);
 	for (int i = uforces; i < dec_data_dim.z; i++) {
 		int   channel        = imageLoad(sparse_elements, i - uforces).x;
 		vec2  recieve_point  = image_point.xz;
@@ -216,8 +219,9 @@ vec2 uFORCES(vec3 image_point, vec3 delta, float apodization_arg)
 		for (uint j = 0; j < dec_data_dim.y; j++) {
 			float sidx  = sample_index(transmit_dist + length(recieve_point));
 			vec2 valid  = vec2(sidx >= 0) * vec2(sidx < dec_data_dim.x);
-			sum        += valid * apodize(sample_rf(ridx, sidx), apodization_arg,
+			vec2 samp   = valid * apodize(sample_rf(ridx, sidx), apodization_arg,
 			                              recieve_point.x);
+			sum        += vec3(samp, length(samp));
 			ridx       += int(dec_data_dim.x);
 			recieve_point.x -= delta.x;
 		}
@@ -241,7 +245,7 @@ void main()
 	float apod_arg = f_number * radians(180) / abs(image_point.z);
 
 	/* NOTE: skip over channels corresponding to other arrays */
-	vec2 sum;
+	vec3 sum;
 	switch (das_shader_id) {
 	case DAS_ID_FORCES:
 	case DAS_ID_UFORCES:
@@ -258,5 +262,8 @@ void main()
 		break;
 	}
 
-	imageStore(u_out_data_tex, out_coord, vec4(sum, 0, 0));
+	/* TODO(rnp): scale such that brightness remains ~constant */
+	if (coherency_weighting) sum.xy *= sum.xy / (sum.z + float(sum.z == 0));
+
+	imageStore(u_out_data_tex, out_coord, vec4(sum.xy, 0, 0));
 }

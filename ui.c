@@ -955,9 +955,12 @@ add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 	add_beamformer_variable_f32(ui, group, &ui->arena, s8("F#:"), s8(""), &bp->f_number,
 	                            (v2){.y = 1e3}, 1, 0.1, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-	local_persist s8 interpolate_labels[] = {s8("False"), s8("True")};
+	local_persist s8 true_false_labels[] = {s8("False"), s8("True")};
 	add_variable_cycler(ui, group, &ui->arena, V_CAUSES_COMPUTE, ui->font, s8("Interpolate:"),
-	                    &bp->interpolate, interpolate_labels, countof(interpolate_labels));
+	                    &bp->interpolate, true_false_labels, countof(true_false_labels));
+
+	add_variable_cycler(ui, group, &ui->arena, V_CAUSES_COMPUTE, ui->font, s8("Coherency Weighting:"),
+	                    &bp->coherency_weighting, true_false_labels, countof(true_false_labels));
 
 	return result;
 }

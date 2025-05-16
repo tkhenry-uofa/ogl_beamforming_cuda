@@ -7,7 +7,7 @@
  *      programatically would be nice.
  */
 
-#define BEAMFORMER_PARAMETERS_VERSION (1UL)
+#define BEAMFORMER_PARAMETERS_VERSION (2UL)
 
 /* X(enumarant, number, shader file name, needs header, pretty name) */
 #define COMPUTE_SHADERS \
@@ -83,7 +83,8 @@ typedef enum {
 	X(off_axis_pos,          float,       , float,   , "/* [m] Position on screen normal to beamform in TPW/VLSHERCULES */") \
 	X(beamform_plane,        int32_t,     , int,     , "/* Plane to Beamform in TPW/VLS/HERCULES */")                        \
 	X(f_number,              float,       , float,   , "/* F# (set to 0 to disable) */")                                     \
-	X(interpolate,           uint32_t,    , bool,    , "/* Perform Cubic Interpolation of RF Samples */")
+	X(interpolate,           uint32_t,    , bool,    , "/* Perform Cubic Interpolation of RF Samples */")                    \
+	X(coherency_weighting,   uint32_t,    , bool,    , "/* Apply coherency weighting to output data */")
 
 #define BEAMFORMER_PARAMS_HEAD_V0 \
 	X(channel_mapping,   uint16_t, [256], uvec4, [32], "/* Transducer Channel to Verasonics Channel */")                           \
@@ -122,7 +123,7 @@ typedef struct {
 	BEAMFORMER_PARAMS_HEAD_V0
 	BEAMFORMER_UI_PARAMS
 	BEAMFORMER_PARAMS_TAIL
-	float _pad[3];
+	float _pad[2];
 } BeamformerParametersV0;
 
 /* NOTE: This struct follows the OpenGL std140 layout. DO NOT modify unless you have
@@ -131,7 +132,7 @@ typedef struct {
 	BEAMFORMER_PARAMS_HEAD
 	BEAMFORMER_UI_PARAMS
 	BEAMFORMER_PARAMS_TAIL
-	float _pad[3];
+	float _pad[2];
 } BeamformerParameters;
 #undef X
 
