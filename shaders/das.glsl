@@ -26,7 +26,7 @@ vec2 cubic(int ridx, float x)
 	);
 
 	int   xk = int(floor(x));
-	float t  = (x  - float(xk));
+	float t  = x - floor(x);
 	vec4  S  = vec4(t * t * t, t * t, t, 1);
 
 	vec2 P1 = rf_data[ridx + xk];
@@ -34,9 +34,8 @@ vec2 cubic(int ridx, float x)
 	vec2 T1 = C_SPLINE * (P2 - rf_data[ridx + xk - 1]);
 	vec2 T2 = C_SPLINE * (rf_data[ridx + xk + 2] - P1);
 
-	vec4 C1 = vec4(P1.x, P2.x, T1.x, T2.x);
-	vec4 C2 = vec4(P1.y, P2.y, T1.y, T2.y);
-	return vec2(dot(S, h * C1), dot(S, h * C2));
+	mat2x4 C = mat2x4(vec4(P1.x, P2.x, T1.x, T2.x), vec4(P1.y, P2.y, T1.y, T2.y));
+	return S * h * C;
 }
 
 vec2 sample_rf(int ridx, float t)
