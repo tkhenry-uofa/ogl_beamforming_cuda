@@ -1,4 +1,30 @@
-#define force_inline inline __attribute__((always_inline))
+/* See LICENSE for license details. */
+#ifdef __clang__
+  #define COMPILER_CLANG 1
+#elif  _MSC_VER
+  #define COMPILER_MSVC  1
+#elif  __GNUC__
+  #define COMPILER_GCC   1
+#else
+  #error Unsupported Compiler
+#endif
+
+#if COMPILER_CLANG || COMPILER_GCC
+  #define force_inline inline __attribute__((always_inline))
+#elif COMPILER_MSVC
+  #define force_inline __forceinline
+#endif
+
+#if COMPILER_MSVC || (COMPILER_CLANG && _WIN32)
+  #pragma section(".rdata$", read)
+  #define read_only __declspec(allocate(".rdata$"))
+#elif COMPILER_CLANG
+  #define read_only __attribute__((section(".rodata")))
+#elif COMPILER_GCC
+  /* TODO(rnp): how do we do this with gcc, putting it in rodata causes warnings and writing to
+   * it doesn't cause a fault */
+  #define read_only
+#endif
 
 /* TODO(rnp): msvc probably won't build this but there are other things preventing that as well */
 #define sqrt_f32(a)     __builtin_sqrtf(a)
