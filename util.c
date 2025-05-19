@@ -810,20 +810,45 @@ kronecker_product(i32 *out, i32 *a, uv2 a_dim, i32 *b, uv2 b_dim)
 function i32 *
 make_hadamard_transpose(Arena *a, u32 dim)
 {
+	read_only local_persist	i32 hadamard_12_12_transpose[] = {
+		1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
+		1, -1, -1,  1, -1, -1, -1,  1,  1,  1, -1,  1,
+		1,  1, -1, -1,  1, -1, -1, -1,  1,  1,  1, -1,
+		1, -1,  1, -1, -1,  1, -1, -1, -1,  1,  1,  1,
+		1,  1, -1,  1, -1, -1,  1, -1, -1, -1,  1,  1,
+		1,  1,  1, -1,  1, -1, -1,  1, -1, -1, -1,  1,
+		1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1, -1,
+		1, -1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1,
+		1, -1, -1,  1,  1,  1, -1,  1, -1, -1,  1, -1,
+		1, -1, -1, -1,  1,  1,  1, -1,  1, -1, -1,  1,
+		1,  1, -1, -1, -1,  1,  1,  1, -1,  1, -1, -1,
+		1, -1,  1, -1, -1, -1,  1,  1,  1, -1,  1, -1,
+	};
+
 	i32 *result = 0;
 
 	b32 power_of_2     = ISPOWEROF2(dim);
 	b32 multiple_of_12 = dim % 12 == 0;
+	b32 multiple_of_20 = dim % 20 == 0;
 	iz elements        = dim * dim;
 
-	if (dim && (power_of_2 || multiple_of_12) &&
-	    arena_capacity(a, i32) >= elements * (1 + !power_of_2))
-	{
-		if (!power_of_2) dim /= 12;
+	u32 base_dim = 0;
+	if (power_of_2) {
+		base_dim  = dim;
+	} else if (multiple_of_20) {
+		/* TODO(rnp): hadamard 20 */
+		//base_dim  = 20;
+		//dim      /= 20;
+	} else if (multiple_of_12 && dim != 36) {
+		base_dim  = 12;
+		dim      /= 12;
+	}
+
+	if (ISPOWEROF2(dim) && base_dim && arena_capacity(a, i32) >= elements * (1 + (dim != base_dim))) {
 		result = push_array(a, i32, elements);
 
 		Arena tmp = *a;
-		i32 *m = power_of_2 ? result : push_array(&tmp, i32, elements);
+		i32 *m = dim == base_dim ? result : push_array(&tmp, i32, elements);
 
 		#define IND(i, j) ((i) * dim + (j))
 		m[0] = 1;
@@ -839,23 +864,12 @@ make_hadamard_transpose(Arena *a, u32 dim)
 		}
 		#undef IND
 
-		if (!power_of_2) {
-			local_persist i32 hadamard_12_12_transpose[] = {
-				1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
-				1, -1, -1,  1, -1, -1, -1,  1,  1,  1, -1,  1,
-				1,  1, -1, -1,  1, -1, -1, -1,  1,  1,  1, -1,
-				1, -1,  1, -1, -1,  1, -1, -1, -1,  1,  1,  1,
-				1,  1, -1,  1, -1, -1,  1, -1, -1, -1,  1,  1,
-				1,  1,  1, -1,  1, -1, -1,  1, -1, -1, -1,  1,
-				1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1, -1,
-				1, -1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1,
-				1, -1, -1,  1,  1,  1, -1,  1, -1, -1,  1, -1,
-				1, -1, -1, -1,  1,  1,  1, -1,  1, -1, -1,  1,
-				1,  1, -1, -1, -1,  1,  1,  1, -1,  1, -1, -1,
-				1, -1,  1, -1, -1, -1,  1,  1,  1, -1,  1, -1,
-			};
-			kronecker_product(result, m, (uv2){.x = dim, .y = dim},
-			                  hadamard_12_12_transpose, (uv2){.x = 12, .y = 12});
+		if (dim != base_dim) {
+			ASSERT(base_dim == 12);
+			i32 *m2 = hadamard_12_12_transpose;
+			kronecker_product(result,
+			                  m,  (uv2){.x = dim,      .y = dim},
+			                  m2, (uv2){.x = base_dim, .y = base_dim});
 		}
 	}
 
