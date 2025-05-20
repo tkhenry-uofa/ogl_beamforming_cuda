@@ -428,6 +428,8 @@ cmd_base(Arena *a, Options *o)
 	if (o->debug) cmd_append(a, &result, "-O0", "-D_DEBUG", "-Wno-unused-function");
 	else          cmd_append(a, &result, "-O3");
 
+	if (is_w32 && is_clang) cmd_append(a, &result, "-fms-extensions");
+
 	if (o->debug && is_unix) cmd_append(a, &result, "-ggdb");
 
 	if (o->sanitize) cmd_append(a, &result, "-fsanitize=address,undefined");
