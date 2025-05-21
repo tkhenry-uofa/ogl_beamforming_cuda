@@ -19,26 +19,13 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#define is_aarch64 0
-#define is_amd64   0
-#define is_unix    0
-#define is_w32     0
-#define is_clang   0
+#define is_aarch64 ARCH_ARM64
+#define is_amd64   ARCH_X64
+#define is_unix    OS_LINUX
+#define is_w32     OS_WINDOWS
+#define is_clang   COMPILER_CLANG
 
-#ifdef __ARM_ARCH_ISA_A64
-#undef is_aarch64
-#define is_aarch64 1
-#elif __x86_64__
-#undef is_amd64
-#define is_amd64 1
-#else
-#error unsupported architecture
-#endif
-
-#if defined(__linux__)
-
-  #undef  is_unix
-  #define is_unix 1
+#if OS_LINUX
 
   #include <errno.h>
   #include <string.h>
@@ -50,10 +37,7 @@
   #define OS_SHARED_LIB(s)  s ".so"
   #define OS_MAIN "main_linux.c"
 
-#elif defined(_WIN32)
-
-  #undef  is_w32
-  #define is_w32 1
+#elif OS_WINDOWS
 
   #include "os_win32.c"
 
@@ -64,12 +48,12 @@
   #error Unsupported Platform
 #endif
 
-#ifdef __clang__
-#undef  is_clang
-#define is_clang 1
-#define COMPILER "clang"
+#if COMPILER_CLANG
+  #define COMPILER "clang"
+#elif COMPILER_MSVC
+  #define COMPILER "cl"
 #else
-#define COMPILER "cc"
+  #define COMPILER "cc"
 #endif
 
 #define shift(list, count) ((count)--, *(list)++)
@@ -135,7 +119,7 @@ stream_push_command(Stream *s, CommandList *c)
 	}
 }
 
-#if defined(__unix__)
+#if OS_LINUX
 
 function b32
 os_rename_file(char *name, char *new)
@@ -211,7 +195,7 @@ os_wait_close_process(iptr handle)
 	return result;
 }
 
-#elif defined(_WIN32)
+#elif OS_WINDOWS
 
 enum {
 	MOVEFILE_REPLACE_EXISTING = 0x01,

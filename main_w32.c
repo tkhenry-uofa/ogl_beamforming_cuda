@@ -1,5 +1,7 @@
 /* See LICENSE for license details. */
-#ifndef _WIN32
+#include "compiler.h"
+
+#if !OS_WINDOWS
 #error This file is only meant to be compiled for Win32
 #endif
 

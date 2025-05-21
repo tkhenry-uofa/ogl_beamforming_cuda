@@ -1,4 +1,6 @@
 /* See LICENSE for license details. */
+#include "../compiler.h"
+
 #include "../util.h"
 #include "../beamformer_parameters.h"
 #include "ogl_beamformer_lib_base.h"
@@ -9,9 +11,9 @@
 global BeamformerSharedMemory *g_bp;
 global BeamformerLibErrorKind  g_lib_last_error;
 
-#if defined(__linux__)
+#if OS_LINUX
 #include "../os_linux.c"
-#elif defined(_WIN32)
+#elif OS_WINDOWS
 #include "../os_win32.c"
 
 #define PIPE_TYPE_BYTE      0x00
@@ -33,7 +35,7 @@ W32(void) Sleep(u32);
 #error Unsupported Platform
 #endif
 
-#if defined(__linux__)
+#if OS_LINUX
 
 function Pipe
 os_open_read_pipe(char *name)
@@ -84,7 +86,7 @@ os_open_shared_memory_area(char *name)
 	return result;
 }
 
-#elif defined(_WIN32)
+#elif OS_WINDOWS
 
 /* TODO(rnp): temporary workaround */
 function OS_WAIT_ON_VALUE_FN(os_wait_on_value_stub)

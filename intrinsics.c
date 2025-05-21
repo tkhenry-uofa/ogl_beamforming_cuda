@@ -1,13 +1,5 @@
 /* See LICENSE for license details. */
-#ifdef __clang__
-  #define COMPILER_CLANG 1
-#elif  _MSC_VER
-  #define COMPILER_MSVC  1
-#elif  __GNUC__
-  #define COMPILER_GCC   1
-#else
-  #error Unsupported Compiler
-#endif
+#include "compiler.h"
 
 #if COMPILER_CLANG || COMPILER_GCC
   #define force_inline inline __attribute__((always_inline))
@@ -15,7 +7,7 @@
   #define force_inline __forceinline
 #endif
 
-#if COMPILER_MSVC || (COMPILER_CLANG && _WIN32)
+#if COMPILER_MSVC || (COMPILER_CLANG && OS_WINDOWS)
   #pragma section(".rdata$", read)
   #define read_only __declspec(allocate(".rdata$"))
 #elif COMPILER_CLANG
@@ -54,7 +46,7 @@ ctz_u32(u32 a)
 	return result;
 }
 
-#ifdef __ARM_ARCH_ISA_A64
+#if ARCH_ARM64
 /* TODO? debuggers just loop here forever and need a manual PC increment (step over) */
 #define debugbreak() asm volatile ("brk 0xf000")
 
@@ -79,7 +71,7 @@ typedef int32x4_t   i32x4;
 #define store_f32x4(a, o)     vst1q_f32(o, a)
 #define store_i32x4(a, o)     vst1q_s32(o, a)
 
-#elif __x86_64__
+#elif ARCH_X64
 #include <immintrin.h>
 typedef __m128  f32x4;
 typedef __m128i i32x4;

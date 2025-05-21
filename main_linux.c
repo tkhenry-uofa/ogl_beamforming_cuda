@@ -1,5 +1,7 @@
 /* See LICENSE for license details. */
-#ifndef __linux__
+#include "compiler.h"
+
+#if !OS_LINUX
 #error This file is only meant to be compiled for Linux
 #endif
 
