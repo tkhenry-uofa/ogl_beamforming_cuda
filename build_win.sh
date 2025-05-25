@@ -15,7 +15,7 @@ copy_if_exists() {
 }
 
 
-output_path="../x64"
+output_path="../output"
 
 cc=${CC:-cc}
 
