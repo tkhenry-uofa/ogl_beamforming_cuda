@@ -319,6 +319,37 @@ run_synchronous(Arena a, CommandList *command)
 	return os_wait_close_process(os_spawn_process(command, sb));
 }
 
+function CommandList
+cmd_base(Arena *a, Options *o)
+{
+	CommandList result = {0};
+	cmd_append(a, &result, COMPILER);
+
+	/* TODO(rnp): support cross compiling with clang */
+	if (!o->generic)     cmd_append(a, &result, "-march=native");
+	else if (is_amd64)   cmd_append(a, &result, "-march=x86-64-v3");
+	else if (is_aarch64) cmd_append(a, &result, "-march=armv8");
+
+	cmd_append(a, &result, COMMON_FLAGS);
+
+	if (o->debug) cmd_append(a, &result, "-O0", "-D_DEBUG", "-Wno-unused-function");
+	else          cmd_append(a, &result, "-O3");
+
+	if (is_w32 && is_clang) cmd_append(a, &result, "-fms-extensions");
+
+	if (o->debug && is_unix) cmd_append(a, &result, "-ggdb");
+
+	if (o->sanitize) cmd_append(a, &result, "-fsanitize=address,undefined");
+
+	if (o->report) {
+		if (is_clang) cmd_append(a, &result, "-fproc-stat-report");
+		else printf("warning: timing not supported with this compiler\n");
+		/* TODO(rnp): basic timing */
+	}
+
+	return result;
+}
+
 function void
 check_rebuild_self(Arena arena, i32 argc, char *argv[])
 {
@@ -331,8 +362,8 @@ check_rebuild_self(Arena arena, i32 argc, char *argv[])
 		if (!os_rename_file(binary, old_name))
 			die("failed to move: %s -> %s\n", binary, old_name);
 
-		CommandList c = {0};
-		cmd_append(&arena, &c, COMPILER, "-march=native", "-O3", COMMON_FLAGS);
+		Options options = {0};
+		CommandList c = cmd_base(&arena, &options);
 		cmd_append(&arena, &c, "-Wno-unused-function", __FILE__, "-o", binary, (void *)0);
 		if (!run_synchronous(arena, &c)) {
 			os_rename_file(old_name, binary);
@@ -391,37 +422,6 @@ parse_options(i32 argc, char *argv[])
 		} else {
 			usage(argv0);
 		}
-	}
-
-	return result;
-}
-
-function CommandList
-cmd_base(Arena *a, Options *o)
-{
-	CommandList result = {0};
-	cmd_append(a, &result, COMPILER);
-
-	/* TODO(rnp): support cross compiling with clang */
-	if (!o->generic)     cmd_append(a, &result, "-march=native");
-	else if (is_amd64)   cmd_append(a, &result, "-march=x86-64-v3");
-	else if (is_aarch64) cmd_append(a, &result, "-march=armv8");
-
-	cmd_append(a, &result, COMMON_FLAGS);
-
-	if (o->debug) cmd_append(a, &result, "-O0", "-D_DEBUG", "-Wno-unused-function");
-	else          cmd_append(a, &result, "-O3");
-
-	if (is_w32 && is_clang) cmd_append(a, &result, "-fms-extensions");
-
-	if (o->debug && is_unix) cmd_append(a, &result, "-ggdb");
-
-	if (o->sanitize) cmd_append(a, &result, "-fsanitize=address,undefined");
-
-	if (o->report) {
-		if (is_clang) cmd_append(a, &result, "-fproc-stat-report");
-		else printf("warning: timing not supported with this compiler\n");
-		/* TODO(rnp): basic timing */
 	}
 
 	return result;
