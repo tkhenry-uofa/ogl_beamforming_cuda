@@ -212,7 +212,8 @@ function FILE_WATCH_CALLBACK_FN(reload_render_shader)
 	fragment.data -= header.len;
 	fragment.len  += header.len;
 	ASSERT(fragment.data == header.data);
-	u32 new_program = load_shader(os, tmp, 0, vertex, fragment, s8(""), path, s8("Render Shader"));
+	u32 new_program = load_shader(os, tmp, (s8 []){vertex, fragment},
+	                              (u32 []){GL_VERTEX_SHADER, GL_FRAGMENT_SHADER}, 2, path);
 	if (new_program) {
 		glDeleteProgram(ctx->shader);
 		ctx->shader  = new_program;
@@ -366,7 +367,6 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	#define X(e, sn, f, nh, pretty_name) do if (s8(f).len > 0) {                 \
 		ComputeShaderReloadContext *csr = push_struct(memory, typeof(*csr)); \
 		csr->beamformer_ctx = ctx;                                           \
-		csr->label          = s8("CS_" #e);                                  \
 		csr->shader         = sn;                                            \
 		csr->needs_header   = nh;                                            \
 		csr->path           = s8(static_path_join("shaders", f ".glsl"));    \

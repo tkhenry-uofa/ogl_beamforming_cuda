@@ -27,11 +27,11 @@ compile_shader(OS *os, Arena a, u32 type, s8 shader, s8 name)
 }
 
 function u32
-link_program(OS *os, Arena a, u32 *shader_ids, u32 shader_id_count)
+link_program(OS *os, Arena a, u32 *shader_ids, i32 shader_id_count)
 {
 	i32 success = 0;
 	u32 result  = glCreateProgram();
-	for (u32 i = 0; i < shader_id_count; i++)
+	for (i32 i = 0; i < shader_id_count; i++)
 		glAttachShader(result, shader_ids[i]);
 	glLinkProgram(result);
 	glGetProgramiv(result, GL_LINK_STATUS, &success);
@@ -50,26 +50,24 @@ link_program(OS *os, Arena a, u32 *shader_ids, u32 shader_id_count)
 }
 
 function u32
-load_shader(OS *os, Arena arena, b32 compute, s8 vs_text, s8 fs_text, s8 cs_text, s8 info_name, s8 label)
+load_shader(OS *os, Arena arena, s8 *shader_texts, u32 *shader_types, i32 count, s8 name)
 {
 	u32 result = 0;
-	if (compute) {
-		u32 shader_id = compile_shader(os, arena, GL_COMPUTE_SHADER, cs_text, info_name);
-		if (shader_id) result = link_program(os, arena, (u32 []){shader_id}, 1);
-		glDeleteShader(shader_id);
-	} else {
-		u32 fs_id = compile_shader(os, arena, GL_FRAGMENT_SHADER, fs_text, info_name);
-		u32 vs_id = compile_shader(os, arena, GL_VERTEX_SHADER,   vs_text, info_name);
-		if (fs_id && vs_id) result = link_program(os, arena, (u32 []){vs_id, fs_id}, 2);
-		glDeleteShader(fs_id);
-		glDeleteShader(vs_id);
+	u32 *ids   = push_array(&arena, u32, count);
+	b32 valid  = 1;
+	for (i32 i = 0; i < count; i++) {
+		ids[i]  = compile_shader(os, arena, shader_types[i], shader_texts[i], name);
+		valid  &= ids[i] != 0;
 	}
+
+	if (valid) result = link_program(os, arena, ids, count);
+	for (i32 i = 0; i < count; i++) glDeleteShader(ids[i]);
 
 	if (result) {
 		Stream buf = arena_stream(arena);
-		stream_append_s8s(&buf, s8("loaded: "), info_name, s8("\n"));
+		stream_append_s8s(&buf, s8("loaded: "), name, s8("\n"));
 		os->write_file(os->error_handle, stream_to_s8(&buf));
-		LABEL_GL_OBJECT(GL_PROGRAM, result, label);
+		LABEL_GL_OBJECT(GL_PROGRAM, result, name);
 	}
 
 	return result;

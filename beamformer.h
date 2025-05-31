@@ -198,10 +198,9 @@ typedef struct {
 
 struct ComputeShaderReloadContext {
 	BeamformerCtx *beamformer_ctx;
-	s8    label;
-	s8    path;
+	s8  path;
+	b32 needs_header;
 	ComputeShaderID shader;
-	b32   needs_header;
 };
 
 #define BEAMFORMER_FRAME_STEP_FN(name) void name(BeamformerCtx *ctx, Arena *arena, \

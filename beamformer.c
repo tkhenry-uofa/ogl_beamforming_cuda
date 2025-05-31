@@ -456,8 +456,8 @@ reload_compute_shader(BeamformerCtx *ctx, s8 path, s8 extra, ComputeShaderReload
 		Stream sb = arena_stream(tmp);
 		stream_append_s8s(&sb, path, extra);
 		s8 info = arena_stream_commit(&tmp, &sb);
-		u32 new_program = load_shader(&ctx->os, tmp, 1, s8(""), s8(""), shader_text,
-		                              info, csr->label);
+		u32 new_program = load_shader(&ctx->os, tmp, (s8 []){shader_text},
+		                              (u32 []){GL_COMPUTE_SHADER}, 1, info);
 		if (new_program) {
 			glDeleteProgram(cs->programs[csr->shader]);
 			cs->programs[csr->shader] = new_program;
