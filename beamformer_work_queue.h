@@ -3,7 +3,7 @@
 #define _BEAMFORMER_WORK_QUEUE_H_
 
 typedef struct BeamformComputeFrame BeamformComputeFrame;
-typedef struct ComputeShaderReloadContext ComputeShaderReloadContext;
+typedef struct ShaderReloadContext  ShaderReloadContext;
 
 typedef enum {
 	BW_COMPUTE,
@@ -39,7 +39,7 @@ typedef struct {
 		BeamformComputeFrame       *frame;
 		BeamformerUploadContext     upload_context;
 		BeamformOutputFrameContext  output_frame_ctx;
-		ComputeShaderReloadContext *reload_shader_ctx;
+		ShaderReloadContext        *shader_reload_context;
 		void                       *generic;
 	};
 	/* NOTE(rnp): mostly for __external__ processes to sync on. when passed from external
@@ -84,8 +84,8 @@ typedef struct {
 		};
 	};
 
-	ComputeShaderID compute_stages[MAX_COMPUTE_SHADER_STAGES];
-	u32             compute_stages_count;
+	ComputeShaderKind compute_stages[MAX_COMPUTE_SHADER_STAGES];
+	u32               compute_stages_count;
 
 	i32 parameters_sync;
 	i32 parameters_head_sync;

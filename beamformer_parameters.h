@@ -11,22 +11,22 @@
 
 /* X(enumarant, number, shader file name, needs header, pretty name) */
 #define COMPUTE_SHADERS \
-	X(CUDA_DECODE,           0, "",         0, "CUDA Decoding")   \
-	X(CUDA_HILBERT,          1, "",         0, "CUDA Hilbert")    \
-	X(DAS,                   2, "das",      1, "DAS")             \
-	X(DECODE,                3, "decode",   1, "Decoding")        \
-	X(DECODE_FLOAT,          4, "",         1, "Decoding (F32)")  \
-	X(DECODE_FLOAT_COMPLEX,  5, "",         1, "Decoding (F32C)") \
-	X(DEMOD,                 6, "demod",    1, "Demodulation")    \
-	X(MIN_MAX,               7, "min_max",  0, "Min/Max")         \
-	X(SUM,                   8, "sum",      0, "Sum")
+	X(CudaDecode,         0, "",         0, "CUDA Decode")   \
+	X(CudaHilbert,        1, "",         0, "CUDA Hilbert")  \
+	X(DASCompute,         2, "das",      1, "DAS")           \
+	X(Decode,             3, "decode",   1, "Decode")        \
+	X(DecodeFloat,        4, "",         1, "Decode (F32)")  \
+	X(DecodeFloatComplex, 5, "",         1, "Decode (F32C)") \
+	X(Demodulate,         6, "demod",    1, "Demodulate")    \
+	X(MinMax,             7, "min_max",  0, "Min/Max")       \
+	X(Sum,                8, "sum",      0, "Sum")
 
 typedef enum {
-	#define X(e, n, s, h, pn) CS_ ##e = n,
+	#define X(e, n, s, h, pn) ComputeShaderKind_##e = n,
 	COMPUTE_SHADERS
 	#undef X
-	CS_LAST
-} ComputeShaderID;
+	ComputeShaderKind_Count
+} ComputeShaderKind;
 
 /* X(type, id, pretty name) */
 #define DECODE_TYPES \

@@ -17,7 +17,7 @@ void main()
 	//vec2 min_max = texelFetch(u_out_data_tex, ivec3(0), textureQueryLevels(u_out_data_tex) - 1).xy;
 
 	/* TODO(rnp): select between x and y and specify slice */
-	ivec2 coord     = ivec2(fragment_texture_coordinate * vec2(out_data_dim.xz));
+	ivec2 coord     = ivec2(texture_coordinate * vec2(out_data_dim.xz));
 	ivec3 smp_coord = ivec3(coord.x, out_data_dim.y / 2, coord.y);
 	float smp       = length(texelFetch(u_out_data_tex, smp_coord, 0).xy);
 

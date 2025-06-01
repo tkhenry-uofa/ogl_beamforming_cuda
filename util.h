@@ -28,15 +28,17 @@
 		#define DEBUG_EXPORT
 	#endif
 	#define DEBUG_DECL(a) a
-	#define ASSERT(c) do { if (!(c)) debugbreak(); } while (0);
+	#define ASSERT(c) do { if (!(c)) debugbreak(); } while (0)
 #else
 	#define DEBUG_EXPORT function
 	#define DEBUG_DECL(a)
 	#define ASSERT(c)
 #endif
+#define assert ASSERT
 
 #define INVALID_CODE_PATH ASSERT(0)
-#define INVALID_DEFAULT_CASE default: ASSERT(0) break
+#define INVALID_DEFAULT_CASE default: ASSERT(0); break
+#define InvalidDefaultCase default: assert(0); break
 
 #define function      static
 #define global        static
@@ -217,7 +219,7 @@ typedef struct {
 	b32   asleep;
 } GLWorkerThreadContext;
 
-#define FILE_WATCH_CALLBACK_FN(name) b32 name(OS *os, s8 path, iptr user_data, Arena tmp)
+#define FILE_WATCH_CALLBACK_FN(name) b32 name(OS *os, s8 path, iptr user_data, Arena arena)
 typedef FILE_WATCH_CALLBACK_FN(file_watch_callback);
 
 typedef struct {

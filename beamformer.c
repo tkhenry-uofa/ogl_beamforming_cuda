@@ -9,6 +9,7 @@
  *      - In particular we will potentially need multiple GPUComputeContexts so that we
  *        can overwrite one while the other is in use.
  *      - make use of glFenceSync to guard buffer uploads
+ * [ ]: BeamformWorkQueue -> BeamformerWorkQueue
  */
 
 #include "beamformer.h"
@@ -267,7 +268,7 @@ compute_cursor_finished(struct compute_cursor *cursor)
 }
 
 function void
-do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, ComputeShaderID shader)
+do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, ShaderKind shader)
 {
 	ComputeShaderCtx *csctx = &ctx->csctx;
 
@@ -277,9 +278,9 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 	u32 input_ssbo_idx  = csctx->last_output_ssbo_index;
 
 	switch (shader) {
-	case CS_DECODE:
-	case CS_DECODE_FLOAT:
-	case CS_DECODE_FLOAT_COMPLEX:
+	case ShaderKind_Decode:
+	case ShaderKind_DecodeFloat:
+	case ShaderKind_DecodeFloatComplex:{
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
 		glBindImageTexture(0, csctx->hadamard_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8I);
@@ -288,24 +289,24 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		                  ORONE(csctx->dec_data_dim.y / 32),
 		                  ORONE(csctx->dec_data_dim.z));
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
-		break;
-	case CS_CUDA_DECODE:
+	}break;
+	case ShaderKind_CudaDecode:{
 		ctx->cuda_lib.decode(0, output_ssbo_idx, 0);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
-		break;
-	case CS_CUDA_HILBERT:
+	}break;
+	case ShaderKind_CudaHilbert:
 		ctx->cuda_lib.hilbert(input_ssbo_idx, output_ssbo_idx);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
-	case CS_DEMOD:
+	case ShaderKind_Demodulate:{
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
 		glDispatchCompute(ORONE(csctx->dec_data_dim.x / 32),
 		                  ORONE(csctx->dec_data_dim.y / 32),
 		                  ORONE(csctx->dec_data_dim.z));
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
-		break;
-	case CS_MIN_MAX: {
+	}break;
+	case ShaderKind_MinMax:{
 		u32 texture = frame->frame.texture;
 		for (u32 i = 1; i < frame->frame.mips; i++) {
 			glBindImageTexture(0, texture, i - 1, GL_TRUE, 0, GL_READ_ONLY,  GL_RG32F);
@@ -318,8 +319,8 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 			glDispatchCompute(ORONE(width / 32), ORONE(height), ORONE(depth / 32));
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
-	} break;
-	case CS_DAS: {
+	}break;
+	case ShaderKind_DASCompute:{
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
 		glBindImageTexture(0, frame->frame.texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
 		glBindImageTexture(1, csctx->sparse_elements_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16I);
@@ -354,8 +355,8 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		                  ORONE(frame->frame.dim.z / 32));
 		#endif
 		glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT|GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-	} break;
-	case CS_SUM: {
+	}break;
+	case ShaderKind_Sum:{
 		u32 aframe_index = ctx->averaged_frame_index % ARRAY_COUNT(ctx->averaged_frames);
 		BeamformComputeFrame *aframe = ctx->averaged_frames + aframe_index;
 		aframe->ready_to_present     = 0;
@@ -377,34 +378,23 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 
 		do_sum_shader(csctx, in_textures, frame_count, 1 / (f32)frame_count,
 		              aframe->frame.texture, aframe->frame.dim);
-		aframe->frame.min_coordinate = frame->frame.min_coordinate;
-		aframe->frame.max_coordinate = frame->frame.max_coordinate;
-		aframe->frame.compound_count = frame->frame.compound_count;
-		aframe->frame.das_shader_id  = frame->frame.das_shader_id;
-	} break;
-	default: ASSERT(0);
+		aframe->frame.min_coordinate  = frame->frame.min_coordinate;
+		aframe->frame.max_coordinate  = frame->frame.max_coordinate;
+		aframe->frame.compound_count  = frame->frame.compound_count;
+		aframe->frame.das_shader_kind = frame->frame.das_shader_kind;
+	}break;
+	InvalidDefaultCase;
 	}
 }
 
 function s8
-push_compute_shader_header(Arena *a, b32 parameters, ComputeShaderID shader)
+shader_text_with_header(ShaderReloadContext *ctx, OS *os, Arena *arena, char *path)
 {
-	Stream sb = arena_stream(*a);
+	Stream sb = arena_stream(*arena);
+	stream_append_s8s(&sb, s8("#version 460 core\n\n"), ctx->header);
 
-	stream_append_s8(&sb, s8("#version 460 core\n\n"));
-
-	#define X(name, type, size, gltype, glsize, comment) "\t" #gltype " " #name #glsize "; " comment "\n"
-	if (parameters) {
-		stream_append_s8(&sb, s8("layout(std140, binding = 0) uniform parameters {\n"
-		                         BEAMFORMER_PARAMS_HEAD
-		                         BEAMFORMER_UI_PARAMS
-		                         BEAMFORMER_PARAMS_TAIL
-		                         "};\n\n"));
-	}
-	#undef X
-
-	switch (shader) {
-	case CS_DAS: {
+	switch (ctx->kind) {
+	case ShaderKind_DASCompute:{
 		#define X(type, id, pretty, fixed_tx) "#define DAS_ID_" #type " " #id "\n"
 		stream_append_s8(&sb, s8(""
 		"layout(local_size_x = " str(DAS_LOCAL_SIZE_X) ", "
@@ -415,58 +405,76 @@ push_compute_shader_header(Arena *a, b32 parameters, ComputeShaderID shader)
 		DAS_TYPES
 		));
 		#undef X
-	} break;
-	case CS_DECODE_FLOAT:
-	case CS_DECODE_FLOAT_COMPLEX: {
-		if (shader == CS_DECODE_FLOAT) stream_append_s8(&sb, s8("#define INPUT_DATA_TYPE_FLOAT\n\n"));
-		else                           stream_append_s8(&sb, s8("#define INPUT_DATA_TYPE_FLOAT_COMPLEX\n\n"));
+	}break;
+	case ShaderKind_DecodeFloat:
+	case ShaderKind_DecodeFloatComplex:{
+		if (ctx->kind == ShaderKind_DecodeFloat)
+			stream_append_s8(&sb, s8("#define INPUT_DATA_TYPE_FLOAT\n\n"));
+		else
+			stream_append_s8(&sb, s8("#define INPUT_DATA_TYPE_FLOAT_COMPLEX\n\n"));
 	} /* FALLTHROUGH */
-	case CS_DECODE: {
+	case ShaderKind_Decode:{
 		#define X(type, id, pretty) stream_append_s8(&sb, s8("#define DECODE_MODE_" #type " " #id "\n"));
 		DECODE_TYPES
 		#undef X
-	} break;
-	case CS_MIN_MAX: {
+	}break;
+	case ShaderKind_MinMax:{
 		stream_append_s8(&sb, s8("layout(location = " str(CS_MIN_MAX_MIPS_LEVEL_UNIFORM_LOC)
 		                         ") uniform int u_mip_map;\n\n"));
-	} break;
-	case CS_SUM: {
+	}break;
+	case ShaderKind_Sum:{
 		stream_append_s8(&sb, s8("layout(location = " str(CS_SUM_PRESCALE_UNIFORM_LOC)
 		                         ") uniform float u_sum_prescale = 1.0;\n\n"));
-	} break;
-	default: break;
+	}break;
+	default:{}break;
 	}
 	stream_append_s8(&sb, s8("\n#line 1\n"));
-	return arena_stream_commit(a, &sb);
+
+	s8 result = arena_stream_commit(arena, &sb);
+	if (path) {
+		s8 file = os->read_whole_file(arena, path);
+		assert(file.data == result.data + result.len);
+		result.len += file.len;
+	}
+
+	return result;
+}
+
+DEBUG_EXPORT BEAMFORMER_RELOAD_SHADER_FN(beamformer_reload_shader)
+{
+	i32  shader_count = 1 + (src->link != 0);
+	s8  *shader_texts = push_array(&arena, s8,  shader_count);
+	u32 *shader_types = push_array(&arena, u32, shader_count);
+
+	if (src->link) {
+		shader_texts[0] = shader_text_with_header(src->link, &ctx->os, &arena, (c8 *)src->link->path.data);
+		shader_types[0] = src->link->gl_type;
+	}
+	shader_texts[shader_count - 1] = shader_text_with_header(src, &ctx->os, &arena, (c8 *)src->path.data);
+	shader_types[shader_count - 1] = src->gl_type;
+
+	u32 new_program = load_shader(&ctx->os, arena, shader_texts, shader_types, shader_count, shader_name);
+	if (new_program) {
+		glDeleteProgram(*src->shader);
+		*src->shader = new_program;
+		if (src->kind == ShaderKind_Render2D) ctx->frame_view_render_context.updated = 1;
+	}
+	return new_program != 0;
 }
 
 function b32
-reload_compute_shader(BeamformerCtx *ctx, s8 path, s8 extra, ComputeShaderReloadContext *csr, Arena tmp)
+reload_compute_shader(BeamformerCtx *ctx, ShaderReloadContext *src, s8 name_extra, Arena arena)
 {
-	ComputeShaderCtx *cs = &ctx->csctx;
-	b32 result = 0;
-
-	/* NOTE: arena works as stack (since everything here is 1 byte aligned) */
-	s8 header      = push_compute_shader_header(&tmp, csr->needs_header, csr->shader);
-	s8 shader_text = ctx->os.read_whole_file(&tmp, (c8 *)path.data);
-	shader_text.data -= header.len;
-	shader_text.len  += header.len;
-
-	if (shader_text.data == header.data) {
-		Stream sb = arena_stream(tmp);
-		stream_append_s8s(&sb, path, extra);
-		s8 info = arena_stream_commit(&tmp, &sb);
-		u32 new_program = load_shader(&ctx->os, tmp, (s8 []){shader_text},
-		                              (u32 []){GL_COMPUTE_SHADER}, 1, info);
-		if (new_program) {
-			glDeleteProgram(cs->programs[csr->shader]);
-			cs->programs[csr->shader] = new_program;
-			glUseProgram(cs->programs[csr->shader]);
-			glBindBufferBase(GL_UNIFORM_BUFFER, 0, cs->shared_ubo);
-		}
+	Stream sb  = arena_stream(arena);
+	stream_append_s8s(&sb, src->name, name_extra);
+	s8  name   = arena_stream_commit(&arena, &sb);
+	b32 result = beamformer_reload_shader(ctx, src, arena, name);
+	if (result) {
+		glUseProgram(*src->shader);
+		glBindBufferBase(GL_UNIFORM_BUFFER, 0, ctx->csctx.shared_ubo);
 	} else {
-		Stream sb = arena_stream(tmp);
-		stream_append_s8s(&sb, s8("failed to load: "), path, extra, s8("\n"));
+		sb.widx = 0;
+		stream_append_s8s(&sb, s8("failed to load: "), src->path, name_extra, s8("\n"));
 		ctx->os.write_file(ctx->os.error_handle, stream_to_s8(&sb));
 	}
 
@@ -485,15 +493,18 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 		b32 can_commit = 1;
 		switch (work->type) {
 		case BW_RELOAD_SHADER: {
-			ComputeShaderReloadContext *csr = work->reload_shader_ctx;
-			b32 success = reload_compute_shader(ctx, csr->path, s8(""), csr, arena);
-			if (csr->shader == CS_DECODE) {
+			ShaderReloadContext *src = work->shader_reload_context;
+			b32 success = reload_compute_shader(ctx, src, s8(""), arena);
+			if (src->kind == ShaderKind_Decode) {
 				/* TODO(rnp): think of a better way of doing this */
-				csr->shader = CS_DECODE_FLOAT_COMPLEX;
-				success &= reload_compute_shader(ctx, csr->path, s8(" (F32C)"), csr, arena);
-				csr->shader = CS_DECODE_FLOAT;
-				success &= reload_compute_shader(ctx, csr->path, s8(" (F32)"),  csr, arena);
-				csr->shader = CS_DECODE;
+				src->kind   = ShaderKind_DecodeFloatComplex;
+				src->shader = cs->programs + ShaderKind_DecodeFloatComplex;
+				success &= reload_compute_shader(ctx, src, s8(" (F32C)"), arena);
+				src->kind   = ShaderKind_DecodeFloat;
+				src->shader = cs->programs + ShaderKind_DecodeFloat;
+				success &= reload_compute_shader(ctx, src, s8(" (F32)"),  arena);
+				src->kind   = ShaderKind_Decode;
+				src->shader = cs->programs + ShaderKind_Decode;
 			}
 
 			if (success) {
@@ -576,19 +587,19 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			}
 
 			frame->in_flight = 1;
-			frame->frame.min_coordinate = v4_from_f32_array(bp->output_min_coordinate);
-			frame->frame.max_coordinate = v4_from_f32_array(bp->output_max_coordinate);
-			frame->frame.das_shader_id  = bp->das_shader_id;
-			frame->frame.compound_count = bp->dec_data_dim[2];
+			frame->frame.min_coordinate  = v4_from_f32_array(bp->output_min_coordinate);
+			frame->frame.max_coordinate  = v4_from_f32_array(bp->output_max_coordinate);
+			frame->frame.das_shader_kind = bp->das_shader_id;
+			frame->frame.compound_count  = bp->dec_data_dim[2];
 
 			b32 did_sum_shader = 0;
-			u32 stage_count = sm->compute_stages_count;
-			ComputeShaderID *stages = sm->compute_stages;
+			u32 stage_count    = sm->compute_stages_count;
+			ComputeShaderKind *stages = sm->compute_stages;
 			for (u32 i = 0; i < stage_count; i++) {
-				did_sum_shader |= stages[i] == CS_SUM;
+				did_sum_shader |= stages[i] == ComputeShaderKind_Sum;
 				frame->stats.timer_active[stages[i]] = 1;
 				glBeginQuery(GL_TIME_ELAPSED, frame->stats.timer_ids[stages[i]]);
-				do_compute_shader(ctx, arena, frame, stages[i]);
+				do_compute_shader(ctx, arena, frame, (ShaderKind)stages[i]);
 				glEndQuery(GL_TIME_ELAPSED);
 			}
 			/* NOTE(rnp): block until work completes so that we can record timings */

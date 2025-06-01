@@ -227,10 +227,11 @@ set_beamformer_pipeline(i32 *stages, i32 stages_count)
 	if (stages_count <= countof(g_bp->compute_stages)) {
 		if (check_shared_memory()) {
 			g_bp->compute_stages_count = 0;
-			for (i32 i = 0; i < stages_count; i++)
-				if (BETWEEN(stages[i], 0, CS_LAST))
+			for (i32 i = 0; i < stages_count; i++) {
+				if (BETWEEN(stages[i], 0, ComputeShaderKind_Count)) {
 					g_bp->compute_stages[g_bp->compute_stages_count++] = stages[i];
-
+				}
+			}
 			result = g_bp->compute_stages_count == stages_count;
 			if (!result) {
 				g_lib_last_error = BF_LIB_ERR_KIND_INVALID_COMPUTE_STAGE;

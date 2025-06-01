@@ -1253,17 +1253,17 @@ lerp_v4(v4 a, v4 b, f32 t)
 }
 
 function s8
-push_das_shader_id(Stream *s, DASShaderID shader, u32 transmit_count)
+push_das_shader_kind(Stream *s, DASShaderKind shader, u32 transmit_count)
 {
 	#define X(type, id, pretty, fixed_tx) s8(pretty),
-	local_persist s8 pretty_names[DAS_LAST + 1] = {DAS_TYPES s8("Invalid")};
+	read_only local_persist s8 pretty_names[DASShaderKind_Count + 1] = {DAS_TYPES s8("Invalid")};
 	#undef X
 	#define X(type, id, pretty, fixed_tx) fixed_tx,
-	local_persist u8 fixed_transmits[DAS_LAST + 1] = {DAS_TYPES 1};
+	read_only local_persist u8 fixed_transmits[DASShaderKind_Count + 1] = {DAS_TYPES 0};
 	#undef X
 
-	stream_append_s8(s, pretty_names[MIN(shader, DAS_LAST)]);
-	if (!fixed_transmits[MIN(shader, DAS_LAST)]) {
+	stream_append_s8(s, pretty_names[MIN(shader, DASShaderKind_Count)]);
+	if (!fixed_transmits[MIN(shader, DASShaderKind_Count)]) {
 		stream_append_byte(s, '-');
 		stream_append_u64(s, transmit_count);
 	}
@@ -1869,7 +1869,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 
 	{
 		Stream buf = arena_stream(a);
-		s8 shader  = push_das_shader_id(&buf, frame->das_shader_id, frame->compound_count);
+		s8 shader  = push_das_shader_kind(&buf, frame->das_shader_kind, frame->compound_count);
 		text_spec.font = &ui->font;
 		text_spec.limits.size.w -= 16;
 		v2 txt_s   = measure_text(*text_spec.font, shader);
@@ -1961,8 +1961,8 @@ draw_compute_progress_bar(BeamformerUI *ui, Arena arena, ComputeProgressBar *sta
 function v2
 draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *stats, Rect r)
 {
-	#define X(e, n, s, h, pn) [CS_##e] = s8(pn ":"),
-	local_persist s8 labels[CS_LAST] = { COMPUTE_SHADERS };
+	#define X(e, n, s, h, pn) [ComputeShaderKind_##e] = s8(pn ":"),
+	read_only local_persist s8 labels[ComputeShaderKind_Count] = { COMPUTE_SHADERS };
 	#undef X
 
 	BeamformerUI *ui     = ctx->ui;

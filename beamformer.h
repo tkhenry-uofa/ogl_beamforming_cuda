@@ -78,7 +78,7 @@ typedef struct {
 #define CS_SUM_PRESCALE_UNIFORM_LOC       1
 
 typedef struct {
-	u32 programs[CS_LAST];
+	u32 programs[ComputeShaderKind_Count];
 
 	/* NOTE: Decoded data is only relevant in the context of a single frame. We use two
 	 * buffers so that they can be swapped when chaining multiple compute stages */
@@ -101,19 +101,27 @@ typedef struct {
 } ComputeShaderCtx;
 
 typedef enum {
-#define X(type, id, pretty, fixed_tx) DAS_ ##type = id,
-DAS_TYPES
-#undef X
-DAS_LAST
-} DASShaderID;
+	#define X(type, id, pretty, fixed_tx) DASShaderKind_##type = id,
+	DAS_TYPES
+	#undef X
+	DASShaderKind_Count
+} DASShaderKind;
+
+typedef enum {
+	#define X(e, n, s, h, pn) ShaderKind_##e = n,
+	COMPUTE_SHADERS
+	#undef X
+	ShaderKind_Render2D,
+	ShaderKind_Count
+} ShaderKind;
 
 typedef struct {
 	/* TODO(rnp): there is assumption here that each shader will occur only once
 	 * per compute. add an insertion index and change these to hold the max number
 	 * of executed compute stages */
-	u32 timer_ids[CS_LAST];
-	f32 times[CS_LAST];
-	b32 timer_active[CS_LAST];
+	u32 timer_ids[ComputeShaderKind_Count];
+	f32 times[ComputeShaderKind_Count];
+	b32 timer_active[ComputeShaderKind_Count];
 } ComputeShaderStats;
 
 typedef struct BeamformFrame {
@@ -126,7 +134,7 @@ typedef struct BeamformFrame {
 	v4  max_coordinate;
 
 	u32 mips;
-	DASShaderID das_shader_id;
+	DASShaderKind das_shader_kind;
 	u32 compound_count;
 	u32 id;
 
@@ -196,11 +204,15 @@ typedef struct {
 	BeamformerSharedMemory *shared_memory;
 } BeamformerCtx;
 
-struct ComputeShaderReloadContext {
-	BeamformerCtx *beamformer_ctx;
-	s8  path;
-	b32 needs_header;
-	ComputeShaderID shader;
+struct ShaderReloadContext {
+	BeamformerCtx *beamformer_context;
+	s8   path;
+	s8   name;
+	s8   header;
+	u32 *shader;
+	ShaderReloadContext *link;
+	GLenum     gl_type;
+	ShaderKind kind;
 };
 
 #define BEAMFORMER_FRAME_STEP_FN(name) void name(BeamformerCtx *ctx, Arena *arena, \
@@ -212,5 +224,9 @@ typedef BEAMFORMER_COMPUTE_SETUP_FN(beamformer_compute_setup_fn);
 
 #define BEAMFORMER_COMPLETE_COMPUTE_FN(name) void name(iptr user_context, Arena arena, iptr gl_context)
 typedef BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute_fn);
+
+#define BEAMFORMER_RELOAD_SHADER_FN(name) b32 name(BeamformerCtx *ctx, ShaderReloadContext *src, \
+                                                   Arena arena, s8 shader_name)
+typedef BEAMFORMER_RELOAD_SHADER_FN(beamformer_reload_shader_fn);
 
 #endif /*_BEAMFORMER_H_ */

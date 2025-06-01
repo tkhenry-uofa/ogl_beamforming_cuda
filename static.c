@@ -11,6 +11,7 @@ global void *debug_lib;
 	X(beamformer_frame_step)           \
 	X(beamformer_complete_compute)     \
 	X(beamformer_compute_setup)        \
+	X(beamformer_reload_shader)        \
 	X(beamform_work_queue_push)        \
 	X(beamform_work_queue_push_commit)
 
@@ -21,7 +22,7 @@ DEBUG_ENTRY_POINTS
 function FILE_WATCH_CALLBACK_FN(debug_reload)
 {
 	BeamformerInput *input = (BeamformerInput *)user_data;
-	Stream err             = arena_stream(tmp);
+	Stream err             = arena_stream(arena);
 
 	/* NOTE(rnp): spin until compute thread finishes its work (we will probably
 	 * never reload while compute is in progress but just incase). */
@@ -180,60 +181,22 @@ dump_gl_params(GLParams *gl, Arena a, OS *os)
 #endif
 }
 
-function FILE_WATCH_CALLBACK_FN(reload_render_shader)
+function FILE_WATCH_CALLBACK_FN(reload_shader)
 {
-	FrameViewRenderContext *ctx = (typeof(ctx))user_data;
-
-	local_persist s8 vertex = s8(""
-	"#version 460 core\n"
-	"\n"
-	"layout(location = 0) in vec2 vertex_position;\n"
-	"layout(location = 1) in vec2 vertex_texture_coordinate;\n"
-	"\n"
-	"layout(location = 0) out vec2 fragment_texture_coordinate;\n"
-	"\n"
-	"void main()\n"
-	"{\n"
-	"\tfragment_texture_coordinate = vertex_texture_coordinate;\n"
-	"\tgl_Position = vec4(vertex_position, 0, 1);\n"
-	"}\n");
-
-	s8 header = push_s8(&tmp, s8(""
-	"#version 460 core\n\n"
-	"layout(location = 0) in  vec2 fragment_texture_coordinate;\n"
-	"layout(location = 0) out vec4 v_out_colour;\n\n"
-	"layout(location = " str(FRAME_VIEW_RENDER_DYNAMIC_RANGE_LOC) ") uniform float u_db_cutoff = 60;\n"
-	"layout(location = " str(FRAME_VIEW_RENDER_THRESHOLD_LOC)     ") uniform float u_threshold = 40;\n"
-	"layout(location = " str(FRAME_VIEW_RENDER_GAMMA_LOC)         ") uniform float u_gamma     = 1;\n"
-	"layout(location = " str(FRAME_VIEW_RENDER_LOG_SCALE_LOC)     ") uniform bool  u_log_scale;\n"
-	"\n#line 1\n"));
-
-	s8 fragment    = os->read_whole_file(&tmp, (c8 *)path.data);
-	fragment.data -= header.len;
-	fragment.len  += header.len;
-	ASSERT(fragment.data == header.data);
-	u32 new_program = load_shader(os, tmp, (s8 []){vertex, fragment},
-	                              (u32 []){GL_VERTEX_SHADER, GL_FRAGMENT_SHADER}, 2, path);
-	if (new_program) {
-		glDeleteProgram(ctx->shader);
-		ctx->shader  = new_program;
-		ctx->updated = 1;
-	}
-
-	return 1;
+	ShaderReloadContext *ctx = (typeof(ctx))user_data;
+	return beamformer_reload_shader(ctx->beamformer_context, ctx, arena, ctx->name);
 }
 
-
-function FILE_WATCH_CALLBACK_FN(queue_compute_shader_reload)
+function FILE_WATCH_CALLBACK_FN(reload_shader_indirect)
 {
-	ComputeShaderReloadContext *csr = (typeof(csr))user_data;
-	BeamformerCtx *ctx = csr->beamformer_ctx;
+	ShaderReloadContext *src = (typeof(src))user_data;
+	BeamformerCtx *ctx = src->beamformer_context;
 	BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
 	if (work) {
 		work->type = BW_RELOAD_SHADER;
-		work->reload_shader_ctx = csr;
+		work->shader_reload_context = src;
 		beamform_work_queue_push_commit(ctx->beamform_work_queue);
-		ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
+		os->wake_waiters(&os->compute_worker.sync_variable);
 	}
 	return 1;
 }
@@ -243,7 +206,7 @@ function FILE_WATCH_CALLBACK_FN(load_cuda_lib)
 	CudaLib *cl = (CudaLib *)user_data;
 	b32 result  = os_file_exists((c8 *)path.data);
 	if (result) {
-		Stream err = arena_stream(tmp);
+		Stream err = arena_stream(arena);
 
 		stream_append_s8(&err, s8("loading CUDA lib: " OS_CUDA_LIB_NAME "\n"));
 		os_unload_library(cl->lib);
@@ -340,8 +303,8 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	ctx->shared_memory->focal_vectors_sync   = 1;
 
 	/* NOTE: default compute shader pipeline */
-	ctx->shared_memory->compute_stages[0]    = CS_DECODE;
-	ctx->shared_memory->compute_stages[1]    = CS_DAS;
+	ctx->shared_memory->compute_stages[0]    = ComputeShaderKind_Decode;
+	ctx->shared_memory->compute_stages[1]    = ComputeShaderKind_DASCompute;
 	ctx->shared_memory->compute_stages_count = 2;
 
 	if (ctx->gl.vendor_id == GL_VENDOR_NVIDIA
@@ -364,14 +327,27 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	glEnable(GL_DEBUG_OUTPUT);
 #endif
 
-	#define X(e, sn, f, nh, pretty_name) do if (s8(f).len > 0) {                 \
-		ComputeShaderReloadContext *csr = push_struct(memory, typeof(*csr)); \
-		csr->beamformer_ctx = ctx;                                           \
-		csr->shader         = sn;                                            \
-		csr->needs_header   = nh;                                            \
-		csr->path           = s8(static_path_join("shaders", f ".glsl"));    \
-		os_add_file_watch(&ctx->os, memory, csr->path, queue_compute_shader_reload, (iptr)csr); \
-		queue_compute_shader_reload(&ctx->os, csr->path, (iptr)csr, *memory); \
+	#define X(name, type, size, gltype, glsize, comment) "\t" #gltype " " #name #glsize "; " comment "\n"
+	read_only local_persist s8 compute_parameters_header = s8(""
+		"layout(std140, binding = 0) uniform parameters {\n"
+		BEAMFORMER_PARAMS_HEAD
+		BEAMFORMER_UI_PARAMS
+		BEAMFORMER_PARAMS_TAIL
+		"};\n\n"
+	);
+	#undef X
+
+	#define X(e, sn, f, nh, pretty_name) do if (s8(f).len > 0) {          \
+		ShaderReloadContext *src = push_struct(memory, typeof(*src)); \
+		src->beamformer_context  = ctx;                               \
+		if (nh) src->header = compute_parameters_header;              \
+		src->path    = s8(static_path_join("shaders", f ".glsl"));    \
+		src->name    = src->path;                                     \
+		src->shader  = ctx->csctx.programs + ShaderKind_##e;          \
+		src->gl_type = GL_COMPUTE_SHADER;                             \
+		src->kind    = ShaderKind_##e;                                \
+		os_add_file_watch(&ctx->os, memory, src->path, reload_shader_indirect, (iptr)src); \
+		reload_shader_indirect(&ctx->os, src->path, (iptr)src, *memory); \
 	} while (0);
 	COMPUTE_SHADERS
 	#undef X
@@ -399,7 +375,34 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	glEnableVertexAttribArray(1);
 	glBindVertexArray(0);
 
-	s8 render = s8(static_path_join("shaders", "render.glsl"));
-	reload_render_shader(&ctx->os, render, (iptr)fvr, *memory);
-	os_add_file_watch(&ctx->os, memory, render, reload_render_shader, (iptr)fvr);
+	ShaderReloadContext *render_2d = push_struct(memory, typeof(*render_2d));
+	render_2d->beamformer_context = ctx;
+	render_2d->path    = s8(static_path_join("shaders", "render_2d.frag.glsl"));
+	render_2d->name    = s8("shaders/render_2d.glsl");
+	render_2d->gl_type = GL_FRAGMENT_SHADER;
+	render_2d->kind    = ShaderKind_Render2D;
+	render_2d->shader  = &fvr->shader;
+	render_2d->header  = s8(""
+	"layout(location = 0) in  vec2 texture_coordinate;\n"
+	"layout(location = 0) out vec4 v_out_colour;\n\n"
+	"layout(location = " str(FRAME_VIEW_RENDER_DYNAMIC_RANGE_LOC) ") uniform float u_db_cutoff = 60;\n"
+	"layout(location = " str(FRAME_VIEW_RENDER_THRESHOLD_LOC)     ") uniform float u_threshold = 40;\n"
+	"layout(location = " str(FRAME_VIEW_RENDER_GAMMA_LOC)         ") uniform float u_gamma     = 1;\n"
+	"layout(location = " str(FRAME_VIEW_RENDER_LOG_SCALE_LOC)     ") uniform bool  u_log_scale;\n"
+	"\n#line 1\n");
+	render_2d->link = push_struct(memory, typeof(*render_2d));
+	render_2d->link->gl_type = GL_VERTEX_SHADER;
+	render_2d->link->header  = s8(""
+	"layout(location = 0) in vec2 v_position;\n"
+	"layout(location = 1) in vec2 v_texture_coordinate;\n"
+	"\n"
+	"layout(location = 0) out vec2 f_texture_coordinate;\n"
+	"\n"
+	"void main()\n"
+	"{\n"
+	"\tf_texture_coordinate = v_texture_coordinate;\n"
+	"\tgl_Position = vec4(v_position, 0, 1);\n"
+	"}\n");
+	reload_shader(&ctx->os, render_2d->path, (iptr)render_2d, *memory);
+	os_add_file_watch(&ctx->os, memory, render_2d->path, reload_shader, (iptr)render_2d);
 }
