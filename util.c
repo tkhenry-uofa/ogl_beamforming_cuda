@@ -249,8 +249,7 @@ stream_append_s8(Stream *s, s8 str)
 	stream_append(s, str.data, str.len);
 }
 
-#define stream_append_s8s(s, ...) stream_append_s8s_(s, (s8 []){__VA_ARGS__}, \
-                                                     sizeof((s8 []){__VA_ARGS__}) / sizeof(s8))
+#define stream_append_s8s(s, ...) stream_append_s8s_(s, arg_list(s8, ##__VA_ARGS__))
 function void
 stream_append_s8s_(Stream *s, s8 *strs, iz count)
 {

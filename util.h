@@ -40,6 +40,8 @@
 #define INVALID_DEFAULT_CASE default: ASSERT(0); break
 #define InvalidDefaultCase default: assert(0); break
 
+#define arg_list(type, ...) (type []){__VA_ARGS__}, sizeof((type []){__VA_ARGS__}) / sizeof(type)
+
 #define function      static
 #define global        static
 #define local_persist static

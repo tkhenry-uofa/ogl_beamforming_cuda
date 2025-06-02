@@ -440,8 +440,7 @@ git_submodule_update(Arena a, char *name)
 {
 	Stream sb = arena_stream(a);
 	stream_append_s8s(&sb, c_str_to_s8(name), s8(OS_PATH_SEPARATOR), s8(".git"));
-	stream_append_byte(&sb, 0);
-	arena_commit(&a, sb.widx);
+	arena_stream_commit_zero(&a, &sb);
 
 	CommandList git = {0};
 	/* NOTE(rnp): cryptic bs needed to get a simple exit code if name is dirty */
@@ -454,8 +453,9 @@ git_submodule_update(Arena a, char *name)
 	}
 }
 
+#define build_shared_library(a, cc, name, ...) build_shared_library_(a, cc, name, arg_list(char *, ##__VA_ARGS__))
 function b32
-build_shared_library(Arena a, CommandList cc, char *name, char **deps, iz deps_count)
+build_shared_library_(Arena a, CommandList cc, char *name, char **deps, iz deps_count)
 {
 	b32 result = 0;
 	cmd_append(&a, &cc, "-fPIC", "-shared");
@@ -600,11 +600,8 @@ main(i32 argc, char *argv[])
 	if (options.debug) {
 		iz c_count = c.count;
 		if (is_w32) cmd_append_ldflags(&arena, &c, 1);
-		if (!build_shared_library(arena, c, OS_SHARED_LIB("beamformer"),
-	                                  (char *[]){"beamformer.c"}, 1))
-		{
+		if (!build_shared_library(arena, c, OS_SHARED_LIB("beamformer"), "beamformer.c"))
 			die("failed to build: " OS_SHARED_LIB("beamfomer") "\n");
-		}
 		c.count = c_count;
 	}
 
