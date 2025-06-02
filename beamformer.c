@@ -388,7 +388,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 }
 
 function s8
-shader_text_with_header(ShaderReloadContext *ctx, OS *os, Arena *arena, char *path)
+shader_text_with_header(ShaderReloadContext *ctx, OS *os, Arena *arena)
 {
 	Stream sb = arena_stream(*arena);
 	stream_append_s8s(&sb, s8("#version 460 core\n\n"), ctx->header);
@@ -431,8 +431,8 @@ shader_text_with_header(ShaderReloadContext *ctx, OS *os, Arena *arena, char *pa
 	stream_append_s8(&sb, s8("\n#line 1\n"));
 
 	s8 result = arena_stream_commit(arena, &sb);
-	if (path) {
-		s8 file = os->read_whole_file(arena, path);
+	if (ctx->path.len) {
+		s8 file = os->read_whole_file(arena, (c8 *)ctx->path.data);
 		assert(file.data == result.data + result.len);
 		result.len += file.len;
 	}
@@ -442,16 +442,20 @@ shader_text_with_header(ShaderReloadContext *ctx, OS *os, Arena *arena, char *pa
 
 DEBUG_EXPORT BEAMFORMER_RELOAD_SHADER_FN(beamformer_reload_shader)
 {
-	i32  shader_count = 1 + (src->link != 0);
+	i32 shader_count = 1;
+	ShaderReloadContext *link = src->link;
+	while (link != src) { shader_count++; link = link->link; }
+
 	s8  *shader_texts = push_array(&arena, s8,  shader_count);
 	u32 *shader_types = push_array(&arena, u32, shader_count);
 
-	if (src->link) {
-		shader_texts[0] = shader_text_with_header(src->link, &ctx->os, &arena, (c8 *)src->link->path.data);
-		shader_types[0] = src->link->gl_type;
-	}
-	shader_texts[shader_count - 1] = shader_text_with_header(src, &ctx->os, &arena, (c8 *)src->path.data);
-	shader_types[shader_count - 1] = src->gl_type;
+	i32 index = 0;
+	do {
+		shader_texts[index] = shader_text_with_header(link, &ctx->os, &arena);
+		shader_types[index] = link->gl_type;
+		index++;
+		link = link->link;
+	} while (link != src);
 
 	u32 new_program = load_shader(&ctx->os, arena, shader_texts, shader_types, shader_count, shader_name);
 	if (new_program) {
@@ -472,12 +476,7 @@ reload_compute_shader(BeamformerCtx *ctx, ShaderReloadContext *src, s8 name_extr
 	if (result) {
 		glUseProgram(*src->shader);
 		glBindBufferBase(GL_UNIFORM_BUFFER, 0, ctx->csctx.shared_ubo);
-	} else {
-		sb.widx = 0;
-		stream_append_s8s(&sb, s8("failed to load: "), src->path, name_extra, s8("\n"));
-		ctx->os.write_file(ctx->os.error_handle, stream_to_s8(&sb));
 	}
-
 	return result;
 }
 

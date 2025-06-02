@@ -346,6 +346,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 		src->shader  = ctx->csctx.programs + ShaderKind_##e;          \
 		src->gl_type = GL_COMPUTE_SHADER;                             \
 		src->kind    = ShaderKind_##e;                                \
+		src->link    = src;                                           \
 		os_add_file_watch(&ctx->os, memory, src->path, reload_shader_indirect, (iptr)src); \
 		reload_shader_indirect(&ctx->os, src->path, (iptr)src, *memory); \
 	} while (0);
@@ -392,6 +393,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	"\n#line 1\n");
 	render_2d->link = push_struct(memory, typeof(*render_2d));
 	render_2d->link->gl_type = GL_VERTEX_SHADER;
+	render_2d->link->link    = render_2d;
 	render_2d->link->header  = s8(""
 	"layout(location = 0) in vec2 v_position;\n"
 	"layout(location = 1) in vec2 v_texture_coordinate;\n"
