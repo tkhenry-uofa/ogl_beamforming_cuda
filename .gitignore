@@ -1,11 +1,3 @@
-*.dll
-*.exe
-*.old
-*.pdb
-*.rdi
-*.so*
-build
-external/include/r*.h
-ogl
-out
-x64
+*
+!*.c
+!*.h
