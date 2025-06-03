@@ -82,7 +82,7 @@ typedef struct {
 } Options;
 
 #define die(fmt, ...) die_("%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
-function void __attribute__((noreturn))
+function no_return void
 die_(char *format, ...)
 {
 	va_list ap;

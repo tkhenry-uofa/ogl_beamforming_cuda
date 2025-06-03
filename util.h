@@ -13,16 +13,8 @@
 #define typeof __typeof__
 #endif
 
-#ifndef unreachable
-#ifdef _MSC_VER
-	#define unreachable() __assume(0)
-#else
-	#define unreachable() __builtin_unreachable()
-#endif
-#endif
-
 #ifdef _DEBUG
-	#ifdef _WIN32
+	#if OS_WINDOWS
 		#define DEBUG_EXPORT __declspec(dllexport)
 	#else
 		#define DEBUG_EXPORT
@@ -306,7 +298,7 @@ typedef RENDERDOC_START_FRAME_CAPTURE_FN(renderdoc_start_frame_capture_fn);
 #define RENDERDOC_END_FRAME_CAPTURE_FN(name) b32 name(iptr gl_context, iptr window_handle)
 typedef RENDERDOC_END_FRAME_CAPTURE_FN(renderdoc_end_frame_capture_fn);
 
-typedef __attribute__((aligned(16))) u8 RenderDocAPI[216];
+typedef align_as(16) u8 RenderDocAPI[216];
 #define RENDERDOC_API_FN_ADDR(a, offset) (*(iptr *)((*a) + offset))
 #define RENDERDOC_START_FRAME_CAPTURE(a) (renderdoc_start_frame_capture_fn *)RENDERDOC_API_FN_ADDR(a, 152)
 #define RENDERDOC_END_FRAME_CAPTURE(a)   (renderdoc_end_frame_capture_fn *)  RENDERDOC_API_FN_ADDR(a, 168)
@@ -322,8 +314,8 @@ struct OS {
 
 	char *export_pipe_name;
 
-	DEBUG_DECL(renderdoc_start_frame_capture_fn *start_frame_capture);
-	DEBUG_DECL(renderdoc_end_frame_capture_fn   *end_frame_capture);
+	DEBUG_DECL(renderdoc_start_frame_capture_fn *start_frame_capture;)
+	DEBUG_DECL(renderdoc_end_frame_capture_fn   *end_frame_capture;)
 };
 
 #define LABEL_GL_OBJECT(type, id, s) {s8 _s = (s); glObjectLabel(type, id, _s.len, (c8 *)_s.data);}

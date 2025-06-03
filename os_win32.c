@@ -38,7 +38,8 @@
  * incorrectly. They worked around it be making the ft* members a struct {u32, u32} which
  * is aligned on a 4-byte boundary. Then in their documentation they explicitly tell you not
  * to cast to u64 because "it can cause alignment faults on 64-bit Windows" - go figure */
-typedef struct __attribute__((packed)) {
+typedef struct w32_file_info w32_file_info;
+pack_struct(struct w32_file_info {
 	u32 dwFileAttributes;
 	u64 ftCreationTime;
 	u64 ftLastAccessTime;
@@ -49,7 +50,7 @@ typedef struct __attribute__((packed)) {
 	u32 nNumberOfLinks;
 	u32 nFileIndexHigh;
 	u32 nFileIndexLow;
-} w32_file_info;
+});
 
 typedef struct {
 	u32 next_entry_offset;
@@ -134,14 +135,14 @@ function OS_WRITE_FILE_FN(os_write_file)
 	return raw.len == wlen;
 }
 
-function void __attribute__((noreturn))
+function no_return void
 os_exit(i32 code)
 {
 	ExitProcess(1);
 	unreachable();
 }
 
-function void __attribute__((noreturn))
+function no_return void
 os_fatal(s8 msg)
 {
 	os_write_file(GetStdHandle(STD_ERROR_HANDLE), msg);
@@ -363,7 +364,7 @@ function OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 function OS_WAKE_WAITERS_FN(os_wake_waiters)
 {
 	if (sync) {
-		atomic_inc(sync, 1);
+		atomic_inc_u32(sync, 1);
 		WakeByAddressAll(sync);
 	}
 }

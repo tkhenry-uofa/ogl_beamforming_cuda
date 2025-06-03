@@ -18,17 +18,48 @@
   #define read_only
 #endif
 
+#if COMPILER_MSVC
+  #define align_as(n)    __declspec(align(n))
+  #define pack_struct(s) __pragma(pack(push, 1)) s __pragma(pack(pop))
+  #define no_return      __declspec(noreturn)
+
+  #define debugbreak()  __debugbreak()
+  #define unreachable() __assume(0)
+
+  #define atomic_store(ptr, n)     __atomic_store_n(ptr,    n, __ATOMIC_RELEASE)
+  #define atomic_load(ptr)         __atomic_load_n(ptr,        __ATOMIC_ACQUIRE)
+  #define atomic_swap(ptr, n)      __atomic_exchange_n(ptr, n, __ATOMIC_RELEASE)
+  #define atomic_and(ptr, n)       __atomic_and_fetch(ptr,  n, __ATOMIC_RELEASE)
+  #define atomic_add(ptr, n)       __atomic_add_fetch(ptr,  n, __ATOMIC_RELEASE)
+  #define atomic_inc_u32(ptr, n)   _InterlockedAdd((volatile u32 *)ptr,  n)
+  #define atomic_cas(ptr, cptr, n) __atomic_compare_exchange_n(ptr, cptr, n, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
+
+#else
+  #define align_as(n)      __attribute__((aligned(n)))
+  #define pack_struct(s) s __attribute__((packed))
+  #define no_return        __attribute__((noreturn))
+
+  #if ARCH_ARM64
+    /* TODO? debuggers just loop here forever and need a manual PC increment (step over) */
+    #define debugbreak() asm volatile ("brk 0xf000")
+  #else
+    #define debugbreak() asm volatile ("int3; nop")
+  #endif
+  #define unreachable() __builtin_unreachable()
+
+  #define atomic_store(ptr, n)     __atomic_store_n(ptr,    n, __ATOMIC_RELEASE)
+  #define atomic_load(ptr)         __atomic_load_n(ptr,        __ATOMIC_ACQUIRE)
+  #define atomic_swap(ptr, n)      __atomic_exchange_n(ptr, n, __ATOMIC_RELEASE)
+  #define atomic_and(ptr, n)       __atomic_and_fetch(ptr,  n, __ATOMIC_RELEASE)
+  #define atomic_add(ptr, n)       __atomic_add_fetch(ptr,  n, __ATOMIC_RELEASE)
+  #define atomic_inc_u32(ptr, n)   __atomic_fetch_add(ptr,  n, __ATOMIC_ACQ_REL)
+  #define atomic_cas(ptr, cptr, n) __atomic_compare_exchange_n(ptr, cptr, n, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
+
+#endif
+
 /* TODO(rnp): msvc probably won't build this but there are other things preventing that as well */
 #define sqrt_f32(a)     __builtin_sqrtf(a)
 #define atan2_f32(y, x) __builtin_atan2f(y, x)
-
-#define atomic_store(ptr, n)     __atomic_store_n(ptr,    n, __ATOMIC_RELEASE)
-#define atomic_load(ptr)         __atomic_load_n(ptr,        __ATOMIC_ACQUIRE)
-#define atomic_swap(ptr, n)      __atomic_exchange_n(ptr, n, __ATOMIC_RELEASE)
-#define atomic_and(ptr, n)       __atomic_and_fetch(ptr,  n, __ATOMIC_RELEASE)
-#define atomic_add(ptr, n)       __atomic_add_fetch(ptr,  n, __ATOMIC_RELEASE)
-#define atomic_inc(ptr, n)       __atomic_fetch_add(ptr,  n, __ATOMIC_ACQ_REL)
-#define atomic_cas(ptr, cptr, n) __atomic_compare_exchange_n(ptr, cptr, n, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
 
 function force_inline u32
 clz_u32(u32 a)
@@ -47,9 +78,6 @@ ctz_u32(u32 a)
 }
 
 #if ARCH_ARM64
-/* TODO? debuggers just loop here forever and need a manual PC increment (step over) */
-#define debugbreak() asm volatile ("brk 0xf000")
-
 /* NOTE(rnp): we are only doing a handful of f32x4 operations so we will just use NEON and do
  * the macro renaming thing. If you are implementing a serious wide vector operation you should
  * use SVE(2) instead. The semantics are different however and the code will be written for an
@@ -86,7 +114,5 @@ typedef __m128i i32x4;
 #define sqrt_f32x4(a)         _mm_sqrt_ps(a)
 #define store_f32x4(a, o)     _mm_storeu_ps(o, a)
 #define store_i32x4(a, o)     _mm_storeu_si128((i32x4 *)o, a)
-
-#define debugbreak() asm volatile ("int3; nop")
 
 #endif

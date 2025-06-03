@@ -158,7 +158,7 @@ fill_frame_compute_work(BeamformerCtx *ctx, BeamformWork *work, ImagePlaneTag pl
 	b32 result = 0;
 	if (work) {
 		result = 1;
-		u32 frame_id    = atomic_inc(&ctx->next_render_frame_index, 1);
+		u32 frame_id    = atomic_inc_u32(&ctx->next_render_frame_index, 1);
 		u32 frame_index = frame_id % ARRAY_COUNT(ctx->beamform_frames);
 		work->type      = BW_COMPUTE;
 		work->frame     = ctx->beamform_frames + frame_index;
@@ -623,7 +623,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				/* TODO(rnp): not really sure what to do here */
 				mem_copy(&ctx->averaged_frames[aframe_index].stats.times,
 				         &frame->stats.times, sizeof(frame->stats.times));
-				atomic_inc(&ctx->averaged_frame_index, 1);
+				atomic_inc_u32(&ctx->averaged_frame_index, 1);
 			}
 			frame->ready_to_present = 1;
 			cs->processing_compute  = 0;
