@@ -21,6 +21,6 @@ suitable for development/debugging:
 ```
 
 ### w32
-Currently the program is not expected to be buildable with `msvc`.
-In order to use Windows debuggers on Windows you will need to
-build with `clang`.
+Currently `msvc` support is limited to the release build of the
+program. PDBs will be avialable but may be of limited use. `clang`
+is fully supported and recommended (and also produces better code).
