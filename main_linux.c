@@ -19,11 +19,17 @@
 
 /* TODO(rnp): what do if not X11? */
 iptr glfwGetGLXContext(iptr);
-
 function iptr
 os_get_native_gl_context(iptr window)
 {
 	return glfwGetGLXContext(window);
+}
+
+iptr glfwGetProcAddress(char *);
+function iptr
+os_gl_proc_address(char *name)
+{
+	return glfwGetProcAddress(name);
 }
 
 #include "static.c"
@@ -84,8 +90,7 @@ main(void)
 	ctx.os.error_handle              = STDERR_FILENO;
 	ctx.os.export_pipe_name          = OS_EXPORT_PIPE_NAME;
 
-	debug_init(&ctx.os, (iptr)&input, &temp_memory);
-	setup_beamformer(&ctx, &temp_memory);
+	setup_beamformer(&ctx, &input, &temp_memory);
 	os_wake_waiters(&ctx.os.compute_worker.sync_variable);
 
 	struct pollfd fds[1] = {{0}};

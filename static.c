@@ -5,6 +5,7 @@
 #define debug_init(...)
 
 #else
+
 global void *debug_lib;
 
 #define DEBUG_ENTRY_POINTS \
@@ -82,17 +83,8 @@ gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, co
 
 	struct gl_debug_ctx *ctx = (struct gl_debug_ctx *)userctx;
 	Stream *e = &ctx->stream;
-	stream_append_s8(e, s8("[GL DEBUG "));
-	switch (lvl) {
-	case GL_DEBUG_SEVERITY_HIGH:         stream_append_s8(e, s8("HIGH]: "));         break;
-	case GL_DEBUG_SEVERITY_MEDIUM:       stream_append_s8(e, s8("MEDIUM]: "));       break;
-	case GL_DEBUG_SEVERITY_LOW:          stream_append_s8(e, s8("LOW]: "));          break;
-	case GL_DEBUG_SEVERITY_NOTIFICATION: stream_append_s8(e, s8("NOTIFICATION]: ")); break;
-	default:                             stream_append_s8(e, s8("INVALID]: "));      break;
-	}
-	stream_append(e, (char *)msg, len);
-	stream_append_byte(e, '\n');
-	ctx->os->write_file(ctx->os->error_handle, stream_to_s8(e));
+	stream_append_s8s(e, s8("[OpenGL] "), (s8){.len = len, .data = (u8 *)msg}, s8("\n"));
+	os_write_file(ctx->os->error_handle, stream_to_s8(e));
 	stream_reset(e, 0);
 }
 
@@ -259,8 +251,10 @@ function OS_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
 }
 
 function void
-setup_beamformer(BeamformerCtx *ctx, Arena *memory)
+setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 {
+	debug_init(&ctx->os, (iptr)input, memory);
+
 	ctx->window_size  = (uv2){.w = 1280, .h = 840};
 
 	SetConfigFlags(FLAG_VSYNC_HINT|FLAG_WINDOW_ALWAYS_RUN);
@@ -269,13 +263,17 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	SetWindowState(FLAG_WINDOW_RESIZABLE);
 	SetWindowMinSize(840, ctx->window_size.h);
 
+	glfwWindowHint(GLFW_VISIBLE, 0);
+	iptr raylib_window_handle = (iptr)GetPlatformWindowHandle();
+
+	#define X(name, ret, params) name = (name##_fn *)os_gl_proc_address(#name);
+	OGLProcedureList
+	#undef X
 	/* NOTE: Gather information about the GPU */
 	get_gl_params(&ctx->gl, &ctx->error_stream);
 	dump_gl_params(&ctx->gl, *memory, &ctx->os);
 	validate_gl_requirements(&ctx->gl, *memory);
 
-	glfwWindowHint(GLFW_VISIBLE, 0);
-	iptr raylib_window_handle = (iptr)GetPlatformWindowHandle();
 	GLWorkerThreadContext *worker = &ctx->os.compute_worker;
 	worker->window_handle = glfwCreateWindow(320, 240, "", 0, raylib_window_handle);
 	worker->handle        = os_create_thread(*memory, (iptr)worker, s8("[compute]"),
@@ -324,7 +322,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	gl_debug_ctx->os     = &ctx->os;
 	glDebugMessageCallback(gl_debug_logger, gl_debug_ctx);
 #ifdef _DEBUG
-	glEnable(GL_DEBUG_OUTPUT);
+	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 #endif
 
 	#define X(name, type, size, gltype, glsize, comment) "\t" #gltype " " #name #glsize "; " comment "\n"
@@ -355,7 +353,7 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 	os_wake_waiters(&worker->sync_variable);
 
 	FrameViewRenderContext *fvr = &ctx->frame_view_render_context;
-	glGenFramebuffers(1, &fvr->framebuffer);
+	glCreateFramebuffers(1, &fvr->framebuffer);
 	LABEL_GL_OBJECT(GL_FRAMEBUFFER, fvr->framebuffer, s8("Frame View Render Framebuffer"));
 	f32 vertices[] = {
 		-1,  1, 0, 0,
@@ -365,16 +363,19 @@ setup_beamformer(BeamformerCtx *ctx, Arena *memory)
 		 1, -1, 1, 1,
 		 1,  1, 1, 0,
 	};
-	glGenVertexArrays(1, &fvr->vao);
-	glBindVertexArray(fvr->vao);
-	glGenBuffers(1, &fvr->vbo);
-	glBindBuffer(GL_ARRAY_BUFFER, fvr->vbo);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, 0, 4 * sizeof(f32), 0);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(1, 2, GL_FLOAT, 0, 4 * sizeof(f32), (void *)(2 * sizeof(f32)));
-	glEnableVertexAttribArray(1);
-	glBindVertexArray(0);
+	glCreateVertexArrays(1, &fvr->vao);
+	glCreateBuffers(1, &fvr->vbo);
+
+	glNamedBufferData(fvr->vbo, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+	glEnableVertexArrayAttrib(fvr->vao, 0);
+	glEnableVertexArrayAttrib(fvr->vao, 1);
+	glVertexArrayVertexBuffer(fvr->vao, 0, fvr->vbo, 0,               4 * sizeof(f32));
+	glVertexArrayVertexBuffer(fvr->vao, 1, fvr->vbo, 2 * sizeof(f32), 4 * sizeof(f32));
+	glVertexArrayAttribFormat(fvr->vao, 0, 2, GL_FLOAT, 0, 0);
+	glVertexArrayAttribFormat(fvr->vao, 1, 2, GL_FLOAT, 0, 2 * sizeof(f32));
+	glVertexArrayAttribBinding(fvr->vao, 0, 0);
+	glVertexArrayAttribBinding(fvr->vao, 1, 0);
 
 	ShaderReloadContext *render_2d = push_struct(memory, typeof(*render_2d));
 	render_2d->beamformer_context = ctx;

@@ -2,13 +2,12 @@
 #ifndef _BEAMFORMER_H_
 #define _BEAMFORMER_H_
 
-#include <glad.h>
-
 #define GRAPHICS_API_OPENGL_43
 #include <raylib_extended.h>
 #include <rlgl.h>
 
 #include "util.h"
+#include "opengl.h"
 #include "util_gl.c"
 
 enum gl_vendor_ids {

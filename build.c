@@ -74,7 +74,7 @@
   #define LINK_LIB(name)             name ".lib"
   #define OBJECT(name)               name ".obj"
   #define OUTPUT_DLL(name)           "/LD", "/Fe:", name
-  #define OUTPUT_LIB(name)           "/out:" name
+  #define OUTPUT_LIB(name)           "/out:" OUTPUT(name)
   #define OUTPUT_EXE(name)           "/Fe:", name
   #define SINGLE_OBJECT(in, out)     "/c", (in), "/Fo:", (out)
   #define STATIC_LIBRARY_BEGIN(name) "lib", "/nologo", name
@@ -82,7 +82,7 @@
   #define LINK_LIB(name)             "-l" name
   #define OBJECT(name)               name ".o"
   #define OUTPUT_DLL(name)           "-fPIC", "-shared", "-o", name
-  #define OUTPUT_LIB(name)           name
+  #define OUTPUT_LIB(name)           OUTPUT(name)
   #define OUTPUT_EXE(name)           "-o", name
   #define SINGLE_OBJECT(in, out)     "-c", (in), "-o", (out)
   #define STATIC_LIBRARY_BEGIN(name) "ar", "rc", name
@@ -506,6 +506,17 @@ build_shared_library(Arena a, CommandList cc, char *name, char *output, char **l
 }
 
 function b32
+build_static_library_from_objects(Arena a, char *name, char **flags, iz flags_count, char **objects, iz count)
+{
+	CommandList ar = {0};
+	cmd_append(&a, &ar, STATIC_LIBRARY_BEGIN(name));
+	cmd_append_count(&a, &ar, flags, flags_count);
+	cmd_append_count(&a, &ar, objects, count);
+	cmd_append(&a, &ar, (void *)0);
+	return run_synchronous(a, &ar);
+}
+
+function b32
 build_static_library(Arena a, CommandList cc, char *name, char **deps, char **outputs, iz count)
 {
 	/* TODO(rnp): refactor to not need outputs */
@@ -516,20 +527,14 @@ build_static_library(Arena a, CommandList cc, char *name, char **deps, char **ou
 		all_success &= run_synchronous(a, &cc);
 		cc.count -= 5;
 	}
-	if (all_success) {
-		CommandList ar = {0};
-		cmd_append(&a, &ar, STATIC_LIBRARY_BEGIN(name));
-		cmd_append_count(&a, &ar, outputs, count);
-		cmd_append(&a, &ar, (void *)0);
-		result = run_synchronous(a, &ar);
-	}
+	if (all_success) result = build_static_library_from_objects(a, name, 0, 0, outputs, count);
 	return result;
 }
 
 function void
 check_build_raylib(Arena a, CommandList cc, b32 shared)
 {
-	char *libraylib = shared ? OS_SHARED_LINK_LIB("raylib") : OUTPUT_LIB(OUTPUT(OS_STATIC_LIB("raylib")));
+	char *libraylib = shared ? OS_SHARED_LINK_LIB("raylib") : OUTPUT_LIB(OS_STATIC_LIB("raylib"));
 	if (needs_rebuild(libraylib, __FILE__, "external/include/rlgl.h", "external/raylib")) {
 		git_submodule_update(a, "external/raylib");
 		os_copy_file("external/raylib/src/rlgl.h", "external/include/rlgl.h");
@@ -607,12 +612,13 @@ function b32
 build_beamformer_as_library(Arena arena, CommandList cc)
 {
 	char *library = OS_SHARED_LIB("beamformer");
-	char *srcs[]  = {"beamformer.c"};
 	char *libs[]  = {!is_msvc? "-L." : "", LINK_LIB("raylib"), LINK_LIB("gdi32"),
-	                 LINK_LIB("shell32"), LINK_LIB("user32"), LINK_LIB("winmm"), LINK_LIB("Synchronization")};
+	                 LINK_LIB("shell32"), LINK_LIB("user32"), LINK_LIB("opengl32"),
+	                 LINK_LIB("winmm"), LINK_LIB("Synchronization"), OUTPUT("main.lib")};
 	iz libs_count = is_w32 ? countof(libs) : 0;
+	cmd_append(&arena, &cc, "-D_BEAMFORMER_DLL");
 	b32 result = build_shared_library(arena, cc, "beamformer", library,
-	                                  libs, libs_count, srcs, countof(srcs));
+	                                  libs, libs_count, arg_list(char *, "beamformer.c"));
 	if (!result) fprintf(stderr, "failed to build: %s\n", library);
 	return result;
 }
@@ -622,29 +628,24 @@ main(i32 argc, char *argv[])
 {
 	u64 start_time = os_get_timer_counter();
 
+	b32 result  = 1;
 	Arena arena = os_alloc_arena((Arena){0}, MB(8));
 	check_rebuild_self(arena, argc, argv);
 
 	Options options = parse_options(argc, argv);
-	if (options.debug && is_msvc)
-		die_("Debug build is not supported with MSVC\n");
 
 	os_make_directory(OUTDIR);
 
 	CommandList c = cmd_base(&arena, &options);
 	check_build_raylib(arena, c, options.debug);
 
-	build_helper_library(arena, c);
-
-	/////////////////////////
-	// hot reloadable portion
-	if (options.debug) build_beamformer_as_library(arena, c);
+	result &= build_helper_library(arena, c);
 
 	//////////////////
 	// static portion
+	iz c_count = c.count;
 	cmd_append(&arena, &c, OS_MAIN, OUTPUT_EXE("ogl"));
 	cmd_pdb(&arena, &c, "ogl");
-	if (!is_msvc) cmd_append(&arena, &c, "-lm");
 	if (options.debug) {
 		if (!is_w32)  cmd_append(&arena, &c, "-Wl,-rpath,.");
 		if (!is_msvc) cmd_append(&arena, &c, "-L.");
@@ -652,18 +653,36 @@ main(i32 argc, char *argv[])
 	} else {
 		cmd_append(&arena, &c, OUTPUT(OS_STATIC_LIB("raylib")));
 	}
+	if (!is_msvc) cmd_append(&arena, &c, "-lm");
+	if (is_unix)  cmd_append(&arena, &c, "-lGL");
 	if (is_w32) {
 		cmd_append(&arena, &c, LINK_LIB("user32"), LINK_LIB("shell32"), LINK_LIB("gdi32"),
-		           LINK_LIB("winmm"), LINK_LIB("Synchronization"));
+		           LINK_LIB("opengl32"), LINK_LIB("winmm"), LINK_LIB("Synchronization"));
+		if (!is_msvc) cmd_append(&arena, &c, "-Wl,--out-implib," OUTPUT(OS_STATIC_LIB("main")));
 	}
 	cmd_append(&arena, &c, (void *)0);
 
-	i32 result = !run_synchronous(arena, &c);
+	result &= run_synchronous(arena, &c);
+	c.count = c_count;
+
+	/////////////////////////
+	// hot reloadable portion
+	//
+	// NOTE: this is built after main because on w32 we need to export
+	// gl function pointers for the reloadable portion to import
+	if (options.debug) {
+		if (is_msvc) {
+			build_static_library_from_objects(arena, OUTPUT_LIB(OS_STATIC_LIB("main")),
+			                                  arg_list(char *, "/def", "/name:ogl.exe"),
+			                                  arg_list(char *, OUTPUT(OBJECT("main_w32"))));
+		}
+		result &= build_beamformer_as_library(arena, c);
+	}
 
 	if (options.time) {
 		f64 seconds = (f64)(os_get_timer_counter() - start_time) / os_get_timer_frequency();
 		printf("info: took %0.03f [s]\n", seconds);
 	}
 
-	return result;
+	return result != 1;
 }

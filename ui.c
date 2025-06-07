@@ -1196,17 +1196,17 @@ update_frame_views(BeamformerUI *ui, Rect window)
 				glBindFramebuffer(GL_FRAMEBUFFER, view->ctx->framebuffer);
 				glUseProgram(view->ctx->shader);
 				glBindVertexArray(view->ctx->vao);
-				glClearColor(0.79, 0.46, 0.77, 1);
 			}
 			glViewport(0, 0, view->texture_dim.w, view->texture_dim.h);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-			                       GL_TEXTURE_2D, view->texture, 0);
-			glClear(GL_COLOR_BUFFER_BIT);
+			glNamedFramebufferTexture(view->ctx->framebuffer, GL_COLOR_ATTACHMENT0,
+			                          view->texture, 0);
+			glClearNamedFramebufferfv(view->ctx->framebuffer, GL_COLOR, 0,
+			                          (f32 []){0.79, 0.46, 0.77, 1});
 			glBindTextureUnit(0, view->frame->texture);
-			glUniform1f(FRAME_VIEW_RENDER_DYNAMIC_RANGE_LOC, view->dynamic_range.u.f32);
-			glUniform1f(FRAME_VIEW_RENDER_THRESHOLD_LOC,     view->threshold.u.f32);
-			glUniform1f(FRAME_VIEW_RENDER_GAMMA_LOC,         view->gamma.u.scaled_f32.val);
-			glUniform1ui(FRAME_VIEW_RENDER_LOG_SCALE_LOC,    view->log_scale->u.b32);
+			glProgramUniform1f(view->ctx->shader,  FRAME_VIEW_RENDER_DYNAMIC_RANGE_LOC, view->dynamic_range.u.f32);
+			glProgramUniform1f(view->ctx->shader,  FRAME_VIEW_RENDER_THRESHOLD_LOC,     view->threshold.u.f32);
+			glProgramUniform1f(view->ctx->shader,  FRAME_VIEW_RENDER_GAMMA_LOC,         view->gamma.u.scaled_f32.val);
+			glProgramUniform1ui(view->ctx->shader, FRAME_VIEW_RENDER_LOG_SCALE_LOC,     view->log_scale->u.b32);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 			glGenerateTextureMipmap(view->texture);
@@ -2862,8 +2862,9 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 	update_frame_views(ui, window_rect);
 
 	BeginDrawing();
-		glClearColor(BG_COLOUR.r, BG_COLOUR.g, BG_COLOUR.b, BG_COLOUR.a);
-		glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+		f32 one = 1;
+		glClearNamedFramebufferfv(0, GL_COLOR, 0, BG_COLOUR.E);
+		glClearNamedFramebufferfv(0, GL_DEPTH, 0, &one);
 
 		draw_ui_regions(ui, window_rect, input->mouse);
 		if (ui->interaction.type == IT_TEXT)

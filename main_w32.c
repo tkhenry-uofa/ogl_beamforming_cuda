@@ -18,11 +18,16 @@
 #define OS_RENDERDOC_SONAME    "renderdoc.dll"
 
 iptr glfwGetWGLContext(iptr);
-
 function iptr
 os_get_native_gl_context(iptr window)
 {
 	return glfwGetWGLContext(window);
+}
+
+function iptr
+os_gl_proc_address(char *name)
+{
+	return wglGetProcAddress(name);
 }
 
 #include "static.c"
@@ -118,8 +123,7 @@ main(void)
 	ctx.os.error_handle          = GetStdHandle(STD_ERROR_HANDLE);
 	ctx.os.export_pipe_name      = OS_EXPORT_PIPE_NAME;
 
-	debug_init(&ctx.os, (iptr)&input, &temp_memory);
-	setup_beamformer(&ctx, &temp_memory);
+	setup_beamformer(&ctx, &input, &temp_memory);
 	os_wake_waiters(&ctx.os.compute_worker.sync_variable);
 
 	u64 last_time = os_get_timer_counter();

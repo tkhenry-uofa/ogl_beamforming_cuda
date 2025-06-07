@@ -191,7 +191,7 @@ do_sum_shader(ComputeShaderCtx *cs, u32 *in_textures, u32 in_texture_count, f32 
 	glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
 
 	glBindImageTexture(0, out_texture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RG32F);
-	glUniform1f(CS_SUM_PRESCALE_UNIFORM_LOC, in_scale);
+	glProgramUniform1f(cs->programs[ShaderKind_Sum], CS_SUM_PRESCALE_UNIFORM_LOC, in_scale);
 	for (u32 i = 0; i < in_texture_count; i++) {
 		glBindImageTexture(1, in_textures[i], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RG32F);
 		glDispatchCompute(ORONE(out_data_dim.x / 32),
@@ -311,7 +311,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		for (u32 i = 1; i < frame->frame.mips; i++) {
 			glBindImageTexture(0, texture, i - 1, GL_TRUE, 0, GL_READ_ONLY,  GL_RG32F);
 			glBindImageTexture(1, texture, i - 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
-			glUniform1i(CS_MIN_MAX_MIPS_LEVEL_UNIFORM_LOC, i);
+			glProgramUniform1i(csctx->programs[shader], CS_MIN_MAX_MIPS_LEVEL_UNIFORM_LOC, i);
 
 			u32 width  = frame->frame.dim.x >> i;
 			u32 height = frame->frame.dim.y >> i;
@@ -326,7 +326,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		glBindImageTexture(1, csctx->sparse_elements_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16I);
 		glBindImageTexture(2, csctx->focal_vectors_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
 
-		glUniform1ui(DAS_CYCLE_T_UNIFORM_LOC, cycle_t++);
+		glProgramUniform1ui(csctx->programs[shader], DAS_CYCLE_T_UNIFORM_LOC, cycle_t++);
 
 		#if 1
 		/* TODO(rnp): compute max_points_per_dispatch based on something like a
@@ -342,7 +342,8 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 			csctx->processing_progress += percent_per_step;
 			/* IMPORTANT(rnp): prevents OS from coalescing and killing our shader */
 			glFinish();
-			glUniform3iv(DAS_VOXEL_OFFSET_UNIFORM_LOC, 1, offset.E);
+			glProgramUniform3iv(csctx->programs[shader], DAS_VOXEL_OFFSET_UNIFORM_LOC,
+			                    1, offset.E);
 			glDispatchCompute(cursor.dispatch.x, cursor.dispatch.y, cursor.dispatch.z);
 		}
 		#else

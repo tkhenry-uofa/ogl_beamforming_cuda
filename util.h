@@ -18,12 +18,23 @@
 #ifdef _DEBUG
   #if OS_WINDOWS
     #define DEBUG_EXPORT __declspec(dllexport)
+    #ifdef _BEAMFORMER_DLL
+      #define DEBUG_IMPORT __declspec(dllimport)
+    #else
+      #define DEBUG_IMPORT __declspec(dllexport)
+    #endif
   #else
+    #ifdef _BEAMFORMER_DLL
+      #define DEBUG_IMPORT extern
+    #else
+      #define DEBUG_IMPORT
+    #endif
     #define DEBUG_EXPORT
   #endif
   #define DEBUG_DECL(a) a
   #define assert(c) do { if (!(c)) debugbreak(); } while (0)
 #else
+  #define DEBUG_IMPORT global
   #define DEBUG_EXPORT function
   #define DEBUG_DECL(a)
   #define assert(c)

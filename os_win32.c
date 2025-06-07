@@ -111,6 +111,7 @@ W32(b32)    ReleaseSemaphore(iptr, i64, i64 *);
 W32(i32)    SetThreadDescription(iptr, u16 *);
 W32(b32)    WaitOnAddress(void *, void *, uz, u32);
 W32(i32)    WakeByAddressAll(void *);
+W32(iptr)   wglGetProcAddress(c8 *);
 W32(b32)    WriteFile(iptr, u8 *, i32, i32 *, void *);
 W32(void *) VirtualAlloc(u8 *, iz, u32, u32);
 W32(b32)    VirtualFree(u8 *, iz, u32);

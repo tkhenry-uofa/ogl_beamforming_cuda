@@ -7,20 +7,23 @@ needed:
 ```sh
 cc -march=native -O3 build.c -o build
 ```
+or:
+```bat
+md out & cl -nologo -std:c11 -O2 -Fo:out\ build.c
+```
 
-Then simply run the build tool:
+Then run the build tool:
 ```sh
 ./build
 ```
 
 ## Debug Builds
-Simply pass the build tool the `--debug` flag to get a build
-suitable for development/debugging:
+Pass the build tool the `--debug` flag to get a build suitable for
+development/debugging:
 ```
 ./build --debug
 ```
 
-### w32
-Currently `msvc` support is limited to the release build of the
-program. PDBs will be avialable but may be of limited use. `clang`
-is fully supported and recommended (and also produces better code).
+Debug builds enable dynamic reloading of almost the entire program
+and you can make changes to most code and recompile without
+exiting the application.
