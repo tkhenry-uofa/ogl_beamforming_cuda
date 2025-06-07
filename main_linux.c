@@ -92,13 +92,17 @@ main(void)
 	fds[0].fd     = ctx.os.file_watch_context.handle;
 	fds[0].events = POLLIN;
 
+	u64 last_time = os_get_timer_counter();
 	while (!ctx.should_exit) {
 		poll(fds, countof(fds), 0);
 		if (fds[0].revents & POLLIN)
 			dispatch_file_watch_events(&ctx.os, temp_memory);
 
+		u64 now = os_get_timer_counter();
 		input.last_mouse = input.mouse;
 		input.mouse.rl   = GetMousePosition();
+		input.dt         = (f64)(now - last_time) / os_get_timer_frequency();
+		last_time        = now;
 
 		beamformer_frame_step(&ctx, &temp_memory, &input);
 

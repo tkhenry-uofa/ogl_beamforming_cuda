@@ -686,7 +686,7 @@ DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 
 DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 {
-	dt_for_frame = GetFrameTime();
+	dt_for_frame = input->dt;
 
 	if (IsWindowResized()) {
 		ctx->window_size.h = GetScreenHeight();

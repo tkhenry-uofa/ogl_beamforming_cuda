@@ -70,9 +70,8 @@ typedef struct {
 
 typedef struct {
 	iptr io_completion_handle;
-	u64  timer_start_time;
 	u64  timer_frequency;
-} w32_context;
+} os_w32_context;
 
 typedef enum {
 	W32_IO_FILE_WATCH,
@@ -104,6 +103,8 @@ W32(iptr)   GetStdHandle(i32);
 W32(void)   GetSystemInfo(void *);
 W32(void *) LoadLibraryA(c8 *);
 W32(void *) MapViewOfFile(iptr, u32, u32, u32, u64);
+W32(b32)    QueryPerformanceCounter(u64 *);
+W32(b32)    QueryPerformanceFrequency(u64 *);
 W32(b32)    ReadDirectoryChangesW(iptr, u8 *, u32, b32, u32, u32 *, void *, void *);
 W32(b32)    ReadFile(iptr, u8 *, i32, i32 *, void *);
 W32(b32)    ReleaseSemaphore(iptr, i64, i64 *);
@@ -148,6 +149,22 @@ os_fatal(s8 msg)
 	os_write_file(GetStdHandle(STD_ERROR_HANDLE), msg);
 	os_exit(1);
 	unreachable();
+}
+
+function u64
+os_get_timer_frequency(void)
+{
+	u64 result;
+	QueryPerformanceFrequency(&result);
+	return result;
+}
+
+function u64
+os_get_timer_counter(void)
+{
+	u64 result;
+	QueryPerformanceCounter(&result);
+	return result;
 }
 
 function OS_ALLOC_ARENA_FN(os_alloc_arena)
@@ -328,7 +345,7 @@ function OS_ADD_FILE_WATCH_FN(os_add_file_watch)
 		                          OPEN_EXISTING,
 		                          FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OVERLAPPED, 0);
 
-		w32_context *ctx = (w32_context *)os->context;
+		os_w32_context *ctx = (os_w32_context *)os->context;
 		w32_io_completion_event *event = push_struct(a, typeof(*event));
 		event->tag     = W32_IO_FILE_WATCH;
 		event->context = (iptr)dir;

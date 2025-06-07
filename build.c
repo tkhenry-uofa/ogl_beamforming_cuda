@@ -109,8 +109,8 @@ typedef struct {
 typedef struct {
 	b32   debug;
 	b32   generic;
-	b32   report;
 	b32   sanitize;
+	b32   time;
 } Options;
 
 #define die(fmt, ...) die_("%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
@@ -377,12 +377,6 @@ cmd_base(Arena *a, Options *o)
 		else printf("warning: santizers not supported with this compiler\n");
 	}
 
-	if (o->report) {
-		if (is_clang) cmd_append(a, &result, "-fproc-stat-report");
-		else printf("warning: timing not supported with this compiler\n");
-		/* TODO(rnp): basic timing */
-	}
-
 	return result;
 }
 
@@ -433,11 +427,11 @@ s8_equal(s8 a, s8 b)
 function void
 usage(char *argv0)
 {
-	die("%s [--debug] [--report] [--sanitize]\n"
+	die("%s [--debug] [--sanitize] [--time]\n"
 	    "    --debug:       dynamically link and build with debug symbols\n"
 	    "    --generic:     compile for a generic target (x86-64-v3 or armv8 with NEON)\n"
-	    "    --report:      print compilation stats (clang only)\n"
 	    "    --sanitize:    build with ASAN and UBSAN\n"
+	    "    --time:        print build time\n"
 	    , argv0);
 }
 
@@ -454,10 +448,10 @@ parse_options(i32 argc, char *argv[])
 			result.debug = 1;
 		} else if (s8_equal(str, s8("--generic"))) {
 			result.generic = 1;
-		} else if (s8_equal(str, s8("--report"))) {
-			result.report = 1;
 		} else if (s8_equal(str, s8("--sanitize"))) {
 			result.sanitize = 1;
+		} else if (s8_equal(str, s8("--time"))) {
+			result.time = 1;
 		} else {
 			usage(argv0);
 		}
@@ -626,6 +620,8 @@ build_beamformer_as_library(Arena arena, CommandList cc)
 i32
 main(i32 argc, char *argv[])
 {
+	u64 start_time = os_get_timer_counter();
+
 	Arena arena = os_alloc_arena((Arena){0}, MB(8));
 	check_rebuild_self(arena, argc, argv);
 
@@ -662,5 +658,12 @@ main(i32 argc, char *argv[])
 	}
 	cmd_append(&arena, &c, (void *)0);
 
-	return !run_synchronous(arena, &c);
+	i32 result = !run_synchronous(arena, &c);
+
+	if (options.time) {
+		f64 seconds = (f64)(os_get_timer_counter() - start_time) / os_get_timer_frequency();
+		printf("info: took %0.03f [s]\n", seconds);
+	}
+
+	return result;
 }

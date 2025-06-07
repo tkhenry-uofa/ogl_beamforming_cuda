@@ -73,7 +73,7 @@ dispatch_file_watch(OS *os, FileWatchDirectory *fw_dir, u8 *buf, Arena arena)
 function void
 clear_io_queue(OS *os, BeamformerInput *input, Arena arena)
 {
-	w32_context *ctx = (w32_context *)os->context;
+	os_w32_context *ctx = (os_w32_context *)os->context;
 
 	iptr handle = ctx->io_completion_handle;
 	w32_overlapped *overlapped;
@@ -109,8 +109,9 @@ main(void)
 	OS_FNS
 	#undef X
 
-	w32_context w32_ctx = {0};
+	os_w32_context w32_ctx = {0};
 	w32_ctx.io_completion_handle = CreateIoCompletionPort(INVALID_FILE, 0, 0, 0);
+	w32_ctx.timer_frequency      = os_get_timer_frequency();
 
 	ctx.os.context               = (iptr)&w32_ctx;
 	ctx.os.compute_worker.asleep = 1;
@@ -121,11 +122,15 @@ main(void)
 	setup_beamformer(&ctx, &temp_memory);
 	os_wake_waiters(&ctx.os.compute_worker.sync_variable);
 
+	u64 last_time = os_get_timer_counter();
 	while (!ctx.should_exit) {
 		clear_io_queue(&ctx.os, &input, temp_memory);
 
+		u64 now = os_get_timer_counter();
 		input.last_mouse = input.mouse;
 		input.mouse.rl   = GetMousePosition();
+		input.dt         = (f64)(now - last_time) / w32_ctx.timer_frequency;
+		last_time        = now;
 
 		beamformer_frame_step(&ctx, &temp_memory, &input);
 

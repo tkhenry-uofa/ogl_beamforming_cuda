@@ -23,8 +23,12 @@
 #include <unistd.h>
 
 /* NOTE(rnp): hidden behind feature flags -> screw compiler/standards idiots */
+#ifndef CLOCK_MONOTONIC
+  #define CLOCK_MONOTONIC 1
+#endif
 i32 ftruncate(i32, i64);
 i64 syscall(i64, ...);
+i32 clock_gettime(i32, struct timespec *);
 
 #ifdef _DEBUG
 function void *
@@ -62,6 +66,21 @@ os_fatal(s8 msg)
 	os_write_file(STDERR_FILENO, msg);
 	os_exit(1);
 	unreachable();
+}
+
+function u64
+os_get_timer_frequency(void)
+{
+	return 1000000000ULL;
+}
+
+function u64
+os_get_timer_counter(void)
+{
+	struct timespec time = {0};
+	clock_gettime(CLOCK_MONOTONIC, &time);
+	u64 result = time.tv_sec * 1000000000ULL + time.tv_nsec;
+	return result;
 }
 
 function OS_ALLOC_ARENA_FN(os_alloc_arena)

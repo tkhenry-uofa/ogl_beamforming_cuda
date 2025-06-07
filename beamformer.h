@@ -22,6 +22,7 @@ typedef struct {
 	v2   mouse;
 	v2   last_mouse;
 	b32  executable_reloaded;
+	f32  dt;
 } BeamformerInput;
 
 #define CUDA_INIT_FN(name) void name(u32 *input_dims, u32 *decoded_dims)
