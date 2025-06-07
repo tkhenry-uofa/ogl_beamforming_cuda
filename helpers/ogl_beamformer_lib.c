@@ -376,16 +376,16 @@ beamformer_push_parameters_head(BeamformerParametersHead *bp, i32 timeout_ms)
 b32
 set_beamformer_parameters(BeamformerParametersV0 *new_bp)
 {
-	b32 result = 0;
-	result |= beamformer_push_channel_mapping((i16 *)new_bp->channel_mapping,
+	b32 result = 1;
+	result &= beamformer_push_channel_mapping((i16 *)new_bp->channel_mapping,
 	                                          countof(new_bp->channel_mapping), 0);
-	result |= beamformer_push_sparse_elements((i16 *)new_bp->uforces_channels,
+	result &= beamformer_push_sparse_elements((i16 *)new_bp->uforces_channels,
 	                                          countof(new_bp->uforces_channels), 0);
 	v2 focal_vectors[256];
-	for (u32 i = 0; i < ARRAY_COUNT(focal_vectors); i++)
+	for (u32 i = 0; i < countof(focal_vectors); i++)
 		focal_vectors[i] = (v2){{new_bp->transmit_angles[i], new_bp->focal_depths[i]}};
-	result |= beamformer_push_focal_vectors((f32 *)focal_vectors, countof(focal_vectors), 0);
-	result |= beamformer_push_parameters((BeamformerParameters *)&new_bp->xdc_transform, 0);
+	result &= beamformer_push_focal_vectors((f32 *)focal_vectors, countof(focal_vectors), 0);
+	result &= beamformer_push_parameters((BeamformerParameters *)&new_bp->xdc_transform, 0);
 	return result;
 }
 
