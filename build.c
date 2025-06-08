@@ -113,16 +113,50 @@ typedef struct {
 	b32   time;
 } Options;
 
-#define die(fmt, ...) die_("%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
-function no_return void
-die_(char *format, ...)
+#define BUILD_LOG_KINDS \
+	X(Error,   "\x1B[31m[ERROR]\x1B[0m   ") \
+	X(Warning, "\x1B[33m[WARNING]\x1B[0m ") \
+	X(Info,    "\x1B[32m[INFO]\x1B[0m    ") \
+	X(Command, "\x1B[36m[COMMAND]\x1B[0m ")
+#define X(t, ...) BuildLogKind_##t,
+typedef enum {BUILD_LOG_KINDS BuildLogKind_Count} BuildLogKind;
+#undef X
+
+function void
+build_log_base(BuildLogKind kind, char *format, va_list args)
+{
+	#define X(t, pre) pre,
+	read_only local_persist char *prefixes[BuildLogKind_Count + 1] = {BUILD_LOG_KINDS "[INVALID]"};
+	#undef X
+	FILE *out = kind == BuildLogKind_Error? stderr : stdout;
+	fputs(prefixes[MIN(kind, BuildLogKind_Count)], out);
+	vfprintf(out, format, args);
+	fputc('\n', out);
+}
+
+#define build_log_failure(format, ...) build_log(BuildLogKind_Error, \
+                                                 "failed to build: " format, ##__VA_ARGS__)
+#define build_log_info(...)    build_log(BuildLogKind_Info,    ##__VA_ARGS__)
+#define build_log_command(...) build_log(BuildLogKind_Command, ##__VA_ARGS__)
+#define build_log_warning(...) build_log(BuildLogKind_Warning, ##__VA_ARGS__)
+function void
+build_log(BuildLogKind kind, char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
-	/* TODO(rnp): proper log */
-	vfprintf(stderr, format, ap);
+	build_log_base(kind, format, ap);
 	va_end(ap);
-	os_fatal(s8(""));
+}
+
+#define build_fatal(fmt, ...) build_fatal_("%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
+function no_return void
+build_fatal_(char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+	build_log_base(BuildLogKind_Error, format, ap);
+	va_end(ap);
+	os_exit(1);
 }
 
 function b32
@@ -188,10 +222,10 @@ os_spawn_process(CommandList *cmd, Stream sb)
 {
 	pid_t result = fork();
 	switch (result) {
-	case -1: die("failed to fork command: %s: %s\n", cmd->data[0], strerror(errno)); break;
+	case -1: build_fatal("failed to fork command: %s: %s", cmd->data[0], strerror(errno)); break;
 	case  0: {
 		if (execvp(cmd->data[0], cmd->data) == -1)
-			die("failed to exec command: %s: %s\n", cmd->data[0], strerror(errno));
+			build_fatal("failed to exec command: %s: %s", cmd->data[0], strerror(errno));
 		unreachable();
 	} break;
 	}
@@ -206,7 +240,7 @@ os_wait_close_process(iptr handle)
 		i32   status;
 		iptr wait_pid = (iptr)waitpid(handle, &status, 0);
 		if (wait_pid == -1)
-			die("failed to wait on child process: %s\n", strerror(errno));
+			build_fatal("failed to wait on child process: %s", strerror(errno));
 		if (wait_pid == handle) {
 			if (WIFEXITED(status)) {
 				status = WEXITSTATUS(status);
@@ -347,7 +381,7 @@ run_synchronous(Arena a, CommandList *command)
 {
 	Stream sb = arena_stream(a);
 	stream_push_command(&sb, command);
-	printf("%.*s\n", (i32)sb.widx, sb.data);
+	build_log_command("%.*s", (i32)sb.widx, sb.data);
 	return os_wait_close_process(os_spawn_process(command, sb));
 }
 
@@ -374,7 +408,7 @@ cmd_base(Arena *a, Options *o)
 
 	if (o->sanitize) {
 		if (!is_msvc) cmd_append(a, &result, "-fsanitize=address,undefined");
-		else printf("warning: santizers not supported with this compiler\n");
+		else build_log_warning("santizers not supported with this compiler");
 	}
 
 	return result;
@@ -390,7 +424,7 @@ check_rebuild_self(Arena arena, i32 argc, char *argv[])
 		char *old_name = (char *)arena_stream_commit_zero(&arena, &name_buffer).data;
 
 		if (!os_rename_file(binary, old_name))
-			die("failed to move: %s -> %s\n", binary, old_name);
+			build_fatal("failed to move: %s -> %s", binary, old_name);
 
 		Options options = {0};
 		CommandList c = cmd_base(&arena, &options);
@@ -400,7 +434,7 @@ check_rebuild_self(Arena arena, i32 argc, char *argv[])
 		cmd_append(&arena, &c, (void *)0);
 		if (!run_synchronous(arena, &c)) {
 			os_rename_file(old_name, binary);
-			die("failed to rebuild self\n");
+			build_fatal("failed to rebuild self");
 		}
 		os_remove_file(old_name);
 
@@ -427,12 +461,13 @@ s8_equal(s8 a, s8 b)
 function void
 usage(char *argv0)
 {
-	die("%s [--debug] [--sanitize] [--time]\n"
-	    "    --debug:       dynamically link and build with debug symbols\n"
-	    "    --generic:     compile for a generic target (x86-64-v3 or armv8 with NEON)\n"
-	    "    --sanitize:    build with ASAN and UBSAN\n"
-	    "    --time:        print build time\n"
-	    , argv0);
+	printf("%s [--debug] [--sanitize] [--time]\n"
+	       "    --debug:       dynamically link and build with debug symbols\n"
+	       "    --generic:     compile for a generic target (x86-64-v3 or armv8 with NEON)\n"
+	       "    --sanitize:    build with ASAN and UBSAN\n"
+	       "    --time:        print build time\n"
+	       , argv0);
+	os_exit(0);
 }
 
 function Options
@@ -488,20 +523,20 @@ git_submodule_update(Arena a, char *name)
 		git.count = 1;
 		cmd_append(&a, &git, "submodule", "update", "--init", "--depth=1", name, (void *)0);
 		if (!run_synchronous(a, &git))
-			die("failed to clone required module: %s\n", name);
+			build_fatal("failed to clone required module: %s", name);
 	}
 }
 
 function b32
 build_shared_library(Arena a, CommandList cc, char *name, char *output, char **libs, iz libs_count, char **srcs, iz srcs_count)
 {
-	b32 result = 0;
 	cmd_append_count(&a, &cc, srcs, srcs_count);
 	cmd_append(&a, &cc, OUTPUT_DLL(output));
 	cmd_pdb(&a, &cc, name);
 	cmd_append_count(&a, &cc, libs, libs_count);
 	cmd_append(&a, &cc, (void *)0);
-	result = run_synchronous(a, &cc);
+	b32 result = run_synchronous(a, &cc);
+	if (!result) build_log_failure("%s", output);
 	return result;
 }
 
@@ -513,7 +548,9 @@ build_static_library_from_objects(Arena a, char *name, char **flags, iz flags_co
 	cmd_append_count(&a, &ar, flags, flags_count);
 	cmd_append_count(&a, &ar, objects, count);
 	cmd_append(&a, &ar, (void *)0);
-	return run_synchronous(a, &ar);
+	b32 result = run_synchronous(a, &ar);
+	if (!result) build_log_failure("%s", name);
+	return result;
 }
 
 function b32
@@ -531,9 +568,10 @@ build_static_library(Arena a, CommandList cc, char *name, char **deps, char **ou
 	return result;
 }
 
-function void
+function b32
 check_build_raylib(Arena a, CommandList cc, b32 shared)
 {
+	b32 result = 1;
 	char *libraylib = shared ? OS_SHARED_LINK_LIB("raylib") : OUTPUT_LIB(OS_STATIC_LIB("raylib"));
 	if (needs_rebuild(libraylib, __FILE__, "external/include/rlgl.h", "external/raylib")) {
 		git_submodule_update(a, "external/raylib");
@@ -556,17 +594,16 @@ check_build_raylib(Arena a, CommandList cc, b32 shared)
 		char *outs[] = {OUTPUT(OBJECT("rcore_extended")), RAYLIB_SOURCES};
 		#undef X
 
-		b32 success;
 		if (shared) {
 			char *libs[] = {LINK_LIB("user32"), LINK_LIB("shell32"), LINK_LIB("gdi32"), LINK_LIB("winmm")};
 			iz libs_count = is_w32 ? countof(libs) : 0;
 			cmd_append(&a, &cc, "-DBUILD_LIBTYPE_SHARED", "-D_GLFW_BUILD_DLL");
-			success = build_shared_library(a, cc, "raylib", libraylib, libs, libs_count, srcs, countof(srcs));
+			result = build_shared_library(a, cc, "raylib", libraylib, libs, libs_count, srcs, countof(srcs));
 		} else {
-			success = build_static_library(a, cc, libraylib, srcs, outs, countof(srcs));
+			result = build_static_library(a, cc, libraylib, srcs, outs, countof(srcs));
 		}
-		if (!success) die("failed to build libary: %s\n", libraylib);
 	}
+	return result;
 }
 
 function b32
@@ -575,34 +612,28 @@ build_helper_library(Arena arena, CommandList cc)
 	/////////////
 	// library
 	char *library = OUTPUT(OS_SHARED_LIB("ogl_beamformer_lib"));
-	char *srcs[]  = {"helpers/ogl_beamformer_lib.c"};
 	char *libs[]  = {LINK_LIB("Synchronization")};
 	iz libs_count = is_w32 ? countof(libs) : 0;
 
 	if (!is_msvc) cmd_append(&arena, &cc, "-Wno-unused-function");
 	b32 result = build_shared_library(arena, cc, "ogl_beamformer_lib", library,
-	                                  libs, libs_count, srcs, countof(srcs));
-	if (!result) fprintf(stderr, "failed to build: %s\n", library);
+	                                  libs, libs_count,
+	                                  arg_list(char *, "helpers/ogl_beamformer_lib.c"));
 
 	/////////////
 	// header
 	char *lib_header_out = OUTPUT("ogl_beamformer_lib.h");
-
-	b32 rebuild_lib_header = needs_rebuild(lib_header_out, "beamformer_parameters.h",
-	                                       "helpers/ogl_beamformer_lib_base.h");
-	if (rebuild_lib_header) {
+	if (needs_rebuild(lib_header_out, "beamformer_parameters.h", "helpers/ogl_beamformer_lib_base.h")) {
 		s8 parameters_header = os_read_whole_file(&arena, "beamformer_parameters.h");
 		s8 base_header       = os_read_whole_file(&arena, "helpers/ogl_beamformer_lib_base.h");
-		if (parameters_header.len != 0 && base_header.len != 0 &&
-		    parameters_header.data + parameters_header.len == base_header.data)
-		{
+		result = parameters_header.len != 0 && base_header.len != 0 &&
+		         parameters_header.data + parameters_header.len == base_header.data;
+		if (result) {
 			s8 output_file   = parameters_header;
 			output_file.len += base_header.len;
-			os_write_new_file(lib_header_out, output_file);
-		} else {
-			result = 0;
-			fprintf(stderr, "failed to build: %s\n", lib_header_out);
+			result &= os_write_new_file(lib_header_out, output_file);
 		}
+		if (!result) build_log_failure("%s", lib_header_out);
 	}
 
 	return result;
@@ -619,7 +650,6 @@ build_beamformer_as_library(Arena arena, CommandList cc)
 	cmd_append(&arena, &cc, "-D_BEAMFORMER_DLL");
 	b32 result = build_shared_library(arena, cc, "beamformer", library,
 	                                  libs, libs_count, arg_list(char *, "beamformer.c"));
-	if (!result) fprintf(stderr, "failed to build: %s\n", library);
 	return result;
 }
 
@@ -637,7 +667,7 @@ main(i32 argc, char *argv[])
 	os_make_directory(OUTDIR);
 
 	CommandList c = cmd_base(&arena, &options);
-	check_build_raylib(arena, c, options.debug);
+	if (!check_build_raylib(arena, c, options.debug)) return 1;
 
 	result &= build_helper_library(arena, c);
 
@@ -681,7 +711,7 @@ main(i32 argc, char *argv[])
 
 	if (options.time) {
 		f64 seconds = (f64)(os_get_timer_counter() - start_time) / os_get_timer_frequency();
-		printf("info: took %0.03f [s]\n", seconds);
+		build_log_info("took %0.03f [s]", seconds);
 	}
 
 	return result != 1;
