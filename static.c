@@ -113,12 +113,6 @@ get_gl_params(GLParams *gl, Stream *err)
 	#define X(glname, name, suffix) glGetIntegerv(GL_##glname, &gl->name);
 	GL_PARAMETERS
 	#undef X
-
-	/* NOTE(rnp): sometimes GL_MINOR_VERSION doesn't actually report the drivers
-	 * supported version. Since at this point GL has been fully loaded we can
-	 * check that at least one of the GL 4.5 function pointers are available */
-	if (gl->version_minor < 5 && glCreateBuffers)
-		gl->version_minor = 5;
 }
 
 function void
@@ -132,8 +126,9 @@ validate_gl_requirements(GLParams *gl, Arena a)
 		stream_append_s8(&s, s8(" bytes!\n"));
 	}
 
-	if (gl->version_major < 4 || (gl->version_major == 4 && gl->version_minor < 5))
-		stream_append_s8(&s, s8("Only OpenGL Versions 4.5 or newer are supported!\n"));
+	#define X(name, ret, params) if (!name) stream_append_s8s(&s, s8("missing required GL function:"), s8(#name), s8("\n"));
+	OGLProcedureList
+	#undef X
 
 	if (s.widx) os_fatal(stream_to_s8(&s));
 }
