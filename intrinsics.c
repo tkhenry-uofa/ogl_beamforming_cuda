@@ -30,8 +30,8 @@
   #define atomic_load_u64(ptr)         *((volatile u64 *)(ptr))
   #define atomic_load_u32(ptr)         *((volatile u32 *)(ptr))
   #define atomic_and_u64(ptr, n)         _InterlockedAnd64((volatile u64 *)(ptr), (n))
-  #define atomic_add_u64(ptr, n)         _InterlockedAdd64((volatile u64 *)(ptr), (n))
-  #define atomic_add_u32(ptr, n)         _InterlockedAdd((volatile u32 *)(ptr), (n))
+  #define atomic_add_u64(ptr, n)         _InterlockedExchangeAdd64((volatile u64 *)(ptr), (n))
+  #define atomic_add_u32(ptr, n)         _InterlockedExchangeAdd((volatile u32 *)(ptr), (n))
   #define atomic_cas_u64(ptr, cptr, n)  (_InterlockedCompareExchange64((volatile u64 *)(ptr), *(cptr), (n)) == *(cptr))
   #define atomic_cas_u32(ptr, cptr, n)  (_InterlockedCompareExchange((volatile u32 *)(ptr),   *(cptr), (n)) == *(cptr))
 
