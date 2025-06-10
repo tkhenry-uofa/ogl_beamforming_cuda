@@ -1,5 +1,7 @@
 *
-!helpers
 !external
-!**/*.c
-!**/*.h
+!helpers
+!shaders
+!*.c
+!*.glsl
+!*.h
