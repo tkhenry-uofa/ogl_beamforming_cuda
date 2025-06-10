@@ -212,7 +212,6 @@ function FILE_WATCH_CALLBACK_FN(load_cuda_lib)
 	return result;
 }
 
-
 #define GLFW_VISIBLE 0x00020004
 void glfwWindowHint(i32, i32);
 iptr glfwCreateWindow(i32, i32, char *, iptr, iptr);
@@ -229,12 +228,12 @@ function OS_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
 
 	for (;;) {
 		for (;;) {
-			i32 expected = 1;
-			if (atomic_cas_u32(&ctx->sync_variable, &expected, 0))
+			i32 expected = 0;
+			if (atomic_cas_u32(&ctx->sync_variable, &expected, 1))
 				break;
 
 			ctx->asleep = 1;
-			os_wait_on_value(&ctx->sync_variable, 0, -1);
+			os_wait_on_value(&ctx->sync_variable, 1, -1);
 			ctx->asleep = 0;
 		}
 		beamformer_complete_compute(ctx->user_context, ctx->arena, ctx->gl_context);
@@ -280,25 +279,19 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 
 	ctx->beamform_work_queue = push_struct(memory, BeamformWorkQueue);
 
-	ctx->shared_memory = os_create_shared_memory_area(OS_SHARED_MEMORY_NAME, BEAMFORMER_SHARED_MEMORY_SIZE);
-	if (!ctx->shared_memory)
-		os_fatal(s8("Get more ram lol\n"));
-	mem_clear(ctx->shared_memory, 0, sizeof(*ctx->shared_memory));
+	ctx->shared_memory = os_create_shared_memory_area(memory, OS_SHARED_MEMORY_NAME,
+	                                                  BeamformerSharedMemoryLockKind_Count,
+	                                                  BEAMFORMER_SHARED_MEMORY_SIZE);
+	BeamformerSharedMemory *sm = ctx->shared_memory.region;
+	if (!sm) os_fatal(s8("Get more ram lol\n"));
+	mem_clear(sm, 0, sizeof(*sm));
 
-	ctx->shared_memory->version = BEAMFORMER_PARAMETERS_VERSION;
-	/* TODO(rnp): refactor - this is annoying */
-	ctx->shared_memory->parameters_sync      = 1;
-	ctx->shared_memory->parameters_head_sync = 1;
-	ctx->shared_memory->parameters_ui_sync   = 1;
-	ctx->shared_memory->raw_data_sync        = 1;
-	ctx->shared_memory->channel_mapping_sync = 1;
-	ctx->shared_memory->sparse_elements_sync = 1;
-	ctx->shared_memory->focal_vectors_sync   = 1;
+	sm->version = BEAMFORMER_SHARED_MEMORY_VERSION;
 
 	/* NOTE: default compute shader pipeline */
-	ctx->shared_memory->compute_stages[0]    = ComputeShaderKind_Decode;
-	ctx->shared_memory->compute_stages[1]    = ComputeShaderKind_DASCompute;
-	ctx->shared_memory->compute_stages_count = 2;
+	sm->compute_stages[0]    = ComputeShaderKind_Decode;
+	sm->compute_stages[1]    = ComputeShaderKind_DASCompute;
+	sm->compute_stages_count = 2;
 
 	if (ctx->gl.vendor_id == GL_VENDOR_NVIDIA
 	    && load_cuda_lib(&ctx->os, s8(OS_CUDA_LIB_NAME), (iptr)&ctx->cuda_lib, *memory))

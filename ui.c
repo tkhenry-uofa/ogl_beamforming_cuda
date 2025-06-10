@@ -1965,18 +1965,18 @@ draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *sta
 	read_only local_persist s8 labels[ComputeShaderKind_Count] = {COMPUTE_SHADERS};
 	#undef X
 
+	BeamformerSharedMemory *sm = ctx->shared_memory.region;
 	BeamformerUI *ui     = ctx->ui;
 	f32 compute_time_sum = 0;
-	u32 stages           = ctx->shared_memory->compute_stages_count;
+	u32 stages           = sm->compute_stages_count;
 	TextSpec text_spec   = {.font = &ui->font, .colour = FG_COLOUR, .flags = TF_LIMITED};
 
 	Table *table = table_new(&arena, stages + 1, 3, (TextAlignment []){TA_LEFT, TA_LEFT, TA_LEFT});
 	for (u32 i = 0; i < stages; i++) {
 		TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
 
-
 		Stream sb = arena_stream(arena);
-		u32 index = ctx->shared_memory->compute_stages[i];
+		ShaderKind index = (ShaderKind)sm->compute_stages[i];
 		compute_time_sum += stats->times[index];
 		stream_append_f64_e(&sb, stats->times[index]);
 
@@ -2824,6 +2824,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
         ComputeShaderStats *latest_compute_stats)
 {
 	BeamformerUI *ui = ctx->ui;
+	BeamformerSharedMemory *sm = ctx->shared_memory.region;
 
 	ui->latest_plane[IPT_LAST]    = frame_to_draw;
 	ui->latest_plane[frame_plane] = frame_to_draw;
@@ -2831,7 +2832,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 
 	/* TODO(rnp): there should be a better way of detecting this */
 	if (ctx->ui_read_params) {
-		mem_copy(&ui->params, &ctx->shared_memory->parameters.output_min_coordinate, sizeof(ui->params));
+		mem_copy(&ui->params, &sm->parameters.output_min_coordinate, sizeof(ui->params));
 		ui->flush_params    = 0;
 		ctx->ui_read_params = 0;
 	}
@@ -2841,19 +2842,18 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 	ui_interact(ui, input, ctx->window_size);
 
 	if (ui->flush_params) {
+		i32 lock = BeamformerSharedMemoryLockKind_Parameters;
 		validate_ui_parameters(&ui->params);
-		BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
-		if (work && try_wait_sync(&ctx->shared_memory->parameters_sync, 0, ctx->os.wait_on_value)) {
-			BeamformerUploadContext *uc = &work->upload_context;
-			uc->shared_memory_offset = offsetof(BeamformerSharedMemory, parameters);
-			uc->size = sizeof(ctx->shared_memory->parameters);
-			uc->kind = BU_KIND_PARAMETERS;
-			work->type = BW_UPLOAD_BUFFER;
-			work->completion_barrier = (iptr)&ctx->shared_memory->parameters_sync;
-			mem_copy(&ctx->shared_memory->parameters_ui, &ui->params, sizeof(ui->params));
-			beamform_work_queue_push_commit(ctx->beamform_work_queue);
-			ui->flush_params   = 0;
-			ctx->start_compute = 1;
+		if (ctx->os.shared_memory_region_lock(&ctx->shared_memory, sm->locks, lock, 0)) {
+			mem_copy(&sm->parameters_ui, &ui->params, sizeof(ui->params));
+			ui->flush_params = 0;
+			ctx->csctx.shared_ubo_dirty = 1;
+			b32 dispatch = ctx->os.shared_memory_region_lock(&ctx->shared_memory, sm->locks,
+			                                                 BeamformerSharedMemoryLockKind_DispatchCompute,
+			                                                 0);
+			sm->start_compute_from_main |= dispatch &
+			                               ctx->beamform_frames[ctx->display_frame_index].ready_to_present;
+			ctx->os.shared_memory_region_unlock(&ctx->shared_memory, sm->locks, lock);
 		}
 	}
 

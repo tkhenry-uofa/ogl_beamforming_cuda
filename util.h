@@ -254,6 +254,11 @@ typedef struct {
 	iptr  handle;
 } FileWatchContext;
 
+typedef struct {
+	void *region;
+	iptr  os_context;
+} SharedMemoryRegion;
+
 #define OS_ALLOC_ARENA_FN(name) Arena name(Arena old, iz capacity)
 typedef OS_ALLOC_ARENA_FN(os_alloc_arena_fn);
 
@@ -291,16 +296,23 @@ typedef OS_WRITE_FILE_FN(os_write_file_fn);
 #define OS_THREAD_ENTRY_POINT_FN(name) iptr name(iptr _ctx)
 typedef OS_THREAD_ENTRY_POINT_FN(os_thread_entry_point_fn);
 
+#define OS_SHARED_MEMORY_LOCK_REGION_FN(name) b32 name(SharedMemoryRegion *sm, i32 *locks, i32 lock_index, i32 timeout_ms)
+typedef OS_SHARED_MEMORY_LOCK_REGION_FN(os_shared_memory_region_lock_fn);
+
+#define OS_SHARED_MEMORY_UNLOCK_REGION_FN(name) void name(SharedMemoryRegion *sm, i32 *locks, i32 lock_index)
+typedef OS_SHARED_MEMORY_UNLOCK_REGION_FN(os_shared_memory_region_unlock_fn);
+
 #define OS_FNS \
-	X(add_file_watch)  \
-	X(alloc_arena)     \
-	X(close)           \
-	X(open_for_write)  \
-	X(read_file)       \
-	X(read_whole_file) \
-	X(wait_on_value)   \
-	X(wake_waiters)    \
-	X(write_new_file)  \
+	X(add_file_watch)              \
+	X(alloc_arena)                 \
+	X(close)                       \
+	X(open_for_write)              \
+	X(read_file)                   \
+	X(read_whole_file)             \
+	X(shared_memory_region_lock)   \
+	X(shared_memory_region_unlock) \
+	X(wake_waiters)                \
+	X(write_new_file)              \
 	X(write_file)
 
 #define RENDERDOC_GET_API_FN(name) b32 name(u32 version, void **out_api)

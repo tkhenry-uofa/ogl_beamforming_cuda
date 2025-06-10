@@ -38,10 +38,12 @@ LIB_FN uint32_t send_data(void *data, uint32_t data_size);
 LIB_FN uint32_t beamform_data_synchronized(void *data, uint32_t data_size, uint32_t output_points[3],
                                            float *out_data, int32_t timeout_ms);
 
-LIB_FN uint32_t beamformer_start_compute(uint32_t image_plane_tag);
+/* NOTE: tells the beamformer to start beamforming and waits until it starts or for timeout_ms */
+LIB_FN uint32_t beamformer_start_compute(int32_t timeout_ms);
 
 /* NOTE: these functions only queue an upload; you must flush (old data functions or start_compute) */
 LIB_FN uint32_t beamformer_push_data(void *data, uint32_t size, int32_t timeout_ms);
+LIB_FN uint32_t beamformer_push_data_with_compute(void *data, uint32_t size, uint32_t image_plane_tag, int32_t timeout_ms);
 LIB_FN uint32_t beamformer_push_channel_mapping(int16_t *mapping,  uint32_t count, int32_t timeout_ms);
 LIB_FN uint32_t beamformer_push_sparse_elements(int16_t *elements, uint32_t count, int32_t timeout_ms);
 LIB_FN uint32_t beamformer_push_focal_vectors(float     *vectors,  uint32_t count, int32_t timeout_ms);

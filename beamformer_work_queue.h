@@ -1,12 +1,20 @@
 /* See LICENSE for license details. */
+/* TODO(rnp):
+ * [ ]: coalesce uploads if they are overwriting exist data
+ *      - use a flag field and only submit a new work if the corresponding flag is clear
+ */
+
 #ifndef _BEAMFORMER_WORK_QUEUE_H_
 #define _BEAMFORMER_WORK_QUEUE_H_
+
+#define BEAMFORMER_SHARED_MEMORY_VERSION (3UL)
 
 typedef struct BeamformComputeFrame BeamformComputeFrame;
 typedef struct ShaderReloadContext  ShaderReloadContext;
 
 typedef enum {
 	BW_COMPUTE,
+	BW_COMPUTE_INDIRECT,
 	BW_RELOAD_SHADER,
 	BW_SAVE_FRAME,
 	BW_SEND_FRAME,
@@ -33,6 +41,21 @@ typedef struct {
 	iptr                  file_handle;
 } BeamformOutputFrameContext;
 
+#define BEAMFORMER_SHARED_MEMORY_LOCKS \
+	X(None)            \
+	X(Parameters)      \
+	X(ParametersHead)  \
+	X(ParametersUI)    \
+	X(FocalVectors)    \
+	X(ChannelMapping)  \
+	X(SparseElements)  \
+	X(RawData)         \
+	X(DispatchCompute)
+
+#define X(name) BeamformerSharedMemoryLockKind_##name,
+typedef enum {BEAMFORMER_SHARED_MEMORY_LOCKS BeamformerSharedMemoryLockKind_Count} BeamformerSharedMemoryLockKind;
+#undef X
+
 /* NOTE: discriminated union based on type */
 typedef struct {
 	union {
@@ -40,11 +63,10 @@ typedef struct {
 		BeamformerUploadContext     upload_context;
 		BeamformOutputFrameContext  output_frame_ctx;
 		ShaderReloadContext        *shader_reload_context;
+		ImagePlaneTag               compute_indirect_plane;
 		void                       *generic;
 	};
-	/* NOTE(rnp): mostly for __external__ processes to sync on. when passed from external
-	 * process this should be an offset from base of shared_memory */
-	iptr completion_barrier;
+	BeamformerSharedMemoryLockKind lock;
 
 	BeamformWorkType type;
 } BeamformWork;
@@ -68,9 +90,15 @@ typedef BEAMFORM_WORK_QUEUE_PUSH_COMMIT_FN(beamform_work_queue_push_commit_fn);
                                        - (uintptr_t)(sizeof(BeamformerSharedMemory) & 4095ULL))
 #define BEAMFORMER_MAX_RF_DATA_SIZE   (BEAMFORMER_SHARED_MEMORY_SIZE - BEAMFORMER_RF_DATA_OFF)
 
-typedef struct {
+typedef align_as(64) struct {
+	u32 version;
+
+	/* NOTE(rnp): not used for locking on w32 but we can use these to peek at the status of
+	 * the lock without leaving userspace. also this struct needs a bunch of padding */
+	i32 locks[BeamformerSharedMemoryLockKind_Count];
+
 	/* NOTE(rnp): interleaved transmit angle, focal depth pairs */
-	_Alignas(64) v2 focal_vectors[256];
+	align_as(64) v2 focal_vectors[256];
 
 	i16 channel_mapping[256];
 	i16 sparse_elements[256];
@@ -87,21 +115,12 @@ typedef struct {
 	ComputeShaderKind compute_stages[MAX_COMPUTE_SHADER_STAGES];
 	u32               compute_stages_count;
 
-	i32 parameters_sync;
-	i32 parameters_head_sync;
-	i32 parameters_ui_sync;
-	i32 focal_vectors_sync;
-	i32 channel_mapping_sync;
-	i32 sparse_elements_sync;
-	i32 raw_data_sync;
-
-	i32           dispatch_compute_sync;
-	ImagePlaneTag current_image_plane;
+	/* TODO(rnp): hack: we need a different way of dispatching work for export */
+	b32 start_compute_from_main;
 
 	/* TODO(rnp): this shouldn't be needed */
 	b32 export_next_frame;
 
-	u32 version;
 	BeamformWorkQueue external_work_queue;
 } BeamformerSharedMemory;
 

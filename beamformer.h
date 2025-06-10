@@ -87,6 +87,7 @@ typedef struct {
 
 	u32 raw_data_ssbo;
 	u32 shared_ubo;
+	b32 shared_ubo_dirty;
 
 	u32 channel_mapping_texture;
 	u32 sparse_elements_texture;
@@ -171,7 +172,7 @@ typedef struct {
 	GLParams gl;
 
 	uv2 window_size;
-	b32 start_compute;
+	b32 starting_compute;
 	b32 should_exit;
 
 	Arena  ui_backing_store;
@@ -201,7 +202,7 @@ typedef struct {
 
 	BeamformWorkQueue *beamform_work_queue;
 
-	BeamformerSharedMemory *shared_memory;
+	SharedMemoryRegion shared_memory;
 } BeamformerCtx;
 
 struct ShaderReloadContext {

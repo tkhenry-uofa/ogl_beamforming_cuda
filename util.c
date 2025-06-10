@@ -508,6 +508,15 @@ round_down_power_of_2(u32 a)
 	return result;
 }
 
+function iz
+round_up_to(iz value, iz multiple)
+{
+	iz result = value;
+	if (value % multiple != 0)
+		result += multiple - value % multiple;
+	return result;
+}
+
 function b32
 uv2_equal(uv2 a, uv2 b)
 {

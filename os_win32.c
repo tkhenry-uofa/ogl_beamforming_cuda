@@ -83,12 +83,17 @@ typedef struct {
 	iptr context;
 } w32_io_completion_event;
 
+typedef struct {
+	iptr *semaphores;
+} w32_shared_memory_context;
+
 #define W32(r) __declspec(dllimport) r __stdcall
 W32(b32)    CloseHandle(iptr);
 W32(b32)    CopyFileA(c8 *, c8 *, b32);
 W32(iptr)   CreateFileA(c8 *, u32, u32, void *, u32, u32, void *);
 W32(iptr)   CreateFileMappingA(iptr, void *, u32, u32, u32, c8 *);
 W32(iptr)   CreateIoCompletionPort(iptr, iptr, uptr, u32);
+W32(iptr)   CreateSemaphoreA(iptr, i32, i32, c8 *);
 W32(iptr)   CreateThread(iptr, uz, iptr, iptr, u32, u32 *);
 W32(b32)    DeleteFileA(c8 *);
 W32(void)   ExitProcess(i32);
@@ -107,8 +112,9 @@ W32(b32)    QueryPerformanceCounter(u64 *);
 W32(b32)    QueryPerformanceFrequency(u64 *);
 W32(b32)    ReadDirectoryChangesW(iptr, u8 *, u32, b32, u32, u32 *, void *, void *);
 W32(b32)    ReadFile(iptr, u8 *, i32, i32 *, void *);
-W32(b32)    ReleaseSemaphore(iptr, i64, i64 *);
+W32(b32)    ReleaseSemaphore(iptr, i32, i32 *);
 W32(i32)    SetThreadDescription(iptr, u16 *);
+W32(u32)    WaitForSingleObject(iptr, u32);
 W32(b32)    WaitOnAddress(void *, void *, uz, u32);
 W32(i32)    WakeByAddressAll(void *);
 W32(iptr)   wglGetProcAddress(c8 *);
@@ -168,10 +174,9 @@ os_get_timer_counter(void)
 	return result;
 }
 
-function OS_ALLOC_ARENA_FN(os_alloc_arena)
+function iz
+os_round_up_to_page_size(iz value)
 {
-	Arena result = old;
-
 	struct {
 		u16  architecture;
 		u16  _pad1;
@@ -185,17 +190,18 @@ function OS_ALLOC_ARENA_FN(os_alloc_arena)
 		u16  processor_level;
 		u16  processor_revision;
 	} info;
-
 	GetSystemInfo(&info);
+	iz result = round_up_to(value, info.page_size);
+	return result;
+}
 
-	if (capacity % info.page_size != 0)
-		capacity += (info.page_size - capacity % info.page_size);
-
+function OS_ALLOC_ARENA_FN(os_alloc_arena)
+{
+	Arena result = old;
+	capacity = os_round_up_to_page_size(capacity);
 	iz old_size = old.end - old.beg;
 	if (old_size < capacity) {
-		if (old.beg)
-			VirtualFree(old.beg, old_size, MEM_RELEASE);
-
+		if (old.beg) VirtualFree(old.beg, old_size, MEM_RELEASE);
 		result.beg = VirtualAlloc(0, capacity, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 		if (!result.beg)
 			os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
@@ -268,13 +274,34 @@ os_file_exists(char *path)
 	return result;
 }
 
-function void *
-os_create_shared_memory_area(char *name, iz cap)
+function SharedMemoryRegion
+os_create_shared_memory_area(Arena *arena, char *name, i32 lock_count, iz requested_capacity)
 {
-	void *result = 0;
-	iptr h = CreateFileMappingA(-1, 0, PAGE_READWRITE, 0, cap, name);
-	if (h != INVALID_FILE)
-		result = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, cap);
+	iz capacity = os_round_up_to_page_size(requested_capacity);
+	SharedMemoryRegion result = {0};
+	iptr h = CreateFileMappingA(-1, 0, PAGE_READWRITE, 0, capacity, name);
+	if (h != INVALID_FILE) {
+		void *new = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, capacity);
+		if (new) {
+			w32_shared_memory_context *ctx = push_struct(arena, typeof(*ctx));
+			ctx->semaphores   = push_array(arena, typeof(*ctx->semaphores), lock_count);
+			result.os_context = (iptr)ctx;
+			result.region     = new;
+
+			Stream sb = arena_stream(*arena);
+			stream_append_s8s(&sb, c_str_to_s8(name), s8("_lock_"));
+			for (i32 i = 0; i < lock_count; i++) {
+				Stream lb = sb;
+				stream_append_i64(&lb, i);
+				stream_append_byte(&lb, 0);
+				ctx->semaphores[i] = CreateSemaphoreA(0, 1, 1, (c8 *)lb.data);
+				if (ctx->semaphores[i] == INVALID_FILE) {
+					os_fatal(s8("os_create_shared_memory_area: "
+					            "failed to create semaphore\n"));
+				}
+			}
+		}
+	}
 	return result;
 }
 
@@ -380,7 +407,23 @@ function OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 function OS_WAKE_WAITERS_FN(os_wake_waiters)
 {
 	if (sync) {
-		atomic_add_u32(sync, 1);
+		atomic_store_u32(sync, 0);
 		WakeByAddressAll(sync);
 	}
+}
+
+function OS_SHARED_MEMORY_LOCK_REGION_FN(os_shared_memory_region_lock)
+{
+	w32_shared_memory_context *ctx = (typeof(ctx))sm->os_context;
+	b32 result = !WaitForSingleObject(ctx->semaphores[lock_index], timeout_ms);
+	if (result) atomic_store_u32(locks + lock_index, 1);
+	return result;
+}
+
+function OS_SHARED_MEMORY_UNLOCK_REGION_FN(os_shared_memory_region_unlock)
+{
+	w32_shared_memory_context *ctx = (typeof(ctx))sm->os_context;
+	assert(atomic_load_u32(locks + lock_index));
+	os_wake_waiters(locks + lock_index);
+	ReleaseSemaphore(ctx->semaphores[lock_index], 1, 0);
 }

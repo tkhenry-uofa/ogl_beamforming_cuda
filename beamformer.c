@@ -1,6 +1,5 @@
 /* See LICENSE for license details. */
 /* TODO(rnp):
- * [ ]: refactor: BeamformGPUComputeContext
  * [ ]: refactor: compute shader timers should be generated based on the pipeline stage limit
  * [ ]: reinvestigate ring buffer raw_data_ssbo
  *      - to minimize latency the main thread should manage the subbuffer upload so that the
@@ -10,6 +9,14 @@
  *        can overwrite one while the other is in use.
  *      - make use of glFenceSync to guard buffer uploads
  * [ ]: BeamformWorkQueue -> BeamformerWorkQueue
+ * [ ]: bug: re-beamform on shader reload
+ * [ ]: need to keep track of gpu memory in some way
+ *      - want to be able to store more than 16 2D frames but limit 3D frames
+ *      - maybe keep track of how much gpu memory is committed for beamformed images
+ *        and use that to determine when to loop back over existing textures
+ *      - to do this maybe use a circular linked list instead of a flat array
+ *      - then have a way of querying how many frames are available for a specific point count
+ * [ ]: bug: reinit cuda on hot-reload
  */
 
 #include "beamformer.h"
@@ -111,7 +118,7 @@ function void
 alloc_shader_storage(BeamformerCtx *ctx, u32 rf_raw_size, Arena a)
 {
 	ComputeShaderCtx     *cs = &ctx->csctx;
-	BeamformerParameters *bp = &ctx->shared_memory->parameters;
+	BeamformerParameters *bp = &((BeamformerSharedMemory *)ctx->shared_memory.region)->parameters;
 
 	cs->dec_data_dim = uv4_from_u32_array(bp->dec_data_dim);
 	cs->rf_raw_size  = rf_raw_size;
@@ -161,6 +168,7 @@ fill_frame_compute_work(BeamformerCtx *ctx, BeamformWork *work, ImagePlaneTag pl
 		u32 frame_id    = atomic_add_u32(&ctx->next_render_frame_index, 1);
 		u32 frame_index = frame_id % countof(ctx->beamform_frames);
 		work->type      = BW_COMPUTE;
+		work->lock      = BeamformerSharedMemoryLockKind_DispatchCompute;
 		work->frame     = ctx->beamform_frames + frame_index;
 		work->frame->ready_to_present = 0;
 		work->frame->frame.id = frame_id;
@@ -270,7 +278,8 @@ compute_cursor_finished(struct compute_cursor *cursor)
 function void
 do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, ShaderKind shader)
 {
-	ComputeShaderCtx *csctx = &ctx->csctx;
+	ComputeShaderCtx *csctx    = &ctx->csctx;
+	BeamformerSharedMemory *sm = ctx->shared_memory.region;
 
 	glUseProgram(csctx->programs[shader]);
 
@@ -364,10 +373,10 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		aframe->frame.id             = ctx->averaged_frame_index;
 		/* TODO(rnp): hack we need a better way of specifying which frames to sum;
 		 * this is fine for rolling averaging but what if we want to do something else */
-		ASSERT(frame >= ctx->beamform_frames);
-		ASSERT(frame < ctx->beamform_frames + ARRAY_COUNT(ctx->beamform_frames));
+		assert(frame >= ctx->beamform_frames);
+		assert(frame < ctx->beamform_frames + countof(ctx->beamform_frames));
 		u32 base_index   = (u32)(frame - ctx->beamform_frames);
-		u32 to_average   = ctx->shared_memory->parameters.output_points[3];
+		u32 to_average   = sm->parameters.output_points[3];
 		u32 frame_count  = 0;
 		u32 *in_textures = push_array(&arena, u32, MAX_BEAMFORMED_SAVED_FRAMES);
 		ComputeFrameIterator cfi = compute_frame_iterator(ctx, 1 + base_index - to_average,
@@ -482,11 +491,11 @@ reload_compute_shader(BeamformerCtx *ctx, ShaderReloadContext *src, s8 name_extr
 }
 
 function void
-complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_context, iz barrier_offset)
+complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_context)
 {
 	ComputeShaderCtx       *cs = &ctx->csctx;
-	BeamformerParameters   *bp = &ctx->shared_memory->parameters;
-	BeamformerSharedMemory *sm = ctx->shared_memory;
+	BeamformerSharedMemory *sm = ctx->shared_memory.region;
+	BeamformerParameters   *bp = &sm->parameters;
 
 	BeamformWork *work = beamform_work_queue_pop(q);
 	while (work) {
@@ -517,7 +526,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			}
 		} break;
 		case BW_UPLOAD_BUFFER: {
-			assert(!atomic_load_u32((i32 *)(barrier_offset + work->completion_barrier)));
+			ctx->os.shared_memory_region_lock(&ctx->shared_memory, sm->locks, (i32)work->lock, -1);
 			BeamformerUploadContext *uc = &work->upload_context;
 			u32 tex_type, tex_format, tex_element_count, tex_1d = 0, buffer = 0;
 			switch (uc->kind) {
@@ -541,7 +550,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				tex_element_count = ARRAY_COUNT(sm->sparse_elements);
 			} break;
 			case BU_KIND_PARAMETERS: {
-				ctx->ui_read_params = barrier_offset != 0;
+				ctx->ui_read_params = ctx->beamform_work_queue != q;
 				buffer = cs->shared_ubo;
 			} break;
 			case BU_KIND_RF_DATA: {
@@ -564,8 +573,26 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				glNamedBufferSubData(buffer, 0, uc->size,
 				                     (u8 *)sm + uc->shared_memory_offset);
 			}
+			ctx->os.shared_memory_region_unlock(&ctx->shared_memory, sm->locks, (i32)work->lock);
 		} break;
-		case BW_COMPUTE: {
+		case BW_COMPUTE_INDIRECT:{
+			fill_frame_compute_work(ctx, work, work->compute_indirect_plane);
+			DEBUG_DECL(work->type = BW_COMPUTE_INDIRECT;)
+		} /* FALLTHROUGH */
+		case BW_COMPUTE:{
+			/* NOTE(rnp): debug: here it is not a bug to release the lock if it
+			 * isn't held but elswhere it is */
+			DEBUG_DECL(if (sm->locks[work->lock])) {
+				ctx->os.shared_memory_region_unlock(&ctx->shared_memory,
+				                                    sm->locks, work->lock);
+			}
+			atomic_store_u32(&ctx->starting_compute, 0);
+
+			if (cs->shared_ubo_dirty) {
+				glNamedBufferSubData(cs->shared_ubo, 0, sizeof(sm->parameters), &sm->parameters);
+				cs->shared_ubo_dirty = 0;
+			}
+
 			atomic_store_u32(&cs->processing_compute, 1);
 			start_renderdoc_capture(gl_context);
 
@@ -640,14 +667,10 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				INVALID_CODE_PATH;
 			}
 		} break;
-		default: INVALID_CODE_PATH; break;
+		InvalidDefaultCase;
 		}
 
 		if (can_commit) {
-			if (work->completion_barrier) {
-				i32 *value = (i32 *)(barrier_offset + work->completion_barrier);
-				ctx->os.wake_waiters(value);
-			}
 			beamform_work_queue_pop_commit(q);
 			work = beamform_work_queue_pop(q);
 		}
@@ -657,7 +680,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 DEBUG_EXPORT BEAMFORMER_COMPUTE_SETUP_FN(beamformer_compute_setup)
 {
 	BeamformerCtx          *ctx = (BeamformerCtx *)user_context;
-	BeamformerSharedMemory *sm  = ctx->shared_memory;
+	BeamformerSharedMemory *sm  = ctx->shared_memory.region;
 	ComputeShaderCtx       *cs  = &ctx->csctx;
 
 	glCreateBuffers(1, &cs->shared_ubo);
@@ -678,9 +701,10 @@ DEBUG_EXPORT BEAMFORMER_COMPUTE_SETUP_FN(beamformer_compute_setup)
 
 DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
 {
-	BeamformerCtx *ctx = (BeamformerCtx *)user_context;
-	complete_queue(ctx, &ctx->shared_memory->external_work_queue, arena, gl_context, (iz)ctx->shared_memory);
-	complete_queue(ctx, ctx->beamform_work_queue, arena, gl_context, 0);
+	BeamformerCtx *ctx         = (BeamformerCtx *)user_context;
+	BeamformerSharedMemory *sm = ctx->shared_memory.region;
+	complete_queue(ctx, &sm->external_work_queue, arena, gl_context);
+	complete_queue(ctx, ctx->beamform_work_queue, arena, gl_context);
 }
 
 #include "ui.c"
@@ -700,49 +724,40 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		DEBUG_DECL(end_frame_capture   = ctx->os.end_frame_capture);
 	}
 
-	BeamformerParameters *bp = &ctx->shared_memory->parameters;
-	if (ctx->shared_memory->dispatch_compute_sync) {
-		ImagePlaneTag current_plane = ctx->shared_memory->current_image_plane;
-		atomic_store_u32(&ctx->shared_memory->dispatch_compute_sync, 0);
-		BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
-		if (work) {
-			if (fill_frame_compute_work(ctx, work, current_plane))
+	BeamformerSharedMemory *sm = ctx->shared_memory.region;
+	BeamformerParameters   *bp = &sm->parameters;
+	if (sm->locks[BeamformerSharedMemoryLockKind_DispatchCompute] && !ctx->starting_compute) {
+		if (sm->start_compute_from_main) {
+			BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
+			ImagePlaneTag tag  = ctx->beamform_frames[ctx->display_frame_index].image_plane_tag;
+			if (fill_frame_compute_work(ctx, work, tag)) {
 				beamform_work_queue_push_commit(ctx->beamform_work_queue);
-
-			if (ctx->shared_memory->export_next_frame) {
-				BeamformWork *export = beamform_work_queue_push(ctx->beamform_work_queue);
-				if (export) {
-					/* TODO: we don't really want the beamformer opening/closing files */
-					iptr f = ctx->os.open_for_write(ctx->os.export_pipe_name);
-					export->type = BW_SAVE_FRAME;
-					export->output_frame_ctx.file_handle = f;
-					if (bp->output_points[3] > 1) {
-						u32 a_index = !(ctx->averaged_frame_index %
-						                ARRAY_COUNT(ctx->averaged_frames));
-						BeamformComputeFrame *aframe = ctx->averaged_frames + a_index;
-						export->output_frame_ctx.frame = aframe;
-					} else {
-						export->output_frame_ctx.frame = work->frame;
+				if (sm->export_next_frame) {
+					BeamformWork *export = beamform_work_queue_push(ctx->beamform_work_queue);
+					if (export) {
+						/* TODO: we don't really want the beamformer opening/closing files */
+						iptr f = ctx->os.open_for_write(ctx->os.export_pipe_name);
+						export->type = BW_SAVE_FRAME;
+						export->output_frame_ctx.file_handle = f;
+						if (bp->output_points[3] > 1) {
+							static_assert(countof(ctx->averaged_frames) == 2,
+							              "fix this, we assume average frame ping pong buffer");
+							u32 a_index = !(ctx->averaged_frame_index %
+							                countof(ctx->averaged_frames));
+							BeamformComputeFrame *aframe = ctx->averaged_frames + a_index;
+							export->output_frame_ctx.frame = aframe;
+						} else {
+							export->output_frame_ctx.frame = work->frame;
+						}
+						beamform_work_queue_push_commit(ctx->beamform_work_queue);
 					}
-					beamform_work_queue_push_commit(ctx->beamform_work_queue);
+					sm->export_next_frame = 0;
 				}
-				ctx->shared_memory->export_next_frame = 0;
 			}
-
-			ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
+			atomic_store_u32(&sm->start_compute_from_main, 0);
 		}
-	}
-
-	if (ctx->start_compute) {
-		if (ctx->beamform_frames[ctx->display_frame_index].ready_to_present) {
-			BeamformWork *work  = beamform_work_queue_push(ctx->beamform_work_queue);
-			ImagePlaneTag plane = ctx->beamform_frames[ctx->display_frame_index].image_plane_tag;
-			if (fill_frame_compute_work(ctx, work, plane)) {
-				beamform_work_queue_push_commit(ctx->beamform_work_queue);
-				ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
-				ctx->start_compute = 0;
-			}
-		}
+		atomic_store_u32(&ctx->starting_compute, 1);
+		ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
 	}
 
 	ComputeFrameIterator cfi = compute_frame_iterator(ctx, ctx->display_frame_index,
@@ -754,14 +769,9 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		}
 	}
 
-	if (ctx->start_compute) {
-		ctx->start_compute = 0;
-		ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
-	}
-
 	BeamformComputeFrame *frame_to_draw;
 	if (bp->output_points[3] > 1) {
-		u32 a_index = !(ctx->averaged_frame_index % ARRAY_COUNT(ctx->averaged_frames));
+		u32 a_index = !(ctx->averaged_frame_index % countof(ctx->averaged_frames));
 		frame_to_draw = ctx->averaged_frames + a_index;
 	} else {
 		frame_to_draw = ctx->beamform_frames + ctx->display_frame_index;

@@ -7,8 +7,6 @@
  *      programatically would be nice.
  */
 
-#define BEAMFORMER_PARAMETERS_VERSION (2UL)
-
 /* X(enumarant, number, shader file name, needs header, pretty name) */
 #define COMPUTE_SHADERS \
 	X(CudaDecode,         0, "",         0, "CUDA Decode")   \

@@ -8,6 +8,7 @@
 
 #define PIPE_RETRY_PERIOD_MS (100ULL)
 
+global SharedMemoryRegion      g_shared_memory;
 global BeamformerSharedMemory *g_bp;
 global BeamformerLibErrorKind  g_lib_last_error;
 
@@ -72,30 +73,20 @@ os_wait_read_pipe(Pipe p, void *buf, iz read_size, u32 timeout_ms)
 	return total_read == read_size;
 }
 
-static BeamformerSharedMemory *
+function SharedMemoryRegion
 os_open_shared_memory_area(char *name)
 {
-	BeamformerSharedMemory *result = 0;
+	SharedMemoryRegion result = {0};
 	i32 fd = shm_open(name, O_RDWR, S_IRUSR|S_IWUSR);
 	if (fd > 0) {
 		void *new = mmap(0, BEAMFORMER_SHARED_MEMORY_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-		if (new != MAP_FAILED)
-			result = new;
+		if (new != MAP_FAILED) result.region = new;
 		close(fd);
 	}
 	return result;
 }
 
 #elif OS_WINDOWS
-
-/* TODO(rnp): temporary workaround */
-function OS_WAIT_ON_VALUE_FN(os_wait_on_value_stub)
-{
-	/* TODO(rnp): this doesn't work across processes on win32 (return 1 to cause a spin wait) */
-	return 1;
-	return WaitOnAddress(value, &current, sizeof(*value), timeout_ms);
-}
-#define os_wait_on_value os_wait_on_value_stub
 
 static Pipe
 os_open_read_pipe(char *name)
@@ -145,16 +136,35 @@ os_wait_read_pipe(Pipe p, void *buf, iz read_size, u32 timeout_ms)
 	return total_read == read_size;
 }
 
-function BeamformerSharedMemory *
+function SharedMemoryRegion
 os_open_shared_memory_area(char *name)
 {
-	BeamformerSharedMemory *result = 0;
+	SharedMemoryRegion result = {0};
 	iptr h = OpenFileMappingA(FILE_MAP_ALL_ACCESS, 0, name);
 	if (h != INVALID_FILE) {
-		result = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, BEAMFORMER_SHARED_MEMORY_SIZE);
+		void *new = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0,
+		                          os_round_up_to_page_size(BEAMFORMER_SHARED_MEMORY_SIZE));
+		if (new) {
+			u8 buffer[1024];
+			Stream sb = {.data = buffer, .cap = 1024};
+			stream_append_s8s(&sb, c_str_to_s8(name), s8("_lock_"));
+			local_persist iptr semaphores[BeamformerSharedMemoryLockKind_Count];
+			local_persist w32_shared_memory_context ctx = {.semaphores = semaphores};
+			b32 all_semaphores = 1;
+			for (i32 i = 0; i < countof(semaphores); i++) {
+				Stream lb = sb;
+				stream_append_i64(&lb, i);
+				stream_append_byte(&lb, 0);
+				semaphores[i] = CreateSemaphoreA(0, 1, 1, (c8 *)lb.data);
+				all_semaphores &= semaphores[i] != INVALID_FILE;
+			}
+			if (all_semaphores) {
+				result.region     = new;
+				result.os_context = (iptr)&ctx;
+			}
+		}
 		CloseHandle(h);
 	}
-
 	return result;
 }
 
@@ -164,16 +174,19 @@ function b32
 check_shared_memory(void)
 {
 	b32 result = 1;
-	if (!g_bp) {
-		g_bp = os_open_shared_memory_area(OS_SHARED_MEMORY_NAME);
-		if (!g_bp) {
+	if (!g_shared_memory.region) {
+		g_shared_memory = os_open_shared_memory_area(OS_SHARED_MEMORY_NAME);
+		if (!g_shared_memory.region) {
 			result = 0;
 			g_lib_last_error = BF_LIB_ERR_KIND_SHARED_MEMORY;
 		}
-	} else if (g_bp->version != BEAMFORMER_PARAMETERS_VERSION) {
+	} else if (((BeamformerSharedMemory *)g_shared_memory.region)->version
+	           != BEAMFORMER_SHARED_MEMORY_VERSION)
+	{
 		g_lib_last_error = BF_LIB_ERR_KIND_VERSION_MISMATCH;
 		result = 0;
 	}
+	if (result) g_bp = g_shared_memory.region;
 	return result;
 }
 
@@ -186,17 +199,23 @@ try_push_work_queue(void)
 }
 
 function b32
-lib_try_wait_sync(i32 *sync, i32 timeout_ms, os_wait_on_value_fn *os_wait_on_value)
+lib_try_lock(BeamformerSharedMemoryLockKind lock, i32 timeout_ms)
 {
-	b32 result = try_wait_sync(sync, timeout_ms, os_wait_on_value);
+	b32 result = os_shared_memory_region_lock(&g_shared_memory, g_bp->locks, (i32)lock, timeout_ms);
 	if (!result) g_lib_last_error = BF_LIB_ERR_KIND_SYNC_VARIABLE;
 	return result;
+}
+
+function void
+lib_release_lock(BeamformerSharedMemoryLockKind lock)
+{
+	os_shared_memory_region_unlock(&g_shared_memory, g_bp->locks, (i32)lock);
 }
 
 u32
 beamformer_get_api_version(void)
 {
-	return BEAMFORMER_PARAMETERS_VERSION;
+	return BEAMFORMER_SHARED_MEMORY_VERSION;
 }
 
 const char *
@@ -245,64 +264,60 @@ set_beamformer_pipeline(i32 *stages, i32 stages_count)
 }
 
 b32
-beamformer_start_compute(u32 image_plane_tag)
+beamformer_start_compute(i32 timeout_ms)
 {
 	b32 result = 0;
-	if (image_plane_tag < IPT_LAST) {
-		if (check_shared_memory()) {
-			if (atomic_load_u32(&g_bp->dispatch_compute_sync) == 0) {
-				g_bp->current_image_plane = image_plane_tag;
-				atomic_store_u32(&g_bp->dispatch_compute_sync, 1);
+	if (check_shared_memory()) {
+		if (lib_try_lock(BeamformerSharedMemoryLockKind_DispatchCompute, 0)) {
+			if (lib_try_lock(BeamformerSharedMemoryLockKind_DispatchCompute, timeout_ms)) {
+				lib_release_lock(BeamformerSharedMemoryLockKind_DispatchCompute);
 				result = 1;
-			} else {
-				g_lib_last_error = BF_LIB_ERR_KIND_SYNC_VARIABLE;
 			}
 		}
-	} else {
-		g_lib_last_error = BF_LIB_ERR_KIND_INVALID_IMAGE_PLANE;
 	}
 	return result;
 }
 
 function b32
-beamformer_upload_buffer(void *data, u32 size, i32 store_offset, i32 sync_offset,
+beamformer_upload_buffer(void *data, u32 size, i32 store_offset, BeamformerSharedMemoryLockKind lock,
                          BeamformerUploadKind kind, i32 timeout_ms)
 {
 	b32 result = 0;
 	if (check_shared_memory()) {
 		BeamformWork *work = try_push_work_queue();
-		result = work && lib_try_wait_sync((i32 *)((u8 *)g_bp + sync_offset), timeout_ms, os_wait_on_value);
+		result = work && lib_try_lock(lock, timeout_ms);
 		if (result) {
 			BeamformerUploadContext *uc = &work->upload_context;
 			uc->shared_memory_offset = store_offset;
 			uc->size = size;
 			uc->kind = kind;
 			work->type = BW_UPLOAD_BUFFER;
-			work->completion_barrier = sync_offset;
+			work->lock = lock;
 			mem_copy((u8 *)g_bp + store_offset, data, size);
 			beamform_work_queue_push_commit(&g_bp->external_work_queue);
+			lib_release_lock(lock);
 		}
 	}
 	return result;
 }
 
 #define BEAMFORMER_UPLOAD_FNS \
-	X(channel_mapping, i16, 1, CHANNEL_MAPPING) \
-	X(sparse_elements, i16, 1, SPARSE_ELEMENTS) \
-	X(focal_vectors,   f32, 2, FOCAL_VECTORS)
+	X(channel_mapping, i16, 1, ChannelMapping, CHANNEL_MAPPING) \
+	X(sparse_elements, i16, 1, SparseElements, SPARSE_ELEMENTS) \
+	X(focal_vectors,   f32, 2, FocalVectors,   FOCAL_VECTORS)
 
-#define X(name, dtype, elements, command) \
+#define X(name, dtype, elements, lock_name, command) \
 b32 beamformer_push_##name (dtype *data, u32 count, i32 timeout_ms) { \
-	b32 result = 0;                                                                          \
-	if (count <= countof(g_bp->name)) {                                                      \
-		result = beamformer_upload_buffer(data, count * elements * sizeof(dtype),        \
-		                                  offsetof(BeamformerSharedMemory, name),        \
-		                                  offsetof(BeamformerSharedMemory, name##_sync), \
-		                                  BU_KIND_##command, timeout_ms);                \
-	} else {                                                                                 \
-		g_lib_last_error = BF_LIB_ERR_KIND_BUFFER_OVERFLOW;                              \
-	}                                                                                        \
-	return result;                                                                           \
+	b32 result = 0;                                                                       \
+	if (count <= countof(g_bp->name)) {                                                   \
+		result = beamformer_upload_buffer(data, count * elements * sizeof(dtype),     \
+		                                  offsetof(BeamformerSharedMemory, name),     \
+		                                  BeamformerSharedMemoryLockKind_##lock_name, \
+		                                  BU_KIND_##command, timeout_ms);             \
+	} else {                                                                              \
+		g_lib_last_error = BF_LIB_ERR_KIND_BUFFER_OVERFLOW;                           \
+	}                                                                                     \
+	return result;                                                                        \
 }
 BEAMFORMER_UPLOAD_FNS
 #undef X
@@ -312,21 +327,49 @@ beamformer_push_parameters(BeamformerParameters *bp, i32 timeout_ms)
 {
 	b32 result = beamformer_upload_buffer(bp, sizeof(*bp),
 	                                      offsetof(BeamformerSharedMemory, parameters),
-	                                      offsetof(BeamformerSharedMemory, parameters_sync),
+	                                      BeamformerSharedMemoryLockKind_Parameters,
 	                                      BU_KIND_PARAMETERS, timeout_ms);
+	return result;
+}
+
+function b32
+beamformer_push_data_base(void *data, u32 data_size, i32 timeout_ms, b32 start_from_main)
+{
+	b32 result = 0;
+	if (data_size <= BEAMFORMER_MAX_RF_DATA_SIZE) {
+		result = beamformer_upload_buffer(data, data_size, BEAMFORMER_RF_DATA_OFF,
+		                                  BeamformerSharedMemoryLockKind_RawData,
+		                                  BU_KIND_RF_DATA, timeout_ms);
+		if (result && start_from_main) atomic_store_u32(&g_bp->start_compute_from_main, 1);
+	} else {
+		g_lib_last_error = BF_LIB_ERR_KIND_BUFFER_OVERFLOW;
+	}
 	return result;
 }
 
 b32
 beamformer_push_data(void *data, u32 data_size, i32 timeout_ms)
 {
-	b32 result = 0;
-	if (data_size <= BEAMFORMER_MAX_RF_DATA_SIZE) {
-		result = beamformer_upload_buffer(data, data_size, BEAMFORMER_RF_DATA_OFF,
-		                                  offsetof(BeamformerSharedMemory, raw_data_sync),
-		                                  BU_KIND_RF_DATA, timeout_ms);
-	} else {
-		g_lib_last_error = BF_LIB_ERR_KIND_BUFFER_OVERFLOW;
+	return beamformer_push_data_base(data, data_size, timeout_ms, 1);
+}
+
+b32
+beamformer_push_data_with_compute(void *data, u32 data_size, u32 image_plane_tag, i32 timeout_ms)
+{
+	b32 result = beamformer_push_data_base(data, data_size, timeout_ms, 0);
+	if (result) {
+		result = image_plane_tag < IPT_LAST;
+		if (result) {
+			BeamformWork *work = try_push_work_queue();
+			result = work != 0;
+			if (result) {
+				work->type = BW_COMPUTE_INDIRECT;
+				work->compute_indirect_plane = image_plane_tag;
+				beamform_work_queue_push_commit(&g_bp->external_work_queue);
+			}
+		} else {
+			g_lib_last_error = BF_LIB_ERR_KIND_INVALID_IMAGE_PLANE;
+		}
 	}
 	return result;
 }
@@ -337,16 +380,17 @@ beamformer_push_parameters_ui(BeamformerUIParameters *bp, i32 timeout_ms)
 	b32 result = 0;
 	if (check_shared_memory()) {
 		BeamformWork *work = try_push_work_queue();
-		result = work && lib_try_wait_sync(&g_bp->parameters_ui_sync, timeout_ms, os_wait_on_value);
+		result = work && lib_try_lock(BeamformerSharedMemoryLockKind_ParametersUI, timeout_ms);
 		if (result) {
 			BeamformerUploadContext *uc = &work->upload_context;
 			uc->shared_memory_offset = offsetof(BeamformerSharedMemory, parameters);
 			uc->size = sizeof(g_bp->parameters);
 			uc->kind = BU_KIND_PARAMETERS;
 			work->type = BW_UPLOAD_BUFFER;
-			work->completion_barrier = offsetof(BeamformerSharedMemory, parameters_ui_sync);
+			work->lock = BeamformerSharedMemoryLockKind_ParametersUI;
 			mem_copy(&g_bp->parameters_ui, bp, sizeof(*bp));
 			beamform_work_queue_push_commit(&g_bp->external_work_queue);
+			lib_release_lock(BeamformerSharedMemoryLockKind_ParametersUI);
 		}
 	}
 	return result;
@@ -358,16 +402,17 @@ beamformer_push_parameters_head(BeamformerParametersHead *bp, i32 timeout_ms)
 	b32 result = 0;
 	if (check_shared_memory()) {
 		BeamformWork *work = try_push_work_queue();
-		result = work && lib_try_wait_sync(&g_bp->parameters_head_sync, timeout_ms, os_wait_on_value);
+		result = work && lib_try_lock(BeamformerSharedMemoryLockKind_ParametersHead, timeout_ms);
 		if (result) {
 			BeamformerUploadContext *uc = &work->upload_context;
 			uc->shared_memory_offset = offsetof(BeamformerSharedMemory, parameters);
 			uc->size = sizeof(g_bp->parameters);
 			uc->kind = BU_KIND_PARAMETERS;
 			work->type = BW_UPLOAD_BUFFER;
-			work->completion_barrier = offsetof(BeamformerSharedMemory, parameters_head_sync);
+			work->lock = BeamformerSharedMemoryLockKind_ParametersHead;
 			mem_copy(&g_bp->parameters_head, bp, sizeof(*bp));
 			beamform_work_queue_push_commit(&g_bp->external_work_queue);
+			lib_release_lock(BeamformerSharedMemoryLockKind_ParametersHead);
 		}
 	}
 	return result;
@@ -393,14 +438,8 @@ b32
 send_data(void *data, u32 data_size)
 {
 	b32 result = 0;
-	if (beamformer_push_data(data, data_size, 0)) {
-		result = beamformer_start_compute(0);
-		if (result) {
-			/* TODO(rnp): should we just set timeout on acquiring the lock instead of this? */
-			try_wait_sync(&g_bp->raw_data_sync, -1, os_wait_on_value);
-			atomic_store_u32(&g_bp->raw_data_sync, 1);
-		}
-	}
+	if (beamformer_push_data(data, data_size, 0))
+		result = beamformer_start_compute(-1);
 	return result;
 }
 

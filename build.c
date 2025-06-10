@@ -272,7 +272,6 @@ W32(b32) CreateProcessA(u8 *, u8 *, iptr, iptr, b32, u32, iptr, u8 *, iptr, iptr
 W32(b32) GetExitCodeProcess(iptr handle, u32 *);
 W32(b32) GetFileTime(iptr, iptr, iptr, iptr);
 W32(b32) MoveFileExA(c8 *, c8 *, u32);
-W32(u32) WaitForSingleObject(iptr, u32);
 
 function void
 os_make_directory(char *name)

@@ -83,24 +83,25 @@ os_get_timer_counter(void)
 	return result;
 }
 
+function iz
+os_round_up_to_page_size(iz value)
+{
+	iz result = round_up_to(value, sysconf(_SC_PAGESIZE));
+	return result;
+}
+
 function OS_ALLOC_ARENA_FN(os_alloc_arena)
 {
-	Arena result;
-	iz pagesize = sysconf(_SC_PAGESIZE);
-	if (capacity % pagesize != 0)
-		capacity += pagesize - capacity % pagesize;
-
-	iz oldsize = old.end - old.beg;
-	if (oldsize > capacity)
-		return old;
-
-	if (old.beg)
-		munmap(old.beg, oldsize);
-
-	result.beg = mmap(0, capacity, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
-	if (result.beg == MAP_FAILED)
-		os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
-	result.end = result.beg + capacity;
+	Arena result = old;
+	capacity = os_round_up_to_page_size(capacity);
+	iz old_size = old.end - old.beg;
+	if (old_size < capacity) {
+		if (old.beg) munmap(old.beg, old_size);
+		result.beg = mmap(0, capacity, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+		if (result.beg == MAP_FAILED)
+			os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
+		result.end = result.beg + capacity;
+	}
 	return result;
 }
 
@@ -163,15 +164,15 @@ function OS_READ_FILE_FN(os_read_file)
 	return total_read;
 }
 
-function void *
-os_create_shared_memory_area(char *name, iz cap)
+function SharedMemoryRegion
+os_create_shared_memory_area(Arena *arena, char *name, i32 lock_count, iz requested_capacity)
 {
-	void *result = 0;
+	iz capacity = os_round_up_to_page_size(requested_capacity);
+	SharedMemoryRegion result = {0};
 	i32 fd = shm_open(name, O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
-	if (fd > 0 && ftruncate(fd, cap) != -1) {
-		void *new = mmap(NULL, cap, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-		if (new != MAP_FAILED)
-			result = new;
+	if (fd > 0 && ftruncate(fd, capacity) != -1) {
+		void *new = mmap(0, capacity, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+		if (new != MAP_FAILED) result.region = new;
 	}
 	if (fd > 0) close(fd);
 	return result;
@@ -294,7 +295,30 @@ function OS_WAIT_ON_VALUE_FN(os_wait_on_value)
 function OS_WAKE_WAITERS_FN(os_wake_waiters)
 {
 	if (sync) {
-		atomic_store_u32(sync, 1);
+		atomic_store_u32(sync, 0);
 		syscall(SYS_futex, sync, FUTEX_WAKE, I32_MAX, 0, 0, 0);
 	}
+}
+
+function OS_SHARED_MEMORY_LOCK_REGION_FN(os_shared_memory_region_lock)
+{
+	b32 result = 0;
+	for (;;) {
+		i32 current = atomic_load_u32(locks + lock_index);
+		if (current == 0 && atomic_cas_u32(locks + lock_index, &current, 1)) {
+			result = 1;
+			break;
+		}
+		if (!timeout_ms || !os_wait_on_value(locks + lock_index, current, timeout_ms))
+			break;
+	}
+	return result;
+}
+
+function OS_SHARED_MEMORY_UNLOCK_REGION_FN(os_shared_memory_region_unlock)
+{
+	i32 *lock = locks + lock_index;
+	assert(atomic_load_u32(lock));
+	atomic_store_u32(lock, 0);
+	os_wake_waiters(lock);
 }
