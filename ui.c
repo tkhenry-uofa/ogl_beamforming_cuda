@@ -2847,7 +2847,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 		if (ctx->os.shared_memory_region_lock(&ctx->shared_memory, sm->locks, lock, 0)) {
 			mem_copy(&sm->parameters_ui, &ui->params, sizeof(ui->params));
 			ui->flush_params = 0;
-			ctx->csctx.shared_ubo_dirty = 1;
+			atomic_or_u32(&sm->dirty_regions, (1 << (lock - 1)));
 			b32 dispatch = ctx->os.shared_memory_region_lock(&ctx->shared_memory, sm->locks,
 			                                                 BeamformerSharedMemoryLockKind_DispatchCompute,
 			                                                 0);

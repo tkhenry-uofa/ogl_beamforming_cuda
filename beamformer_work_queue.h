@@ -1,13 +1,8 @@
 /* See LICENSE for license details. */
-/* TODO(rnp):
- * [ ]: coalesce uploads if they are overwriting exist data
- *      - use a flag field and only submit a new work if the corresponding flag is clear
- */
-
 #ifndef _BEAMFORMER_WORK_QUEUE_H_
 #define _BEAMFORMER_WORK_QUEUE_H_
 
-#define BEAMFORMER_SHARED_MEMORY_VERSION (3UL)
+#define BEAMFORMER_SHARED_MEMORY_VERSION (4UL)
 
 typedef struct BeamformComputeFrame BeamformComputeFrame;
 typedef struct ShaderReloadContext  ShaderReloadContext;
@@ -96,6 +91,10 @@ typedef align_as(64) struct {
 	/* NOTE(rnp): not used for locking on w32 but we can use these to peek at the status of
 	 * the lock without leaving userspace. also this struct needs a bunch of padding */
 	i32 locks[BeamformerSharedMemoryLockKind_Count];
+
+	/* NOTE(rnp): used to coalesce uploads when they are not yet uploaded to the GPU */
+	u32 dirty_regions;
+	static_assert(BeamformerSharedMemoryLockKind_Count <= 32, "only 32 lock regions supported");
 
 	/* NOTE(rnp): interleaved transmit angle, focal depth pairs */
 	align_as(64) v2 focal_vectors[256];

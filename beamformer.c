@@ -561,7 +561,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				}
 				buffer = cs->raw_data_ssbo;
 			} break;
-			default: INVALID_CODE_PATH; break;
+			InvalidDefaultCase;
 			}
 
 			if (tex_1d) {
@@ -573,6 +573,8 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				glNamedBufferSubData(buffer, 0, uc->size,
 				                     (u8 *)sm + uc->shared_memory_offset);
 			}
+
+			atomic_and_u32(&sm->dirty_regions, ~(sm->dirty_regions & 1 << (work->lock - 1)));
 			ctx->os.shared_memory_region_unlock(&ctx->shared_memory, sm->locks, (i32)work->lock);
 		} break;
 		case BW_COMPUTE_INDIRECT:{
@@ -588,9 +590,10 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			}
 			atomic_store_u32(&ctx->starting_compute, 0);
 
-			if (cs->shared_ubo_dirty) {
+			i32 mask = 1 << (BeamformerSharedMemoryLockKind_Parameters - 1);
+			if (sm->dirty_regions & mask) {
 				glNamedBufferSubData(cs->shared_ubo, 0, sizeof(sm->parameters), &sm->parameters);
-				cs->shared_ubo_dirty = 0;
+				atomic_and_u32(&sm->dirty_regions, ~mask);
 			}
 
 			atomic_store_u32(&cs->processing_compute, 1);

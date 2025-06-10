@@ -87,7 +87,6 @@ typedef struct {
 
 	u32 raw_data_ssbo;
 	u32 shared_ubo;
-	b32 shared_ubo_dirty;
 
 	u32 channel_mapping_texture;
 	u32 sparse_elements_texture;
