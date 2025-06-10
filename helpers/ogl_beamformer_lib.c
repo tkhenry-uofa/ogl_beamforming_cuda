@@ -294,7 +294,10 @@ beamformer_upload_buffer(void *data, u32 size, i32 store_offset, BeamformerShare
 			work->type = BW_UPLOAD_BUFFER;
 			work->lock = lock;
 			mem_copy((u8 *)g_bp + store_offset, data, size);
-			beamform_work_queue_push_commit(&g_bp->external_work_queue);
+			if ((atomic_load_u32(&g_bp->dirty_regions) & (1 << (lock - 1))) == 0) {
+				atomic_or_u32(&g_bp->dirty_regions, (1 << (lock - 1)));
+				beamform_work_queue_push_commit(&g_bp->external_work_queue);
+			}
 			lib_release_lock(lock);
 		}
 	}
