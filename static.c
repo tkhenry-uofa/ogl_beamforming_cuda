@@ -37,7 +37,7 @@ function FILE_WATCH_CALLBACK_FN(debug_reload)
 	#undef X
 
 	stream_append_s8(&err, s8("Reloaded Main Executable\n"));
-	os->write_file(os->error_handle, stream_to_s8(&err));
+	os_write_file(os->error_handle, stream_to_s8(&err));
 
 	input->executable_reloaded = 1;
 
@@ -47,7 +47,7 @@ function FILE_WATCH_CALLBACK_FN(debug_reload)
 function void
 debug_init(OS *os, iptr input, Arena *arena)
 {
-	os->add_file_watch(os, arena, s8(OS_DEBUG_LIB_NAME), debug_reload, input);
+	os_add_file_watch(os, arena, s8(OS_DEBUG_LIB_NAME), debug_reload, input);
 	debug_reload(os, s8(""), input, *arena);
 
 	Stream err = arena_stream(*arena);
@@ -64,7 +64,7 @@ debug_init(OS *os, iptr input, Arena *arena)
 		}
 	}
 
-	os->write_file(os->error_handle, stream_to_s8(&err));
+	os_write_file(os->error_handle, stream_to_s8(&err));
 }
 
 #endif /* _DEBUG */
@@ -72,8 +72,8 @@ debug_init(OS *os, iptr input, Arena *arena)
 #define static_path_join(a, b) (a OS_PATH_SEPARATOR b)
 
 struct gl_debug_ctx {
-	Stream  stream;
-	OS     *os;
+	Stream stream;
+	iptr   os_error_handle;
 };
 
 function void
@@ -84,7 +84,7 @@ gl_debug_logger(u32 src, u32 type, u32 id, u32 lvl, i32 len, const char *msg, co
 	struct gl_debug_ctx *ctx = (struct gl_debug_ctx *)userctx;
 	Stream *e = &ctx->stream;
 	stream_append_s8s(e, s8("[OpenGL] "), (s8){.len = len, .data = (u8 *)msg}, s8("\n"));
-	os_write_file(ctx->os->error_handle, stream_to_s8(e));
+	os_write_file(ctx->os_error_handle, stream_to_s8(e));
 	stream_reset(e, 0);
 }
 
@@ -164,7 +164,7 @@ dump_gl_params(GLParams *gl, Arena a, OS *os)
 	GL_PARAMETERS
 	#undef X
 	stream_append_s8(&s, s8("-----------------------\n"));
-	os->write_file(os->error_handle, stream_to_s8(&s));
+	os_write_file(os->error_handle, stream_to_s8(&s));
 #endif
 }
 
@@ -183,7 +183,7 @@ function FILE_WATCH_CALLBACK_FN(reload_shader_indirect)
 		work->type = BW_RELOAD_SHADER;
 		work->shader_reload_context = src;
 		beamform_work_queue_push_commit(ctx->beamform_work_queue);
-		os->wake_waiters(&os->compute_worker.sync_variable);
+		os_wake_waiters(&os->compute_worker.sync_variable);
 	}
 	return 1;
 }
@@ -202,7 +202,7 @@ function FILE_WATCH_CALLBACK_FN(load_cuda_lib)
 		CUDA_LIB_FNS
 		#undef X
 
-		os->write_file(os->error_handle, stream_to_s8(&err));
+		os_write_file(os->error_handle, stream_to_s8(&err));
 	}
 
 	#define X(name, symname) if (!cl->name) cl->name = cuda_ ## name ## _stub;
@@ -306,8 +306,8 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 
 	/* NOTE: set up OpenGL debug logging */
 	struct gl_debug_ctx *gl_debug_ctx = push_struct(memory, typeof(*gl_debug_ctx));
-	gl_debug_ctx->stream = stream_alloc(memory, 1024);
-	gl_debug_ctx->os     = &ctx->os;
+	gl_debug_ctx->stream          = stream_alloc(memory, 1024);
+	gl_debug_ctx->os_error_handle = ctx->os.error_handle;
 	glDebugMessageCallback(gl_debug_logger, gl_debug_ctx);
 #ifdef _DEBUG
 	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
