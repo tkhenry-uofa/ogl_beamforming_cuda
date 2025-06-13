@@ -270,6 +270,7 @@ beamformer_start_compute(i32 timeout_ms)
 	if (check_shared_memory()) {
 		if (lib_try_lock(BeamformerSharedMemoryLockKind_DispatchCompute, 0)) {
 			if (lib_try_lock(BeamformerSharedMemoryLockKind_DispatchCompute, timeout_ms)) {
+				/* TODO(rnp): non-critical race condition */
 				lib_release_lock(BeamformerSharedMemoryLockKind_DispatchCompute);
 				result = 1;
 			}

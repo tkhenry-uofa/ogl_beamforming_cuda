@@ -171,7 +171,6 @@ typedef struct {
 	GLParams gl;
 
 	uv2 window_size;
-	b32 starting_compute;
 	b32 should_exit;
 
 	Arena  ui_backing_store;

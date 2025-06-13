@@ -232,9 +232,9 @@ function OS_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
 			if (atomic_cas_u32(&ctx->sync_variable, &expected, 1))
 				break;
 
-			ctx->asleep = 1;
+			atomic_store_u32(&ctx->asleep, 1);
 			os_wait_on_value(&ctx->sync_variable, 1, -1);
-			ctx->asleep = 0;
+			atomic_store_u32(&ctx->asleep, 0);
 		}
 		beamformer_complete_compute(ctx->user_context, ctx->arena, ctx->gl_context);
 	}

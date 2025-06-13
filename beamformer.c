@@ -588,7 +588,6 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				ctx->os.shared_memory_region_unlock(&ctx->shared_memory,
 				                                    sm->locks, work->lock);
 			}
-			atomic_store_u32(&ctx->starting_compute, 0);
 
 			i32 mask = 1 << (BeamformerSharedMemoryLockKind_Parameters - 1);
 			if (sm->dirty_regions & mask) {
@@ -729,7 +728,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 
 	BeamformerSharedMemory *sm = ctx->shared_memory.region;
 	BeamformerParameters   *bp = &sm->parameters;
-	if (sm->locks[BeamformerSharedMemoryLockKind_DispatchCompute] && !ctx->starting_compute) {
+	if (sm->locks[BeamformerSharedMemoryLockKind_DispatchCompute] && ctx->os.compute_worker.asleep) {
 		if (sm->start_compute_from_main) {
 			BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
 			ImagePlaneTag tag  = ctx->beamform_frames[ctx->display_frame_index].image_plane_tag;
@@ -759,7 +758,6 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 			}
 			atomic_store_u32(&sm->start_compute_from_main, 0);
 		}
-		atomic_store_u32(&ctx->starting_compute, 1);
 		ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
 	}
 
