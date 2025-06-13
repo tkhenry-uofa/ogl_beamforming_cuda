@@ -19,7 +19,10 @@ jobs:
           sudo apt update
           sudo apt install libxkbcommon-dev xorg-dev
       - name: Build
-        run: ${{matrix.cc}} -march=native -O3 build.c -Iexternal/include -o build && ./build && ./build --debug
+        run: |
+          ${{matrix.cc}} -march=native -O3 build.c -Iexternal/include -o build && \
+          ./build --tests && \
+          ./build --debug
 
   windows:
     runs-on: windows-latest
@@ -43,4 +46,7 @@ jobs:
           install: git mingw-w64-${{matrix.env}}-${{matrix.cc}}
 
       - name: Build
-        run: ${{matrix.cc}} -march=native -O3 build.c -Iexternal/include -o build && ./build && ./build --debug
+        run: |
+          ${{matrix.cc}} -march=native -O3 build.c -Iexternal/include -o build && \
+          ./build --tests && \
+          ./build --debug

@@ -44,6 +44,8 @@
 
   #include "os_linux.c"
 
+  #define W32_DECL(x)
+
   #define OS_SHARED_LINK_LIB(s) "lib" s ".so"
   #define OS_SHARED_LIB(s)      s ".so"
   #define OS_STATIC_LIB(s)      s ".a"
@@ -52,6 +54,8 @@
 #elif OS_WINDOWS
 
   #include "os_win32.c"
+
+  #define W32_DECL(x) x
 
   #define OS_SHARED_LINK_LIB(s) s ".dll"
   #define OS_SHARED_LIB(s)      s ".dll"
@@ -76,7 +80,6 @@
   #define OUTPUT_DLL(name)           "/LD", "/Fe:", name
   #define OUTPUT_LIB(name)           "/out:" OUTPUT(name)
   #define OUTPUT_EXE(name)           "/Fe:", name
-  #define SINGLE_OBJECT(in, out)     "/c", (in), "/Fo:", (out)
   #define STATIC_LIBRARY_BEGIN(name) "lib", "/nologo", name
 #else
   #define LINK_LIB(name)             "-l" name
@@ -84,7 +87,6 @@
   #define OUTPUT_DLL(name)           "-fPIC", "-shared", "-o", name
   #define OUTPUT_LIB(name)           OUTPUT(name)
   #define OUTPUT_EXE(name)           "-o", name
-  #define SINGLE_OBJECT(in, out)     "-c", (in), "-o", (out)
   #define STATIC_LIBRARY_BEGIN(name) "ar", "rc", name
 #endif
 
@@ -110,6 +112,7 @@ typedef struct {
 	b32   debug;
 	b32   generic;
 	b32   sanitize;
+	b32   tests;
 	b32   time;
 } Options;
 
@@ -126,7 +129,7 @@ function void
 build_log_base(BuildLogKind kind, char *format, va_list args)
 {
 	#define X(t, pre) pre,
-	read_only local_persist char *prefixes[BuildLogKind_Count + 1] = {BUILD_LOG_KINDS "[INVALID]"};
+	read_only local_persist char *prefixes[BuildLogKind_Count + 1] = {BUILD_LOG_KINDS "[INVALID] "};
 	#undef X
 	FILE *out = kind == BuildLogKind_Error? stderr : stdout;
 	fputs(prefixes[MIN(kind, BuildLogKind_Count)], out);
@@ -464,6 +467,7 @@ usage(char *argv0)
 	       "    --debug:       dynamically link and build with debug symbols\n"
 	       "    --generic:     compile for a generic target (x86-64-v3 or armv8 with NEON)\n"
 	       "    --sanitize:    build with ASAN and UBSAN\n"
+	       "    --tests:       also build programs in tests/\n"
 	       "    --time:        print build time\n"
 	       , argv0);
 	os_exit(0);
@@ -484,6 +488,8 @@ parse_options(i32 argc, char *argv[])
 			result.generic = 1;
 		} else if (s8_equal(str, s8("--sanitize"))) {
 			result.sanitize = 1;
+		} else if (s8_equal(str, s8("--tests"))) {
+			result.tests = 1;
 		} else if (s8_equal(str, s8("--time"))) {
 			result.time = 1;
 		} else {
@@ -540,6 +546,19 @@ build_shared_library(Arena a, CommandList cc, char *name, char *output, char **l
 }
 
 function b32
+cc_single_file(Arena a, CommandList cc, b32 exe, char *src, char *dest, char **tail, iz tail_count)
+{
+	char *executable[] = {src, is_msvc? "/Fe:" : "-o", dest};
+	char *object[]     = {is_msvc? "/c" : "-c", src, is_msvc? "/Fo:" : "-o", dest};
+	cmd_append_count(&a, &cc, exe? executable : object,
+	                 exe? countof(executable) : countof(object));
+	cmd_append_count(&a, &cc, tail, tail_count);
+	b32 result = run_synchronous(a, &cc);
+	if (!result) build_log_failure("%s", dest);
+	return result;
+}
+
+function b32
 build_static_library_from_objects(Arena a, char *name, char **flags, iz flags_count, char **objects, iz count)
 {
 	CommandList ar = {0};
@@ -556,14 +575,10 @@ function b32
 build_static_library(Arena a, CommandList cc, char *name, char **deps, char **outputs, iz count)
 {
 	/* TODO(rnp): refactor to not need outputs */
-	b32 result = 0;
-	b32 all_success = 1;
-	for (iz i = 0; i < count; i++) {
-		cmd_append(&a, &cc, SINGLE_OBJECT(deps[i], outputs[i]), (void *)0);
-		all_success &= run_synchronous(a, &cc);
-		cc.count -= 5;
-	}
-	if (all_success) result = build_static_library_from_objects(a, name, 0, 0, outputs, count);
+	b32 result = 1;
+	for (iz i = 0; i < count; i++)
+		result &= cc_single_file(a, cc, 0, deps[i], outputs[i], 0, 0);
+	if (result) result = build_static_library_from_objects(a, name, 0, 0, outputs, count);
 	return result;
 }
 
@@ -652,6 +667,25 @@ build_beamformer_as_library(Arena arena, CommandList cc)
 	return result;
 }
 
+function b32
+build_tests(Arena arena, CommandList cc)
+{
+	#define TEST_PROGRAMS \
+		X("throughput", LINK_LIB("zstd"), W32_DECL(LINK_LIB("Synchronization")))
+
+	os_make_directory(OUTPUT("tests"));
+	cmd_append(&arena, &cc, "-Wno-unused-function", "-Ihelpers");
+
+	b32 result = 1;
+	#define X(prog, ...) \
+		result &= cc_single_file(arena, cc, 1, "tests/" prog ".c", \
+		                         OUTPUT("tests/" prog),            \
+		                         arg_list(char *, ##__VA_ARGS__));
+	TEST_PROGRAMS
+	#undef X
+	return result;
+}
+
 i32
 main(i32 argc, char *argv[])
 {
@@ -669,6 +703,8 @@ main(i32 argc, char *argv[])
 	if (!check_build_raylib(arena, c, options.debug)) return 1;
 
 	result &= build_helper_library(arena, c);
+
+	if (options.tests) result &= build_tests(arena, c);
 
 	//////////////////
 	// static portion
