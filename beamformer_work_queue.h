@@ -2,7 +2,7 @@
 #ifndef _BEAMFORMER_WORK_QUEUE_H_
 #define _BEAMFORMER_WORK_QUEUE_H_
 
-#define BEAMFORMER_SHARED_MEMORY_VERSION (4UL)
+#define BEAMFORMER_SHARED_MEMORY_VERSION (5UL)
 
 typedef struct BeamformComputeFrame BeamformComputeFrame;
 typedef struct ShaderReloadContext  ShaderReloadContext;
