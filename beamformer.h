@@ -2,7 +2,6 @@
 #ifndef _BEAMFORMER_H_
 #define _BEAMFORMER_H_
 
-#define GRAPHICS_API_OPENGL_43
 #include <raylib_extended.h>
 #include <rlgl.h>
 

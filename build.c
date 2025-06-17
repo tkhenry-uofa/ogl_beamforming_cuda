@@ -596,7 +596,7 @@ check_build_raylib(Arena a, CommandList cc, b32 shared)
 		os_copy_file("external/raylib/src/rlgl.h", "external/include/rlgl.h");
 
 		if (is_unix) cmd_append(&a, &cc, "-D_GLFW_X11");
-		cmd_append(&a, &cc, "-DPLATFORM_DESKTOP_GLFW", "-DGRAPHICS_API_OPENGL_43");
+		cmd_append(&a, &cc, "-DPLATFORM_DESKTOP_GLFW");
 		if (!is_msvc) cmd_append(&a, &cc, "-Wno-unused-but-set-variable");
 		cmd_append(&a, &cc, "-Iexternal/raylib/src", "-Iexternal/raylib/src/external/glfw/include");
 		#define RAYLIB_SOURCES \
