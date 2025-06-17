@@ -88,6 +88,10 @@ typedef BEAMFORM_WORK_QUEUE_PUSH_COMMIT_FN(beamform_work_queue_push_commit_fn);
 typedef align_as(64) struct {
 	u32 version;
 
+	/* NOTE(rnp): causes future library calls to fail.
+	 * see note in beamformer_invalidate_shared_memory() */
+	b32 invalid;
+
 	/* NOTE(rnp): not used for locking on w32 but we can use these to peek at the status of
 	 * the lock without leaving userspace. also this struct needs a bunch of padding */
 	i32 locks[BeamformerSharedMemoryLockKind_Count];

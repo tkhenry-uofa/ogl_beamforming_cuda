@@ -114,6 +114,8 @@ main(void)
 		input.executable_reloaded = 0;
 	}
 
+	beamformer_invalidate_shared_memory(&ctx);
+
 	/* NOTE: make sure this will get cleaned up after external
 	 * programs release their references */
 	shm_unlink(OS_SHARED_MEMORY_NAME);

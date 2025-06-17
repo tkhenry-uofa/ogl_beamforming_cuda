@@ -397,3 +397,22 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 	reload_shader(&ctx->os, render_2d->path, (iptr)render_2d, *memory);
 	os_add_file_watch(&ctx->os, memory, render_2d->path, reload_shader, (iptr)render_2d);
 }
+
+function void
+beamformer_invalidate_shared_memory(BeamformerCtx *ctx)
+{
+	/* NOTE(rnp): work around pebkac when the beamformer is closed while we are doing live
+	 * imaging. if the verasonics is blocked in an external function (calling the library
+	 * to start compute) it is impossible for us to get it to properly shut down which
+	 * will sometimes result in us needing to power cycle the system. set the shared memory
+	 * into an error state and release dispatch lock so that future calls will error instead
+	 * of blocking.
+	 */
+	BeamformerSharedMemory *sm = ctx->shared_memory.region;
+	BeamformerSharedMemoryLockKind lock = BeamformerSharedMemoryLockKind_DispatchCompute;
+	atomic_store_u32(&sm->invalid, 1);
+	atomic_store_u32(&sm->external_work_queue.ridx, sm->external_work_queue.widx);
+	DEBUG_DECL(if (sm->locks[lock])) {
+		os_shared_memory_region_unlock(&ctx->shared_memory, sm->locks, lock);
+	}
+}

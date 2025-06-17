@@ -140,4 +140,6 @@ main(void)
 
 		input.executable_reloaded = 0;
 	}
+
+	beamformer_invalidate_shared_memory(&ctx);
 }

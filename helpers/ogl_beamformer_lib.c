@@ -177,13 +177,17 @@ check_shared_memory(void)
 	if (!g_shared_memory.region) {
 		g_shared_memory = os_open_shared_memory_area(OS_SHARED_MEMORY_NAME);
 		if (!g_shared_memory.region) {
-			result = 0;
 			g_lib_last_error = BF_LIB_ERR_KIND_SHARED_MEMORY;
+			result = 0;
+		} else if (((BeamformerSharedMemory *)g_shared_memory.region)->version !=
+		           BEAMFORMER_SHARED_MEMORY_VERSION)
+		{
+			g_lib_last_error = BF_LIB_ERR_KIND_VERSION_MISMATCH;
+			result = 0;
 		}
-	} else if (((BeamformerSharedMemory *)g_shared_memory.region)->version
-	           != BEAMFORMER_SHARED_MEMORY_VERSION)
-	{
-		g_lib_last_error = BF_LIB_ERR_KIND_VERSION_MISMATCH;
+	}
+	if (result && ((BeamformerSharedMemory *)g_shared_memory.region)->invalid) {
+		g_lib_last_error = BF_LIB_ERR_KIND_INVALID_ACCESS;
 		result = 0;
 	}
 	if (result) g_bp = g_shared_memory.region;
