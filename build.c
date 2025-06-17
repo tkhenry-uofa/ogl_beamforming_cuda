@@ -33,6 +33,7 @@
 #define is_unix    OS_LINUX
 #define is_w32     OS_WINDOWS
 #define is_clang   COMPILER_CLANG
+#define is_gcc     COMPILER_GCC
 #define is_msvc    COMPILER_MSVC
 
 #if OS_LINUX
@@ -403,6 +404,9 @@ cmd_base(Arena *a, Options *o)
 	cmd_append(a, &result, COMMON_FLAGS, "-Iexternal/include");
 	if (o->debug) cmd_append(a, &result, DEBUG_FLAGS);
 	else          cmd_append(a, &result, OPTIMIZED_FLAGS);
+
+	/* NOTE: ancient gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=80454 */
+	if (is_gcc) cmd_append(a, &result, "-Wno-missing-braces");
 
 	if (is_w32 && is_clang) cmd_append(a, &result, "-fms-extensions");
 
