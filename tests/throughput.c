@@ -6,6 +6,7 @@
 
 #include "ogl_beamformer_lib.c"
 
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +47,8 @@ typedef struct {
 	f32 time_offset;
 	u32 transmit_mode;
 } zemp_bp_v1;
+
+global b32 g_should_exit;
 
 #define die(...) die_((char *)__func__, __VA_ARGS__)
 function no_return void
@@ -381,7 +384,7 @@ execute_study(s8 study, Arena arena, Stream path, Options *options)
 		f32 times[32] = {0};
 		f32 data_size = bp.rf_raw_dim[0] * bp.rf_raw_dim[1] * sizeof(*data);
 		f64 start = os_get_time();
-		for (;;) {
+		for (;!g_should_exit;) {
 			if (send_frame(data, &bp)) {
 				f64 now   = os_get_time();
 				f32 delta = now - start;
@@ -406,7 +409,13 @@ execute_study(s8 study, Arena arena, Stream path, Options *options)
 	free(data);
 }
 
-int
+function void
+sigint(i32 _signo)
+{
+	g_should_exit = 1;
+}
+
+extern i32
 main(i32 argc, char *argv[])
 {
 	Options options = parse_argv(argc, argv);
@@ -415,6 +424,8 @@ main(i32 argc, char *argv[])
 		usage(argv[0]);
 
 	os_init_timer();
+
+	signal(SIGINT, sigint);
 
 	Arena arena = os_alloc_arena((Arena){0}, KB(8));
 	Stream path = stream_alloc(&arena, KB(4));
