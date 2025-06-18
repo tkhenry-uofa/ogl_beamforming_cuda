@@ -508,6 +508,13 @@ round_down_power_of_2(u32 a)
 	return result;
 }
 
+function u32
+round_up_power_of_2(u32 a)
+{
+	u32 result = 0x80000000UL >> (clz_u32(a - 1) - 1);
+	return result;
+}
+
 function iz
 round_up_to(iz value, iz multiple)
 {

@@ -82,9 +82,9 @@ function void
 alloc_beamform_frame(GLParams *gp, BeamformFrame *out, ComputeShaderStats *out_stats,
                      uv3 out_dim, s8 name, Arena arena)
 {
-	out->dim.x = MAX(1, round_down_power_of_2(ORONE(out_dim.x)));
-	out->dim.y = MAX(1, round_down_power_of_2(ORONE(out_dim.y)));
-	out->dim.z = MAX(1, round_down_power_of_2(ORONE(out_dim.z)));
+	out->dim.x = MAX(1, out_dim.x);
+	out->dim.y = MAX(1, out_dim.y);
+	out->dim.z = MAX(1, out_dim.z);
 
 	if (gp) {
 		out->dim.x = MIN(out->dim.x, gp->max_3d_texture_dim);
@@ -95,7 +95,7 @@ alloc_beamform_frame(GLParams *gp, BeamformFrame *out, ComputeShaderStats *out_s
 	/* NOTE: allocate storage for beamformed output data;
 	 * this is shared between compute and fragment shaders */
 	u32 max_dim = MAX(out->dim.x, MAX(out->dim.y, out->dim.z));
-	out->mips   = ctz_u32(max_dim) + 1;
+	out->mips   = ctz_u32(round_up_power_of_2(max_dim)) + 1;
 
 	Stream label = arena_stream(arena);
 	stream_append_s8(&label, name);
