@@ -59,6 +59,10 @@ typedef enum {
 	X(EPIC_UHERCULES,  9, "EPIC-UHERCULES", 0) \
 	X(FLASH,          10, "Flash",          0)
 
+#define DECODE_LOCAL_SIZE_X  4
+#define DECODE_LOCAL_SIZE_Y  1
+#define DECODE_LOCAL_SIZE_Z 16
+
 #define DAS_LOCAL_SIZE_X 32
 #define DAS_LOCAL_SIZE_Y  1
 #define DAS_LOCAL_SIZE_Z 32

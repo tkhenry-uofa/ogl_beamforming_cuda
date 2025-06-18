@@ -37,8 +37,9 @@
   #define atomic_cas_u32(ptr, cptr, n)  (_InterlockedCompareExchange((volatile u32 *)(ptr),   *(cptr), (n)) == *(cptr))
   #define atomic_or_u32(ptr, n)          _InterlockedOr((volatile u32 *)(ptr), (n))
 
-  #define sqrt_f32(a)     sqrtf(a)
   #define atan2_f32(y, x) atan2f(y, x)
+  #define ceil_f32(a)     ceilf(a)
+  #define sqrt_f32(a)     sqrtf(a)
 
 #else
   #define align_as(n)      __attribute__((aligned(n)))
@@ -64,8 +65,9 @@
   #define atomic_cas_u32                atomic_cas_u64
   #define atomic_load_u32               atomic_load_u64
 
-  #define sqrt_f32(a)     __builtin_sqrtf(a)
   #define atan2_f32(y, x) __builtin_atan2f(y, x)
+  #define ceil_f32(a)     __builtin_ceilf(a)
+  #define sqrt_f32(a)     __builtin_sqrtf(a)
 
 #endif
 

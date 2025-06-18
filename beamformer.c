@@ -224,12 +224,12 @@ start_compute_cursor(uv3 dim, u32 max_points)
 	struct compute_cursor result = {0};
 	u32 invocations_per_dispatch = DAS_LOCAL_SIZE_X * DAS_LOCAL_SIZE_Y * DAS_LOCAL_SIZE_Z;
 
-	result.dispatch.y = MIN(max_points / invocations_per_dispatch, MAX(dim.y / DAS_LOCAL_SIZE_Y, 1));
+	result.dispatch.y = MIN(max_points / invocations_per_dispatch, ceil_f32((f32)dim.y / DAS_LOCAL_SIZE_Y));
 
 	u32 remaining     = max_points / result.dispatch.y;
-	result.dispatch.x = MIN(remaining / invocations_per_dispatch, MAX(dim.x / DAS_LOCAL_SIZE_X, 1));
+	result.dispatch.x = MIN(remaining / invocations_per_dispatch, ceil_f32((f32)dim.x / DAS_LOCAL_SIZE_X));
 	result.dispatch.z = MIN(remaining / (invocations_per_dispatch * result.dispatch.x),
-	                        MAX(dim.z / DAS_LOCAL_SIZE_Z, 1));
+	                        ceil_f32((f32)dim.z / DAS_LOCAL_SIZE_Z));
 
 	result.target.x = MAX(dim.x / result.dispatch.x / DAS_LOCAL_SIZE_X, 1);
 	result.target.y = MAX(dim.y / result.dispatch.y / DAS_LOCAL_SIZE_Y, 1);
@@ -294,9 +294,9 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
 		glBindImageTexture(0, csctx->hadamard_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8I);
 		glBindImageTexture(1, csctx->channel_mapping_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16I);
-		glDispatchCompute(ORONE(csctx->dec_data_dim.x / 32),
-		                  ORONE(csctx->dec_data_dim.y / 32),
-		                  ORONE(csctx->dec_data_dim.z));
+		glDispatchCompute(ceil_f32((f32)csctx->dec_data_dim.x / DECODE_LOCAL_SIZE_X),
+		                  ceil_f32((f32)csctx->dec_data_dim.y / DECODE_LOCAL_SIZE_Y),
+		                  ceil_f32((f32)csctx->dec_data_dim.z / DECODE_LOCAL_SIZE_Z));
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 	}break;
 	case ShaderKind_CudaDecode:{
@@ -424,8 +424,13 @@ shader_text_with_header(ShaderReloadContext *ctx, OS *os, Arena *arena)
 			stream_append_s8(&sb, s8("#define INPUT_DATA_TYPE_FLOAT_COMPLEX\n\n"));
 	} /* FALLTHROUGH */
 	case ShaderKind_Decode:{
-		#define X(type, id, pretty) stream_append_s8(&sb, s8("#define DECODE_MODE_" #type " " #id "\n"));
+		#define X(type, id, pretty) "#define DECODE_MODE_" #type " " #id "\n"
+		stream_append_s8(&sb, s8(""
+		"layout(local_size_x = " str(DECODE_LOCAL_SIZE_X) ", "
+		       "local_size_y = " str(DECODE_LOCAL_SIZE_Y) ", "
+		       "local_size_z = " str(DECODE_LOCAL_SIZE_Z) ") in;\n\n"
 		DECODE_TYPES
+		));
 		#undef X
 	}break;
 	case ShaderKind_MinMax:{
