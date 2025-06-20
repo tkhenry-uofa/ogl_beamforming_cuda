@@ -4,6 +4,7 @@
  *      without replacing the data.
  */
 
+#define LIB_FN function
 #include "ogl_beamformer_lib.c"
 
 #include <signal.h>

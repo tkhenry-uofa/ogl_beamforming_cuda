@@ -1,8 +1,10 @@
 /* See LICENSE for license details. */
-#if defined(_WIN32)
-#define LIB_FN __declspec(dllexport)
-#else
-#define LIB_FN
+#ifndef LIB_FN
+  #if defined(_WIN32)
+    #define LIB_FN __declspec(dllexport)
+  #else
+    #define LIB_FN
+  #endif
 #endif
 
 #define BEAMFORMER_LIB_ERRORS \
