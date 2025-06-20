@@ -284,18 +284,15 @@ beamformer_start_compute(i32 timeout_ms)
 }
 
 function b32
-beamformer_upload_buffer(void *data, u32 size, i32 store_offset, BeamformerSharedMemoryLockKind lock,
-                         BeamformerUploadKind kind, i32 timeout_ms)
+beamformer_upload_buffer(void *data, u32 size, i32 store_offset, BeamformerUploadContext upload_context,
+                         BeamformerSharedMemoryLockKind lock, i32 timeout_ms)
 {
 	b32 result = 0;
 	if (check_shared_memory()) {
 		BeamformWork *work = try_push_work_queue();
 		result = work && lib_try_lock(lock, timeout_ms);
 		if (result) {
-			BeamformerUploadContext *uc = &work->upload_context;
-			uc->shared_memory_offset = store_offset;
-			uc->size = size;
-			uc->kind = kind;
+			work->upload_context = upload_context;
 			work->type = BW_UPLOAD_BUFFER;
 			work->lock = lock;
 			mem_copy((u8 *)g_bp + store_offset, data, size);
@@ -316,38 +313,33 @@ beamformer_upload_buffer(void *data, u32 size, i32 store_offset, BeamformerShare
 
 #define X(name, dtype, elements, lock_name, command) \
 b32 beamformer_push_##name (dtype *data, u32 count, i32 timeout_ms) { \
-	b32 result = 0;                                                                       \
-	if (count <= countof(g_bp->name)) {                                                   \
-		result = beamformer_upload_buffer(data, count * elements * sizeof(dtype),     \
-		                                  offsetof(BeamformerSharedMemory, name),     \
-		                                  BeamformerSharedMemoryLockKind_##lock_name, \
-		                                  BU_KIND_##command, timeout_ms);             \
-	} else {                                                                              \
-		g_lib_last_error = BF_LIB_ERR_KIND_BUFFER_OVERFLOW;                           \
-	}                                                                                     \
-	return result;                                                                        \
+	b32 result = 0; \
+	if (count <= countof(g_bp->name)) { \
+		BeamformerUploadContext uc = {0}; \
+		uc.shared_memory_offset = offsetof(BeamformerSharedMemory, name); \
+		uc.kind = BU_KIND_##command; \
+		uc.size = count * elements * sizeof(dtype); \
+		result = beamformer_upload_buffer(data, uc.size, uc.shared_memory_offset, uc, \
+		                                  BeamformerSharedMemoryLockKind_##lock_name, timeout_ms); \
+	} else { \
+		g_lib_last_error = BF_LIB_ERR_KIND_BUFFER_OVERFLOW; \
+	} \
+	return result; \
 }
 BEAMFORMER_UPLOAD_FNS
 #undef X
-
-b32
-beamformer_push_parameters(BeamformerParameters *bp, i32 timeout_ms)
-{
-	b32 result = beamformer_upload_buffer(bp, sizeof(*bp),
-	                                      offsetof(BeamformerSharedMemory, parameters),
-	                                      BeamformerSharedMemoryLockKind_Parameters,
-	                                      BU_KIND_PARAMETERS, timeout_ms);
-	return result;
-}
 
 function b32
 beamformer_push_data_base(void *data, u32 data_size, i32 timeout_ms, b32 start_from_main)
 {
 	b32 result = 0;
 	if (data_size <= BEAMFORMER_MAX_RF_DATA_SIZE) {
-		result = beamformer_upload_buffer(data, data_size, BEAMFORMER_RF_DATA_OFF,
-		                                  BeamformerSharedMemoryLockKind_RawData,
-		                                  BU_KIND_RF_DATA, timeout_ms);
+		BeamformerUploadContext uc = {0};
+		uc.shared_memory_offset = BEAMFORMER_RF_DATA_OFF;
+		uc.size = data_size;
+		uc.kind = BU_KIND_RF_DATA;
+		result = beamformer_upload_buffer(data, data_size, uc.shared_memory_offset, uc,
+		                                  BeamformerSharedMemoryLockKind_RawData, timeout_ms);
 		if (result && start_from_main) atomic_store_u32(&g_bp->start_compute_from_main, 1);
 	} else {
 		g_lib_last_error = BF_LIB_ERR_KIND_BUFFER_OVERFLOW;
@@ -383,46 +375,41 @@ beamformer_push_data_with_compute(void *data, u32 data_size, u32 image_plane_tag
 }
 
 b32
+beamformer_push_parameters(BeamformerParameters *bp, i32 timeout_ms)
+{
+	BeamformerUploadContext uc = {0};
+	uc.shared_memory_offset = offsetof(BeamformerSharedMemory, parameters);
+	uc.size = sizeof(g_bp->parameters);
+	uc.kind = BU_KIND_PARAMETERS;
+	b32 result = beamformer_upload_buffer(bp, sizeof(*bp),
+	                                      offsetof(BeamformerSharedMemory, parameters), uc,
+	                                      BeamformerSharedMemoryLockKind_Parameters, timeout_ms);
+	return result;
+}
+
+b32
 beamformer_push_parameters_ui(BeamformerUIParameters *bp, i32 timeout_ms)
 {
-	b32 result = 0;
-	if (check_shared_memory()) {
-		BeamformWork *work = try_push_work_queue();
-		result = work && lib_try_lock(BeamformerSharedMemoryLockKind_ParametersUI, timeout_ms);
-		if (result) {
-			BeamformerUploadContext *uc = &work->upload_context;
-			uc->shared_memory_offset = offsetof(BeamformerSharedMemory, parameters);
-			uc->size = sizeof(g_bp->parameters);
-			uc->kind = BU_KIND_PARAMETERS;
-			work->type = BW_UPLOAD_BUFFER;
-			work->lock = BeamformerSharedMemoryLockKind_ParametersUI;
-			mem_copy(&g_bp->parameters_ui, bp, sizeof(*bp));
-			beamform_work_queue_push_commit(&g_bp->external_work_queue);
-			lib_release_lock(BeamformerSharedMemoryLockKind_ParametersUI);
-		}
-	}
+	BeamformerUploadContext uc = {0};
+	uc.shared_memory_offset = offsetof(BeamformerSharedMemory, parameters);
+	uc.size = sizeof(g_bp->parameters);
+	uc.kind = BU_KIND_PARAMETERS;
+	b32 result = beamformer_upload_buffer(bp, sizeof(*bp),
+	                                      offsetof(BeamformerSharedMemory, parameters_ui), uc,
+	                                      BeamformerSharedMemoryLockKind_Parameters, timeout_ms);
 	return result;
 }
 
 b32
 beamformer_push_parameters_head(BeamformerParametersHead *bp, i32 timeout_ms)
 {
-	b32 result = 0;
-	if (check_shared_memory()) {
-		BeamformWork *work = try_push_work_queue();
-		result = work && lib_try_lock(BeamformerSharedMemoryLockKind_ParametersHead, timeout_ms);
-		if (result) {
-			BeamformerUploadContext *uc = &work->upload_context;
-			uc->shared_memory_offset = offsetof(BeamformerSharedMemory, parameters);
-			uc->size = sizeof(g_bp->parameters);
-			uc->kind = BU_KIND_PARAMETERS;
-			work->type = BW_UPLOAD_BUFFER;
-			work->lock = BeamformerSharedMemoryLockKind_ParametersHead;
-			mem_copy(&g_bp->parameters_head, bp, sizeof(*bp));
-			beamform_work_queue_push_commit(&g_bp->external_work_queue);
-			lib_release_lock(BeamformerSharedMemoryLockKind_ParametersHead);
-		}
-	}
+	BeamformerUploadContext uc = {0};
+	uc.shared_memory_offset = offsetof(BeamformerSharedMemory, parameters);
+	uc.size = sizeof(g_bp->parameters);
+	uc.kind = BU_KIND_PARAMETERS;
+	b32 result = beamformer_upload_buffer(bp, sizeof(*bp),
+	                                      offsetof(BeamformerSharedMemory, parameters_head), uc,
+	                                      BeamformerSharedMemoryLockKind_Parameters, timeout_ms);
 	return result;
 }
 
