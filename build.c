@@ -557,6 +557,7 @@ cc_single_file(Arena a, CommandList cc, b32 exe, char *src, char *dest, char **t
 	cmd_append_count(&a, &cc, exe? executable : object,
 	                 exe? countof(executable) : countof(object));
 	cmd_append_count(&a, &cc, tail, tail_count);
+	cmd_append(&a, &cc, (void *)0);
 	b32 result = run_synchronous(a, &cc);
 	if (!result) build_log_failure("%s", dest);
 	return result;
@@ -678,7 +679,8 @@ build_tests(Arena arena, CommandList cc)
 		X("throughput", LINK_LIB("zstd"), W32_DECL(LINK_LIB("Synchronization")))
 
 	os_make_directory(OUTPUT("tests"));
-	cmd_append(&arena, &cc, "-Wno-unused-function", "-Ihelpers");
+	if (!is_msvc) cmd_append(&arena, &cc, "-Wno-unused-function");
+	cmd_append(&arena, &cc, "-I.", "-Ihelpers");
 
 	b32 result = 1;
 	#define X(prog, ...) \
