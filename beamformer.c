@@ -79,8 +79,7 @@ frame_next(ComputeFrameIterator *bfi)
 }
 
 function void
-alloc_beamform_frame(GLParams *gp, BeamformFrame *out, ComputeShaderStats *out_stats,
-                     uv3 out_dim, s8 name, Arena arena)
+alloc_beamform_frame(GLParams *gp, BeamformFrame *out, uv3 out_dim, s8 name, Arena arena)
 {
 	out->dim.x = MAX(1, out_dim.x);
 	out->dim.y = MAX(1, out_dim.y);
@@ -107,11 +106,6 @@ alloc_beamform_frame(GLParams *gp, BeamformFrame *out, ComputeShaderStats *out_s
 	glCreateTextures(GL_TEXTURE_3D, 1, &out->texture);
 	glTextureStorage3D(out->texture, out->mips, GL_RG32F, out->dim.x, out->dim.y, out->dim.z);
 	LABEL_GL_OBJECT(GL_TEXTURE, out->texture, stream_to_s8(&label));
-
-	if (out_stats) {
-		glDeleteQueries(ARRAY_COUNT(out_stats->timer_ids), out_stats->timer_ids);
-		glCreateQueries(GL_TIME_ELAPSED, ARRAY_COUNT(out_stats->timer_ids), out_stats->timer_ids);
-	}
 }
 
 function void
@@ -157,6 +151,13 @@ alloc_shader_storage(BeamformerCtx *ctx, u32 rf_raw_size, Arena a)
 		                    GL_INT, hadamard);
 		LABEL_GL_OBJECT(GL_TEXTURE, cs->hadamard_texture, s8("Hadamard_Matrix"));
 	}
+}
+
+function void
+push_compute_timing_info(ComputeTimingTable *t, ComputeTimingInfo info)
+{
+	u32 index = atomic_add_u32(&t->write_index, 1) % countof(t->buffer);
+	t->buffer[index] = info;
 }
 
 function b32
@@ -565,7 +566,14 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 					alloc_shader_storage(ctx, uc->size, arena);
 				}
 				buffer = cs->raw_data_ssbo;
-			} break;
+
+				ComputeTimingInfo info = {0};
+				info.kind = ComputeTimingInfoKind_RF_Data;
+				/* TODO(rnp): this could stall. what should we do about it? */
+				glGetQueryObjectui64v(cs->rf_data_timestamp_query, GL_QUERY_RESULT, &info.timer_count);
+				glQueryCounter(cs->rf_data_timestamp_query, GL_TIMESTAMP);
+				push_compute_timing_info(ctx->compute_timing_table, info);
+			}break;
 			InvalidDefaultCase;
 			}
 
@@ -594,6 +602,9 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				                                    sm->locks, work->lock);
 			}
 
+			push_compute_timing_info(ctx->compute_timing_table,
+			                         (ComputeTimingInfo){.kind = ComputeTimingInfoKind_ComputeFrameBegin});
+
 			i32 mask = 1 << (BeamformerSharedMemoryLockKind_Parameters - 1);
 			if (sm->dirty_regions & mask) {
 				glNamedBufferSubData(cs->shared_ubo, 0, sizeof(sm->parameters), &sm->parameters);
@@ -606,16 +617,13 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			BeamformComputeFrame *frame = work->frame;
 			uv3 try_dim = make_valid_test_dim(bp->output_points);
 			if (!uv3_equal(try_dim, frame->frame.dim))
-				alloc_beamform_frame(&ctx->gl, &frame->frame, &frame->stats, try_dim,
-				                     s8("Beamformed_Data"), arena);
+				alloc_beamform_frame(&ctx->gl, &frame->frame, try_dim, s8("Beamformed_Data"), arena);
 
 			if (bp->output_points[3] > 1) {
 				if (!uv3_equal(try_dim, ctx->averaged_frames[0].frame.dim)) {
 					alloc_beamform_frame(&ctx->gl, &ctx->averaged_frames[0].frame,
-					                     &ctx->averaged_frames[0].stats,
 					                     try_dim, s8("Averaged Frame"), arena);
 					alloc_beamform_frame(&ctx->gl, &ctx->averaged_frames[1].frame,
-					                     &ctx->averaged_frames[1].stats,
 					                     try_dim, s8("Averaged Frame"), arena);
 				}
 			}
@@ -631,8 +639,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			ComputeShaderKind *stages = sm->compute_stages;
 			for (u32 i = 0; i < stage_count; i++) {
 				did_sum_shader |= stages[i] == ComputeShaderKind_Sum;
-				frame->stats.timer_active[stages[i]] = 1;
-				glBeginQuery(GL_TIME_ELAPSED, frame->stats.timer_ids[stages[i]]);
+				glBeginQuery(GL_TIME_ELAPSED, cs->shader_timer_ids[i]);
 				do_compute_shader(ctx, arena, frame, (ShaderKind)stages[i]);
 				glEndQuery(GL_TIME_ELAPSED);
 			}
@@ -640,28 +647,25 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			glFinish();
 			cs->processing_progress = 1;
 
-			for (u32 i = 0; i < ARRAY_COUNT(frame->stats.timer_ids); i++) {
-				u64 ns = 0;
-				if (frame->stats.timer_active[i]) {
-					glGetQueryObjectui64v(frame->stats.timer_ids[i],
-					                      GL_QUERY_RESULT, &ns);
-					frame->stats.timer_active[i] = 0;
-				}
-				frame->stats.times[i] = (f32)ns / 1e9;
+			for (u32 i = 0; i < stage_count; i++) {
+				ComputeTimingInfo info = {0};
+				info.kind   = ComputeTimingInfoKind_Shader;
+				info.shader = (ShaderKind)stages[i];
+				glGetQueryObjectui64v(cs->shader_timer_ids[i], GL_QUERY_RESULT, &info.timer_count);
+				push_compute_timing_info(ctx->compute_timing_table, info);
 			}
 
 			if (did_sum_shader) {
-				u32 aframe_index = (ctx->averaged_frame_index %
-				                    ARRAY_COUNT(ctx->averaged_frames));
+				u32 aframe_index = (ctx->averaged_frame_index % countof(ctx->averaged_frames));
 				ctx->averaged_frames[aframe_index].image_plane_tag  = frame->image_plane_tag;
 				ctx->averaged_frames[aframe_index].ready_to_present = 1;
-				/* TODO(rnp): not really sure what to do here */
-				mem_copy(&ctx->averaged_frames[aframe_index].stats.times,
-				         &frame->stats.times, sizeof(frame->stats.times));
 				atomic_add_u32(&ctx->averaged_frame_index, 1);
 			}
 			frame->ready_to_present = 1;
 			cs->processing_compute  = 0;
+
+			push_compute_timing_info(ctx->compute_timing_table,
+			                         (ComputeTimingInfo){.kind = ComputeTimingInfoKind_ComputeFrameEnd});
 
 			end_renderdoc_capture(gl_context);
 		} break;
@@ -680,6 +684,67 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 		if (can_commit) {
 			beamform_work_queue_pop_commit(q);
 			work = beamform_work_queue_pop(q);
+		}
+	}
+}
+
+function void
+coalesce_timing_table(ComputeTimingTable *t, ComputeShaderStats *stats)
+{
+	/* TODO(rnp): we do not currently do anything to handle the potential for a half written
+	 * info item. this could result in garbage entries but they shouldn't really matter */
+
+	u32 target = atomic_load_u32(&t->write_index);
+	u32 stats_index = (stats->latest_frame_index + 1) % countof(stats->times[0]);
+
+	static_assert(ShaderKind_Count + 1 <= 32, "timing coalescence bitfield test");
+	u32 seen_info_test = 0;
+
+	while (t->read_index != target) {
+		ComputeTimingInfo info = t->buffer[t->read_index++];
+		switch (info.kind) {
+		case ComputeTimingInfoKind_ComputeFrameBegin:{
+			assert(t->compute_frame_active == 0);
+			t->compute_frame_active = 1;
+			/* NOTE(rnp): allow multiple instances of same shader to accumulate */
+			for EachEnumValue(ShaderKind, shader)
+				stats->times[shader][stats_index] = 0;
+		}break;
+		case ComputeTimingInfoKind_ComputeFrameEnd:{
+			assert(t->compute_frame_active == 1);
+			t->compute_frame_active = 0;
+			stats->latest_frame_index = stats_index;
+			stats_index = (stats_index + 1) % countof(stats->times[0]);
+		}break;
+		case ComputeTimingInfoKind_Shader:{
+			stats->times[info.shader][stats_index] += (f32)info.timer_count / 1.0e9;
+			seen_info_test |= (1 << info.shader);
+		}break;
+		case ComputeTimingInfoKind_RF_Data:{
+			stats->latest_rf_index = (stats->latest_rf_index + 1) % countof(stats->rf_time_deltas);
+			f32 delta = (f32)(info.timer_count - stats->last_rf_timer_count) / 1.0e9;
+			stats->rf_time_deltas[stats->latest_rf_index] = delta;
+			stats->last_rf_timer_count = info.timer_count;
+			seen_info_test |= (1 << ShaderKind_Count);
+		}break;
+		}
+	}
+
+	if (seen_info_test) {
+		for EachEnumValue(ShaderKind, shader) {
+			if (seen_info_test & (1 << shader)) {
+				f32 sum = 0;
+				for EachElement(stats->times[shader], i)
+					sum += stats->times[shader][i];
+				stats->average_times[shader] = sum / countof(stats->times[shader]);
+			}
+		}
+
+		if (seen_info_test & (1 << ShaderKind_Count)) {
+			f32 sum = 0;
+			for EachElement(stats->rf_time_deltas, i)
+				sum += stats->rf_time_deltas[i];
+			stats->rf_time_delta_average = sum / countof(stats->rf_time_deltas);
 		}
 	}
 }
@@ -704,6 +769,12 @@ DEBUG_EXPORT BEAMFORMER_COMPUTE_SETUP_FN(beamformer_compute_setup)
 	LABEL_GL_OBJECT(GL_TEXTURE, cs->focal_vectors_texture,   s8("Focal_Vectors"));
 	LABEL_GL_OBJECT(GL_TEXTURE, cs->sparse_elements_texture, s8("Sparse_Elements"));
 	LABEL_GL_OBJECT(GL_BUFFER,  cs->shared_ubo,              s8("Beamformer_Parameters"));
+
+	glCreateQueries(GL_TIME_ELAPSED, countof(cs->shader_timer_ids), cs->shader_timer_ids);
+	glCreateQueries(GL_TIMESTAMP, 1, &cs->rf_data_timestamp_query);
+
+	/* NOTE(rnp): start this here so we don't have to worry about it being started or not */
+	glQueryCounter(cs->rf_data_timestamp_query, GL_TIMESTAMP);
 }
 
 DEBUG_EXPORT BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute)
@@ -724,6 +795,8 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		ctx->window_size.h = GetScreenHeight();
 		ctx->window_size.w = GetScreenWidth();
 	}
+
+	coalesce_timing_table(ctx->compute_timing_table, ctx->compute_shader_stats);
 
 	if (input->executable_reloaded) {
 		ui_init(ctx, ctx->ui_backing_store);
@@ -784,7 +857,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 	}
 
 	draw_ui(ctx, input, frame_to_draw->ready_to_present? &frame_to_draw->frame : 0,
-	        frame_to_draw->image_plane_tag, &frame_to_draw->stats);
+	        frame_to_draw->image_plane_tag);
 
 	ctx->frame_view_render_context.updated = 0;
 

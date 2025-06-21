@@ -50,6 +50,7 @@
 #define GL_FRAMEBUFFER                     0x8D40
 #define GL_RENDERBUFFER                    0x8D41
 #define GL_RED_INTEGER                     0x8D94
+#define GL_TIMESTAMP                       0x8E28
 #define GL_SHADER_STORAGE_BUFFER           0x90D2
 #define GL_MAX_SHADER_STORAGE_BLOCK_SIZE   0x90DE
 #define GL_MAX_SERVER_WAIT_TIMEOUT         0x9111
@@ -86,7 +87,6 @@ typedef uint64_t  GLuint64;
 	X(glDebugMessageCallback,                void,   (void (*)(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const void *user), void *user)) \
 	X(glDeleteBuffers,                       void,   (GLsizei n, const GLuint *buffers)) \
 	X(glDeleteProgram,                       void,   (GLuint program)) \
-	X(glDeleteQueries,                       void,   (GLsizei n, const GLuint *ids)) \
 	X(glDeleteShader,                        void,   (GLuint shader)) \
 	X(glDispatchCompute,                     void,   (GLuint num_groups_x, GLuint num_groups_y, GLuint num_groups_z)) \
 	X(glEndQuery,                            void,   (GLenum target)) \
@@ -113,6 +113,7 @@ typedef uint64_t  GLuint64;
 	X(glProgramUniform3iv,                   void,   (GLuint program, GLint location, GLsizei count, const GLint *value)) \
 	X(glProgramUniform4fv,                   void,   (GLuint program, GLint location, GLsizei count, const GLfloat *value)) \
 	X(glProgramUniformMatrix4fv,             void,   (GLuint program, GLint location, GLsizei count, GLboolean transpose, const GLfloat *value)) \
+	X(glQueryCounter,                        void,   (GLuint id, GLenum target)) \
 	X(glShaderSource,                        void,   (GLuint shader, GLsizei count, const GLchar **strings, const GLint *lengths)) \
 	X(glTextureParameteri,                   void,   (GLuint texture, GLenum pname, GLint param)) \
 	X(glTextureParameterfv,                  void,   (GLuint texture, GLenum pname, const GLfloat *param)) \

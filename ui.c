@@ -136,7 +136,6 @@ typedef enum {
 	VT_BEAMFORMER_VARIABLE,
 	VT_BEAMFORMER_FRAME_VIEW,
 	VT_COMPUTE_STATS_VIEW,
-	VT_COMPUTE_LATEST_STATS_VIEW,
 	VT_COMPUTE_PROGRESS_BAR,
 	VT_SCALE_BAR,
 	VT_UI_BUTTON,
@@ -221,7 +220,6 @@ struct Variable {
 		void               *generic;
 		BeamformerVariable  beamformer_variable;
 		ComputeProgressBar  compute_progress_bar;
-		ComputeStatsView    compute_stats_view;
 		RegionSplit         region_split;
 		ScaleBar            scale_bar;
 		UIButtonID          button;
@@ -331,8 +329,7 @@ struct BeamformerUI {
 
 	v2_sll *scale_bar_savepoint_freelist;
 
-	BeamformFrame      *latest_plane[IPT_LAST + 1];
-	ComputeShaderStats *latest_compute_stats;
+	BeamformFrame *latest_plane[IPT_LAST + 1];
 
 	BeamformerUIParameters params;
 	b32                    flush_params;
@@ -1196,7 +1193,7 @@ ui_copy_frame(BeamformerUI *ui, Variable *view, RegionSplitDirection direction)
 	mem_copy(bv->frame, old->frame, sizeof(*bv->frame));
 	bv->frame->texture = 0;
 	bv->frame->next    = 0;
-	alloc_beamform_frame(0, bv->frame, 0, old->frame->dim, s8("Frame Copy: "), ui->arena);
+	alloc_beamform_frame(0, bv->frame, old->frame->dim, s8("Frame Copy: "), ui->arena);
 
 	glCopyImageSubData(old->frame->texture, GL_TEXTURE_3D, 0, 0, 0, 0,
 	                   bv->frame->texture,  GL_TEXTURE_3D, 0, 0, 0, 0,
@@ -1321,13 +1318,8 @@ function s8
 push_custom_view_title(Stream *s, Variable *var)
 {
 	switch (var->type) {
-	case VT_COMPUTE_STATS_VIEW:
-	case VT_COMPUTE_LATEST_STATS_VIEW: {
-		stream_append_s8(s, s8("Compute Stats"));
-		if (var->type == VT_COMPUTE_LATEST_STATS_VIEW)
-			stream_append_s8(s, s8(": Live"));
-	} break;
-	case VT_COMPUTE_PROGRESS_BAR: {
+	case VT_COMPUTE_STATS_VIEW:{ stream_append_s8(s, s8("Compute Stats (Average)")); } break;
+	case VT_COMPUTE_PROGRESS_BAR:{
 		stream_append_s8(s, s8("Compute Progress: "));
 		stream_append_f64(s, 100 * *var->compute_progress_bar.progress, 100);
 		stream_append_byte(s, '%');
@@ -2038,36 +2030,48 @@ draw_compute_progress_bar(BeamformerUI *ui, Arena arena, ComputeProgressBar *sta
 }
 
 function v2
-draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, ComputeShaderStats *stats, Rect r)
+draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, Rect r)
 {
 	#define X(e, n, s, h, pn) [ComputeShaderKind_##e] = s8_comp(pn ":"),
 	read_only local_persist s8 labels[ComputeShaderKind_Count] = {COMPUTE_SHADERS};
 	#undef X
 
-	BeamformerSharedMemory *sm = ctx->shared_memory.region;
+	BeamformerSharedMemory *sm    = ctx->shared_memory.region;
+	ComputeShaderStats     *stats = ctx->compute_shader_stats;
 	BeamformerUI *ui     = ctx->ui;
 	f32 compute_time_sum = 0;
 	u32 stages           = sm->compute_stages_count;
 	TextSpec text_spec   = {.font = &ui->font, .colour = FG_COLOUR, .flags = TF_LIMITED};
 
-	Table *table = table_new(&arena, stages + 1, TextAlignment_Left, TextAlignment_Left, TextAlignment_Left);
+	static_assert(ShaderKind_Count <= 32, "shader kind bitfield test");
+	u32 seen_shaders = 0;
+	Table *table = table_new(&arena, stages + 2, TextAlignment_Left, TextAlignment_Left, TextAlignment_Left);
 	for (u32 i = 0; i < stages; i++) {
 		TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
 
 		Stream sb = arena_stream(arena);
 		ShaderKind index = (ShaderKind)sm->compute_stages[i];
-		compute_time_sum += stats->times[index];
-		stream_append_f64_e(&sb, stats->times[index]);
-
-		cells[0].text = labels[index];
-		cells[1].text = arena_stream_commit(&arena, &sb);
-		cells[2].text = s8("[s]");
+		if ((seen_shaders & (1 << index)) == 0) {
+			compute_time_sum += stats->average_times[index];
+			stream_append_f64_e(&sb, stats->average_times[index]);
+			seen_shaders |= (1 << index);
+			cells[0].text = labels[index];
+			cells[1].text = arena_stream_commit(&arena, &sb);
+			cells[2].text = s8("[s]");
+		}
 	}
 
 	TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
 	Stream sb = arena_stream(arena);
 	stream_append_f64_e(&sb, compute_time_sum);
 	cells[0].text = s8("Compute Total:");
+	cells[1].text = arena_stream_commit(&arena, &sb);
+	cells[2].text = s8("[s]");
+
+	cells = table_push_row(table, &arena, TRK_CELLS)->data;
+	sb    = arena_stream(arena);
+	stream_append_f64_e(&sb, stats->rf_time_delta_average);
+	cells[0].text = s8("RF Upload Delta:");
 	cells[1].text = arena_stream_commit(&arena, &sb);
 	cells[2].text = s8("[s]");
 
@@ -2268,13 +2272,7 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec tex
 	case VT_COMPUTE_PROGRESS_BAR: {
 		size = draw_compute_progress_bar(ui, ui->arena, &var->compute_progress_bar, r);
 	} break;
-	case VT_COMPUTE_LATEST_STATS_VIEW:
-	case VT_COMPUTE_STATS_VIEW: {
-		ComputeShaderStats *stats = var->compute_stats_view.stats;
-		if (var->type == VT_COMPUTE_LATEST_STATS_VIEW)
-			stats = *(ComputeShaderStats **)stats;
-		size = draw_compute_stats_view(var->compute_stats_view.ctx, ui->arena, stats, r);
-	} break;
+	case VT_COMPUTE_STATS_VIEW:{ size = draw_compute_stats_view(var->generic, ui->arena, r); }break;
 	InvalidDefaultCase;
 	}
 
@@ -2971,12 +2969,9 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	split = split->region_split.right;
 
 	split->region_split.left  = add_compute_progress_bar(split, ctx);
-	split->region_split.right = add_compute_stats_view(ui, split, &ui->arena,
-	                                                   VT_COMPUTE_LATEST_STATS_VIEW);
-
-	ComputeStatsView *compute_stats = &split->region_split.right->group.first->compute_stats_view;
-	compute_stats->ctx   = ctx;
-	compute_stats->stats = &ui->latest_compute_stats;
+	split->region_split.right = add_compute_stats_view(ui, split, &ui->arena, VT_COMPUTE_STATS_VIEW);
+	/* TODO(rnp): refactor to not need the beamformer ctx */
+	split->region_split.right->group.first->generic = ctx;
 
 	ctx->ui_read_params = 1;
 
@@ -2994,15 +2989,13 @@ validate_ui_parameters(BeamformerUIParameters *p)
 }
 
 function void
-draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw, ImagePlaneTag frame_plane,
-        ComputeShaderStats *latest_compute_stats)
+draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw, ImagePlaneTag frame_plane)
 {
 	BeamformerUI *ui = ctx->ui;
 	BeamformerSharedMemory *sm = ctx->shared_memory.region;
 
 	ui->latest_plane[IPT_LAST]    = frame_to_draw;
 	ui->latest_plane[frame_plane] = frame_to_draw;
-	ui->latest_compute_stats      = latest_compute_stats;
 
 	/* TODO(rnp): there should be a better way of detecting this */
 	if (ctx->ui_read_params) {

@@ -95,6 +95,10 @@ typedef struct {
 	f32 processing_progress;
 	b32 processing_compute;
 
+	u32 rf_data_timestamp_query;
+
+	u32 shader_timer_ids[MAX_COMPUTE_SHADER_STAGES];
+
 	uv4 dec_data_dim;
 	u32 rf_raw_size;
 } ComputeShaderCtx;
@@ -115,13 +119,39 @@ typedef enum {
 } ShaderKind;
 
 typedef struct {
-	/* TODO(rnp): there is assumption here that each shader will occur only once
-	 * per compute. add an insertion index and change these to hold the max number
-	 * of executed compute stages */
-	u32 timer_ids[ComputeShaderKind_Count];
-	f32 times[ComputeShaderKind_Count];
-	b32 timer_active[ComputeShaderKind_Count];
+	f32 times[ShaderKind_Count][32];
+	f32 average_times[ShaderKind_Count];
+
+	u64 last_rf_timer_count;
+	f32 rf_time_deltas[32];
+	f32 rf_time_delta_average;
+
+	u32 latest_frame_index;
+	u32 latest_rf_index;
 } ComputeShaderStats;
+
+/* TODO(rnp): maybe this also gets used for CPU timing info as well */
+typedef enum {
+	ComputeTimingInfoKind_ComputeFrameBegin,
+	ComputeTimingInfoKind_ComputeFrameEnd,
+	ComputeTimingInfoKind_Shader,
+	ComputeTimingInfoKind_RF_Data,
+} ComputeTimingInfoKind;
+
+typedef struct {
+	u64 timer_count;
+	ComputeTimingInfoKind kind;
+	union {
+		ShaderKind shader;
+	};
+} ComputeTimingInfo;
+
+typedef struct {
+	u32 write_index;
+	u32 read_index;
+	b32 compute_frame_active;
+	ComputeTimingInfo buffer[4096];
+} ComputeTimingTable;
 
 typedef struct BeamformFrame {
 	uv3 dim;
@@ -141,11 +171,10 @@ typedef struct BeamformFrame {
 } BeamformFrame;
 
 struct BeamformComputeFrame {
-	BeamformFrame      frame;
-	ComputeShaderStats stats;
+	BeamformFrame frame;
 	ImagePlaneTag image_plane_tag;
-	b32 in_flight;
-	b32 ready_to_present;
+	b32           in_flight;
+	b32           ready_to_present;
 };
 
 #define GL_PARAMETERS \
@@ -198,6 +227,9 @@ typedef struct {
 	Stream  error_stream;
 
 	BeamformWorkQueue *beamform_work_queue;
+
+	ComputeShaderStats *compute_shader_stats;
+	ComputeTimingTable *compute_timing_table;
 
 	SharedMemoryRegion shared_memory;
 } BeamformerCtx;

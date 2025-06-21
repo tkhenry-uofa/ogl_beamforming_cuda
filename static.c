@@ -277,7 +277,9 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 
 	glfwMakeContextCurrent(raylib_window_handle);
 
-	ctx->beamform_work_queue = push_struct(memory, BeamformWorkQueue);
+	ctx->beamform_work_queue  = push_struct(memory, BeamformWorkQueue);
+	ctx->compute_shader_stats = push_struct(memory, ComputeShaderStats);
+	ctx->compute_timing_table = push_struct(memory, ComputeTimingTable);
 
 	ctx->shared_memory = os_create_shared_memory_area(memory, OS_SHARED_MEMORY_NAME,
 	                                                  BeamformerSharedMemoryLockKind_Count,
