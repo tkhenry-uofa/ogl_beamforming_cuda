@@ -119,7 +119,9 @@ typedef enum {
 } ShaderKind;
 
 typedef struct {
-	f32 times[ShaderKind_Count][32];
+	/* NOTE(rnp): this wants to be iterated on both dimensions. it depends entirely on which
+	 * visualization method you want to use. the coalescing function wants both directions */
+	f32 times[32][ShaderKind_Count];
 	f32 average_times[ShaderKind_Count];
 
 	u64 last_rf_timer_count;

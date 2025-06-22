@@ -695,7 +695,7 @@ coalesce_timing_table(ComputeTimingTable *t, ComputeShaderStats *stats)
 	 * info item. this could result in garbage entries but they shouldn't really matter */
 
 	u32 target = atomic_load_u32(&t->write_index);
-	u32 stats_index = (stats->latest_frame_index + 1) % countof(stats->times[0]);
+	u32 stats_index = (stats->latest_frame_index + 1) % countof(stats->times);
 
 	static_assert(ShaderKind_Count + 1 <= 32, "timing coalescence bitfield test");
 	u32 seen_info_test = 0;
@@ -707,17 +707,16 @@ coalesce_timing_table(ComputeTimingTable *t, ComputeShaderStats *stats)
 			assert(t->compute_frame_active == 0);
 			t->compute_frame_active = 1;
 			/* NOTE(rnp): allow multiple instances of same shader to accumulate */
-			for EachEnumValue(ShaderKind, shader)
-				stats->times[shader][stats_index] = 0;
+			mem_clear(stats->times[stats_index], 0, sizeof(stats->times[stats_index]));
 		}break;
 		case ComputeTimingInfoKind_ComputeFrameEnd:{
 			assert(t->compute_frame_active == 1);
 			t->compute_frame_active = 0;
 			stats->latest_frame_index = stats_index;
-			stats_index = (stats_index + 1) % countof(stats->times[0]);
+			stats_index = (stats_index + 1) % countof(stats->times);
 		}break;
 		case ComputeTimingInfoKind_Shader:{
-			stats->times[info.shader][stats_index] += (f32)info.timer_count / 1.0e9;
+			stats->times[stats_index][info.shader] += (f32)info.timer_count / 1.0e9;
 			seen_info_test |= (1 << info.shader);
 		}break;
 		case ComputeTimingInfoKind_RF_Data:{
@@ -734,9 +733,9 @@ coalesce_timing_table(ComputeTimingTable *t, ComputeShaderStats *stats)
 		for EachEnumValue(ShaderKind, shader) {
 			if (seen_info_test & (1 << shader)) {
 				f32 sum = 0;
-				for EachElement(stats->times[shader], i)
-					sum += stats->times[shader][i];
-				stats->average_times[shader] = sum / countof(stats->times[shader]);
+				for EachElement(stats->times, i)
+					sum += stats->times[i][shader];
+				stats->average_times[shader] = sum / countof(stats->times);
 			}
 		}
 
