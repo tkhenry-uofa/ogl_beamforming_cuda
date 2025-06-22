@@ -2,6 +2,7 @@
 /* TODO(rnp):
  * [ ]: for finer grained evaluation of throughput latency just queue a data upload
  *      without replacing the data.
+ * [ ]: bug: we aren't inserting rf data between each frame
  */
 
 #define LIB_FN function
@@ -371,9 +372,9 @@ execute_study(s8 study, Arena arena, Stream path, Options *options)
 
 	i32 shader_stages[16];
 	i32 shader_stage_count = 0;
-	if (options->cuda) shader_stages[shader_stage_count++] = ComputeShaderKind_CudaDecode;
-	else               shader_stages[shader_stage_count++] = ComputeShaderKind_Decode;
-	shader_stages[shader_stage_count++] = ComputeShaderKind_DASCompute;
+	if (options->cuda) shader_stages[shader_stage_count++] = BeamformerShaderKind_CudaDecode;
+	else               shader_stages[shader_stage_count++] = BeamformerShaderKind_Decode;
+	shader_stages[shader_stage_count++] = BeamformerShaderKind_DASCompute;
 
 	set_beamformer_pipeline(shader_stages, shader_stage_count);
 
@@ -428,7 +429,7 @@ main(i32 argc, char *argv[])
 
 	signal(SIGINT, sigint);
 
-	Arena arena = os_alloc_arena((Arena){0}, KB(8));
+	Arena arena = os_alloc_arena(KB(8));
 	Stream path = stream_alloc(&arena, KB(4));
 	stream_append_s8(&path, c_str_to_s8(options.remaining[0]));
 	stream_ensure_termination(&path, OS_PATH_SEPARATOR_CHAR);

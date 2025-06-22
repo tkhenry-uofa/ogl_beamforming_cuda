@@ -50,3 +50,14 @@ DEBUG_EXPORT BEAMFORM_WORK_QUEUE_PUSH_COMMIT_FN(beamform_work_queue_push_commit)
 {
 	atomic_add_u64(&q->queue, 1);
 }
+
+function void
+post_sync_barrier(SharedMemoryRegion *sm, BeamformerSharedMemoryLockKind lock, i32 *locks,
+                  os_shared_memory_region_unlock_fn *os_shared_memory_region_unlock)
+{
+	/* NOTE(rnp): debug: here it is not a bug to release the lock if it
+	 * isn't held but elswhere it is */
+	DEBUG_DECL(if (locks[lock])) {
+		os_shared_memory_region_unlock(sm, locks, lock);
+	}
+}

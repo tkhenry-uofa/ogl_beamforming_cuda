@@ -16,10 +16,9 @@
 	X(INVALID_IMAGE_PLANE,     5, "invalid image plane")                          \
 	X(BUFFER_OVERFLOW,         6, "passed buffer size exceeds available space")   \
 	X(WORK_QUEUE_FULL,         7, "work queue full")                              \
-	X(OPEN_EXPORT_PIPE,        8, "failed to open export pipe")                   \
-	X(READ_EXPORT_PIPE,        9, "failed to read full export data from pipe")    \
-	X(SHARED_MEMORY,          10, "failed to open shared memory region")          \
-	X(SYNC_VARIABLE,          11, "failed to acquire lock within timeout period")
+	X(EXPORT_SPACE_OVERFLOW,   8, "not enough space for data export")             \
+	X(SHARED_MEMORY,           9, "failed to open shared memory region")          \
+	X(SYNC_VARIABLE,          10, "failed to acquire lock within timeout period")
 
 #define X(type, num, string) BF_LIB_ERR_KIND_ ##type = num,
 typedef enum {BEAMFORMER_LIB_ERRORS} BeamformerLibErrorKind;
@@ -40,6 +39,9 @@ LIB_FN uint32_t send_data(void *data, uint32_t data_size);
  * out_data: must be allocated by the caller as 2 floats per output point. */
 LIB_FN uint32_t beamform_data_synchronized(void *data, uint32_t data_size, uint32_t output_points[3],
                                            float *out_data, int32_t timeout_ms);
+
+/* NOTE: downloads the last 32 frames worth of compute timings into output */
+LIB_FN uint32_t beamformer_compute_timings(BeamformerComputeStatsTable *output, int32_t timeout_ms);
 
 /* NOTE: tells the beamformer to start beamforming and waits until it starts or for timeout_ms */
 LIB_FN uint32_t beamformer_start_compute(int32_t timeout_ms);

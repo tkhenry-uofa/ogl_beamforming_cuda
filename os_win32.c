@@ -1,7 +1,6 @@
 /* See LICENSE for license details. */
 
 #define OS_SHARED_MEMORY_NAME "Local\\ogl_beamformer_parameters"
-#define OS_EXPORT_PIPE_NAME   "\\\\.\\pipe\\beamformer_output_pipe"
 
 #define OS_PATH_SEPARATOR_CHAR '\\'
 #define OS_PATH_SEPARATOR      "\\"
@@ -15,7 +14,6 @@
 #define PAGE_READWRITE 0x04
 #define MEM_COMMIT     0x1000
 #define MEM_RESERVE    0x2000
-#define MEM_RELEASE    0x8000
 
 #define GENERIC_WRITE  0x40000000
 #define GENERIC_READ   0x80000000
@@ -120,7 +118,6 @@ W32(i32)    WakeByAddressAll(void *);
 W32(iptr)   wglGetProcAddress(c8 *);
 W32(b32)    WriteFile(iptr, u8 *, i32, i32 *, void *);
 W32(void *) VirtualAlloc(u8 *, iz, u32, u32);
-W32(b32)    VirtualFree(u8 *, iz, u32);
 
 #ifdef _DEBUG
 function void *
@@ -197,27 +194,12 @@ os_round_up_to_page_size(iz value)
 
 function OS_ALLOC_ARENA_FN(os_alloc_arena)
 {
-	Arena result = old;
-	capacity = os_round_up_to_page_size(capacity);
-	iz old_size = old.end - old.beg;
-	if (old_size < capacity) {
-		if (old.beg) VirtualFree(old.beg, old_size, MEM_RELEASE);
-		result.beg = VirtualAlloc(0, capacity, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-		if (!result.beg)
-			os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
-		result.end = result.beg + capacity;
-	}
-	return result;
-}
-
-function OS_CLOSE_FN(os_close)
-{
-	CloseHandle(file);
-}
-
-function OS_OPEN_FOR_WRITE_FN(os_open_for_write)
-{
-	iptr result = CreateFileA(fname, GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
+	Arena result = {0};
+	capacity   = os_round_up_to_page_size(capacity);
+	result.beg = VirtualAlloc(0, capacity, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+	if (!result.beg)
+		os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
+	result.end = result.beg + capacity;
 	return result;
 }
 
@@ -241,13 +223,6 @@ function OS_READ_WHOLE_FILE_FN(os_read_whole_file)
 	if (h >= 0) CloseHandle(h);
 
 	return result;
-}
-
-function OS_READ_FILE_FN(os_read_file)
-{
-	i32 total_read = 0;
-	ReadFile(file, buf, size, &total_read, 0);
-	return total_read;
 }
 
 function OS_WRITE_NEW_FILE_FN(os_write_new_file)

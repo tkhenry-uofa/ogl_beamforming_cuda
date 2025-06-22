@@ -2032,8 +2032,8 @@ draw_compute_progress_bar(BeamformerUI *ui, Arena arena, ComputeProgressBar *sta
 function v2
 draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, Rect r)
 {
-	#define X(e, n, s, h, pn) [ComputeShaderKind_##e] = s8_comp(pn ":"),
-	read_only local_persist s8 labels[ComputeShaderKind_Count] = {COMPUTE_SHADERS};
+	#define X(e, n, s, h, pn) [BeamformerShaderKind_##e] = s8_comp(pn ":"),
+	read_only local_persist s8 labels[BeamformerShaderKind_ComputeCount] = {COMPUTE_SHADERS};
 	#undef X
 
 	BeamformerSharedMemory *sm    = ctx->shared_memory.region;
@@ -2043,14 +2043,14 @@ draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, Rect r)
 	u32 stages           = sm->compute_stages_count;
 	TextSpec text_spec   = {.font = &ui->font, .colour = FG_COLOUR, .flags = TF_LIMITED};
 
-	static_assert(ShaderKind_Count <= 32, "shader kind bitfield test");
+	static_assert(countof(labels) <= 32, "shader kind bitfield test");
 	u32 seen_shaders = 0;
 	Table *table = table_new(&arena, stages + 2, TextAlignment_Left, TextAlignment_Left, TextAlignment_Left);
 	for (u32 i = 0; i < stages; i++) {
 		TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
 
 		Stream sb = arena_stream(arena);
-		ShaderKind index = (ShaderKind)sm->compute_stages[i];
+		BeamformerShaderKind index = sm->compute_stages[i];
 		if ((seen_shaders & (1 << index)) == 0) {
 			compute_time_sum += stats->average_times[index];
 			stream_append_f64_e(&sb, stats->average_times[index]);
@@ -3019,8 +3019,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 			b32 dispatch = ctx->os.shared_memory_region_lock(&ctx->shared_memory, sm->locks,
 			                                                 BeamformerSharedMemoryLockKind_DispatchCompute,
 			                                                 0);
-			sm->start_compute_from_main |= dispatch &
-			                               ctx->beamform_frames[ctx->display_frame_index].ready_to_present;
+			sm->start_compute_from_main |= dispatch & beamformer_get_newest_frame(ctx, 0)->ready_to_present;
 			ctx->os.shared_memory_region_unlock(&ctx->shared_memory, sm->locks, lock);
 		}
 	}

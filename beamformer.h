@@ -77,7 +77,7 @@ typedef struct {
 #define CS_SUM_PRESCALE_UNIFORM_LOC       1
 
 typedef struct {
-	u32 programs[ComputeShaderKind_Count];
+	u32 programs[BeamformerShaderKind_ComputeCount];
 
 	/* NOTE: Decoded data is only relevant in the context of a single frame. We use two
 	 * buffers so that they can be swapped when chaining multiple compute stages */
@@ -110,22 +110,11 @@ typedef enum {
 	DASShaderKind_Count
 } DASShaderKind;
 
-typedef enum {
-	#define X(e, n, s, h, pn) ShaderKind_##e = n,
-	COMPUTE_SHADERS
-	#undef X
-	ShaderKind_Render2D,
-	ShaderKind_Count
-} ShaderKind;
-
 typedef struct {
-	/* NOTE(rnp): this wants to be iterated on both dimensions. it depends entirely on which
-	 * visualization method you want to use. the coalescing function wants both directions */
-	f32 times[32][ShaderKind_Count];
-	f32 average_times[ShaderKind_Count];
+	BeamformerComputeStatsTable table;
+	f32 average_times[BeamformerShaderKind_Count];
 
 	u64 last_rf_timer_count;
-	f32 rf_time_deltas[32];
 	f32 rf_time_delta_average;
 
 	u32 latest_frame_index;
@@ -144,7 +133,7 @@ typedef struct {
 	u64 timer_count;
 	ComputeTimingInfoKind kind;
 	union {
-		ShaderKind shader;
+		BeamformerShaderKind shader;
 	};
 } ComputeTimingInfo;
 
@@ -175,7 +164,6 @@ typedef struct BeamformFrame {
 struct BeamformComputeFrame {
 	BeamformFrame frame;
 	ImagePlaneTag image_plane_tag;
-	b32           in_flight;
 	b32           ready_to_present;
 };
 
@@ -210,7 +198,6 @@ typedef struct {
 
 	BeamformComputeFrame beamform_frames[MAX_BEAMFORMED_SAVED_FRAMES];
 	u32 next_render_frame_index;
-	u32 display_frame_index;
 
 	/* NOTE: this will only be used when we are averaging */
 	u32                  averaged_frame_index;
@@ -221,8 +208,6 @@ typedef struct {
 	/* TODO(rnp): ideally this would go in the UI but its hard to manage with the UI
 	 * destroying itself on hot-reload */
 	FrameViewRenderContext frame_view_render_context;
-
-	Arena export_buffer;
 
 	CudaLib cuda_lib;
 	OS      os;
@@ -244,7 +229,7 @@ struct ShaderReloadContext {
 	u32 *shader;
 	ShaderReloadContext *link;
 	GLenum     gl_type;
-	ShaderKind kind;
+	BeamformerShaderKind kind;
 };
 
 #define BEAMFORMER_FRAME_STEP_FN(name) void name(BeamformerCtx *ctx, Arena *arena, \

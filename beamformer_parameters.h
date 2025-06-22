@@ -20,11 +20,21 @@
 	X(Sum,                8, "sum",      0, "Sum")
 
 typedef enum {
-	#define X(e, n, s, h, pn) ComputeShaderKind_##e = n,
+	#define X(e, n, s, h, pn) BeamformerShaderKind_##e = n,
 	COMPUTE_SHADERS
 	#undef X
-	ComputeShaderKind_Count
-} ComputeShaderKind;
+	BeamformerShaderKind_Render2D,
+	BeamformerShaderKind_Count,
+
+	BeamformerShaderKind_ComputeCount = BeamformerShaderKind_Render2D,
+} BeamformerShaderKind;
+
+typedef struct {
+	/* NOTE(rnp): this wants to be iterated on both dimensions. it depends entirely on which
+	 * visualization method you want to use. the coalescing function wants both directions */
+	float times[32][BeamformerShaderKind_Count];
+	float rf_time_deltas[32];
+} BeamformerComputeStatsTable;
 
 /* X(type, id, pretty name) */
 #define DECODE_TYPES \

@@ -6,8 +6,6 @@
 #include "ogl_beamformer_lib_base.h"
 #include "../beamformer_work_queue.c"
 
-#define PIPE_RETRY_PERIOD_MS (100ULL)
-
 global SharedMemoryRegion      g_shared_memory;
 global BeamformerSharedMemory *g_bp;
 global BeamformerLibErrorKind  g_lib_last_error;
@@ -17,61 +15,13 @@ global BeamformerLibErrorKind  g_lib_last_error;
 #elif OS_WINDOWS
 #include "../os_win32.c"
 
-#define PIPE_TYPE_BYTE      0x00
-#define PIPE_ACCESS_INBOUND 0x01
-
-#define PIPE_WAIT   0x00
-#define PIPE_NOWAIT 0x01
-
-#define ERROR_NO_DATA            232L
-#define ERROR_PIPE_NOT_CONNECTED 233L
-#define ERROR_PIPE_LISTENING     536L
-
-W32(iptr) CreateNamedPipeA(c8 *, u32, u32, u32, u32, u32, u32, void *);
-W32(b32)  DisconnectNamedPipe(iptr);
 W32(iptr) OpenFileMappingA(u32, b32, c8 *);
-W32(void) Sleep(u32);
 
 #else
 #error Unsupported Platform
 #endif
 
 #if OS_LINUX
-
-function Pipe
-os_open_read_pipe(char *name)
-{
-	mkfifo(name, 0660);
-	return (Pipe){.file = open(name, O_RDONLY|O_NONBLOCK), .name = name};
-}
-
-static void
-os_disconnect_pipe(Pipe p)
-{
-}
-
-static void
-os_close_pipe(iptr *file, char *name)
-{
-	if (file) close(*file);
-	if (name) unlink(name);
-	*file = INVALID_FILE;
-}
-
-static b32
-os_wait_read_pipe(Pipe p, void *buf, iz read_size, u32 timeout_ms)
-{
-	struct pollfd pfd = {.fd = p.file, .events = POLLIN};
-	iz total_read = 0;
-	if (poll(&pfd, 1, timeout_ms) > 0) {
-		iz r;
-		do {
-			 r = read(p.file, (u8 *)buf + total_read, read_size - total_read);
-			 if (r > 0) total_read += r;
-		} while (r != 0);
-	}
-	return total_read == read_size;
-}
 
 function SharedMemoryRegion
 os_open_shared_memory_area(char *name)
@@ -87,54 +37,6 @@ os_open_shared_memory_area(char *name)
 }
 
 #elif OS_WINDOWS
-
-static Pipe
-os_open_read_pipe(char *name)
-{
-	iptr file = CreateNamedPipeA(name, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE|PIPE_NOWAIT, 1,
-	                             0, 1024UL * 1024UL, 0, 0);
-	return (Pipe){.file = file, .name = name};
-}
-
-static void
-os_disconnect_pipe(Pipe p)
-{
-	DisconnectNamedPipe(p.file);
-}
-
-static void
-os_close_pipe(iptr *file, char *name)
-{
-	if (file) CloseHandle(*file);
-	*file = INVALID_FILE;
-}
-
-static b32
-os_wait_read_pipe(Pipe p, void *buf, iz read_size, u32 timeout_ms)
-{
-	iz elapsed_ms = 0, total_read = 0;
-	while (elapsed_ms <= timeout_ms && read_size != total_read) {
-		u8 data;
-		i32 read;
-		b32 result = ReadFile(p.file, &data, 0, &read, 0);
-		if (!result) {
-			i32 error = GetLastError();
-			if (error != ERROR_NO_DATA &&
-			    error != ERROR_PIPE_LISTENING &&
-			    error != ERROR_PIPE_NOT_CONNECTED)
-			{
-				/* NOTE: pipe is in a bad state; we will never read anything */
-				break;
-			}
-			Sleep(PIPE_RETRY_PERIOD_MS);
-			elapsed_ms += PIPE_RETRY_PERIOD_MS;
-		} else {
-			ReadFile(p.file, (u8 *)buf + total_read, read_size - total_read, &read, 0);
-			total_read += read;
-		}
-	}
-	return total_read == read_size;
-}
 
 function SharedMemoryRegion
 os_open_shared_memory_area(char *name)
@@ -216,6 +118,18 @@ lib_release_lock(BeamformerSharedMemoryLockKind lock)
 	os_shared_memory_region_unlock(&g_shared_memory, g_bp->locks, (i32)lock);
 }
 
+function b32
+try_wait_sync(BeamformerSharedMemoryLockKind lock, i32 timeout_ms)
+{
+	b32 result = 0;
+	if (lib_try_lock(lock, 0) && lib_try_lock(lock, timeout_ms)) {
+		/* TODO(rnp): non-critical race condition */
+		lib_release_lock(lock);
+		result = 1;
+	}
+	return result;
+}
+
 u32
 beamformer_get_api_version(void)
 {
@@ -251,7 +165,7 @@ set_beamformer_pipeline(i32 *stages, i32 stages_count)
 		if (check_shared_memory()) {
 			g_bp->compute_stages_count = 0;
 			for (i32 i = 0; i < stages_count; i++) {
-				if (BETWEEN(stages[i], 0, ComputeShaderKind_Count)) {
+				if (BETWEEN(stages[i], 0, BeamformerShaderKind_ComputeCount)) {
 					g_bp->compute_stages[g_bp->compute_stages_count++] = stages[i];
 				}
 			}
@@ -270,16 +184,8 @@ set_beamformer_pipeline(i32 *stages, i32 stages_count)
 b32
 beamformer_start_compute(i32 timeout_ms)
 {
-	b32 result = 0;
-	if (check_shared_memory()) {
-		if (lib_try_lock(BeamformerSharedMemoryLockKind_DispatchCompute, 0)) {
-			if (lib_try_lock(BeamformerSharedMemoryLockKind_DispatchCompute, timeout_ms)) {
-				/* TODO(rnp): non-critical race condition */
-				lib_release_lock(BeamformerSharedMemoryLockKind_DispatchCompute);
-				result = 1;
-			}
-		}
-	}
+	b32 result = check_shared_memory() &&
+	             try_wait_sync(BeamformerSharedMemoryLockKind_DispatchCompute, timeout_ms);
 	return result;
 }
 
@@ -293,7 +199,7 @@ beamformer_upload_buffer(void *data, u32 size, i32 store_offset, BeamformerUploa
 		result = work && lib_try_lock(lock, timeout_ms);
 		if (result) {
 			work->upload_context = upload_context;
-			work->type = BW_UPLOAD_BUFFER;
+			work->kind = BeamformerWorkKind_UploadBuffer;
 			work->lock = lock;
 			mem_copy((u8 *)g_bp + store_offset, data, size);
 			if ((atomic_load_u32(&g_bp->dirty_regions) & (1 << (lock - 1))) == 0) {
@@ -335,11 +241,11 @@ beamformer_push_data_base(void *data, u32 data_size, i32 timeout_ms, b32 start_f
 	b32 result = 0;
 	if (data_size <= BEAMFORMER_MAX_RF_DATA_SIZE) {
 		BeamformerUploadContext uc = {0};
-		uc.shared_memory_offset = BEAMFORMER_RF_DATA_OFF;
+		uc.shared_memory_offset = BEAMFORMER_SCRATCH_OFF;
 		uc.size = data_size;
 		uc.kind = BU_KIND_RF_DATA;
 		result = beamformer_upload_buffer(data, data_size, uc.shared_memory_offset, uc,
-		                                  BeamformerSharedMemoryLockKind_RawData, timeout_ms);
+		                                  BeamformerSharedMemoryLockKind_ScratchSpace, timeout_ms);
 		if (result && start_from_main) atomic_store_u32(&g_bp->start_compute_from_main, 1);
 	} else {
 		g_lib_last_error = BF_LIB_ERR_KIND_BUFFER_OVERFLOW;
@@ -363,7 +269,7 @@ beamformer_push_data_with_compute(void *data, u32 data_size, u32 image_plane_tag
 			BeamformWork *work = try_push_work_queue();
 			result = work != 0;
 			if (result) {
-				work->type = BW_COMPUTE_INDIRECT;
+				work->kind = BeamformerWorkKind_ComputeIndirect;
 				work->compute_indirect_plane = image_plane_tag;
 				beamform_work_queue_push_commit(&g_bp->external_work_queue);
 			}
@@ -438,6 +344,20 @@ send_data(void *data, u32 data_size)
 	return result;
 }
 
+function b32
+beamformer_export_buffer(BeamformerExportContext export_context)
+{
+	BeamformWork *work = try_push_work_queue();
+	b32 result = work != 0;
+	if (result) {
+		work->export_context = export_context;
+		work->kind = BeamformerWorkKind_ExportBuffer;
+		work->lock = BeamformerSharedMemoryLockKind_ScratchSpace;
+		beamform_work_queue_push_commit(&g_bp->external_work_queue);
+	}
+	return result;
+}
+
 b32
 beamform_data_synchronized(void *data, u32 data_size, u32 output_points[3], f32 *out_data, i32 timeout_ms)
 {
@@ -450,21 +370,46 @@ beamform_data_synchronized(void *data, u32 data_size, u32 output_points[3], f32 
 		g_bp->parameters.output_points[0] = output_points[0];
 		g_bp->parameters.output_points[1] = output_points[1];
 		g_bp->parameters.output_points[2] = output_points[2];
-		g_bp->export_next_frame = 1;
 
-		Pipe export_pipe = os_open_read_pipe(OS_EXPORT_PIPE_NAME);
-		if (export_pipe.file != INVALID_FILE) {
-			if (send_data(data, data_size)) {
-				iz output_size = output_points[0] * output_points[1] *
-				                 output_points[2] * sizeof(f32) * 2;
-				result = os_wait_read_pipe(export_pipe, out_data, output_size, timeout_ms);
-				if (!result) g_lib_last_error = BF_LIB_ERR_KIND_READ_EXPORT_PIPE;
+		iz output_size = output_points[0] * output_points[1] * output_points[2] * sizeof(f32) * 2;
+		if (output_size <= BEAMFORMER_SCRATCH_SIZE &&
+		    beamformer_push_data_with_compute(data, data_size, 0, 0))
+		{
+			BeamformerExportContext export;
+			export.kind = BeamformerExportKind_BeamformedData;
+			export.size = output_size;
+			if (beamformer_export_buffer(export) &&
+			    lib_try_lock(BeamformerSharedMemoryLockKind_DispatchCompute, 0))
+			{
+				if (try_wait_sync(BeamformerSharedMemoryLockKind_ExportSync, timeout_ms)) {
+					mem_copy(out_data, (u8 *)g_bp + BEAMFORMER_SCRATCH_OFF, output_size);
+					result = 1;
+				}
 			}
-
-			os_disconnect_pipe(export_pipe);
-			os_close_pipe(&export_pipe.file, export_pipe.name);
 		} else {
-			g_lib_last_error = BF_LIB_ERR_KIND_OPEN_EXPORT_PIPE;
+			g_lib_last_error = BF_LIB_ERR_KIND_EXPORT_SPACE_OVERFLOW;
+		}
+	}
+	return result;
+}
+
+b32
+beamformer_compute_timings(BeamformerComputeStatsTable *output, i32 timeout_ms)
+{
+	b32 result = 0;
+	if (check_shared_memory()) {
+		static_assert(sizeof(*output) <= BEAMFORMER_SCRATCH_SIZE, "timing table size exceeds scratch space");
+		BeamformerExportContext export;
+		export.kind = BeamformerExportKind_Stats;
+		export.size = sizeof(*output);
+
+		if (beamformer_export_buffer(export) &&
+		    lib_try_lock(BeamformerSharedMemoryLockKind_DispatchCompute, 0))
+		{
+			if (try_wait_sync(BeamformerSharedMemoryLockKind_ExportSync, timeout_ms)) {
+				mem_copy(output, (u8 *)g_bp + BEAMFORMER_SCRATCH_OFF, sizeof(*output));
+				result = 1;
+			}
 		}
 	}
 	return result;

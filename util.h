@@ -43,6 +43,7 @@
 
 #define INVALID_CODE_PATH ASSERT(0)
 #define INVALID_DEFAULT_CASE default: ASSERT(0); break
+#define InvalidCodePath assert(0)
 #define InvalidDefaultCase default: assert(0); break
 
 #define arg_list(type, ...) (type []){__VA_ARGS__}, sizeof((type []){__VA_ARGS__}) / sizeof(type)
@@ -207,17 +208,13 @@ typedef union {
                                       .size = {.x = -F32_INFINITY, .y = -F32_INFINITY}}
 
 typedef struct {
-	iptr  file;
-	char *name;
-} Pipe;
-#define INVALID_FILE (-1)
-
-typedef struct {
 	u8   *data;
 	u32   widx;
 	u32   cap;
 	b32   errors;
 } Stream;
+
+#define INVALID_FILE (-1)
 
 typedef struct OS OS;
 
@@ -263,7 +260,7 @@ typedef struct {
 	iptr  os_context;
 } SharedMemoryRegion;
 
-#define OS_ALLOC_ARENA_FN(name) Arena name(Arena old, iz capacity)
+#define OS_ALLOC_ARENA_FN(name) Arena name(iz capacity)
 typedef OS_ALLOC_ARENA_FN(os_alloc_arena_fn);
 
 #define OS_ADD_FILE_WATCH_FN(name) void name(OS *os, Arena *a, s8 path, \
@@ -273,17 +270,8 @@ typedef OS_ADD_FILE_WATCH_FN(os_add_file_watch_fn);
 #define OS_WAKE_WORKER_FN(name) void name(GLWorkerThreadContext *ctx)
 typedef OS_WAKE_WORKER_FN(os_wake_worker_fn);
 
-#define OS_CLOSE_FN(name) void name(iptr file)
-typedef OS_CLOSE_FN(os_close_fn);
-
-#define OS_OPEN_FOR_WRITE_FN(name) iptr name(c8 *fname)
-typedef OS_OPEN_FOR_WRITE_FN(os_open_for_write_fn);
-
 #define OS_READ_WHOLE_FILE_FN(name) s8 name(Arena *arena, char *file)
 typedef OS_READ_WHOLE_FILE_FN(os_read_whole_file_fn);
-
-#define OS_READ_FILE_FN(name) iz name(iptr file, void *buf, iz size)
-typedef OS_READ_FILE_FN(os_read_file_fn);
 
 #define OS_WAIT_ON_VALUE_FN(name) b32 name(i32 *value, i32 current, u32 timeout_ms)
 typedef OS_WAIT_ON_VALUE_FN(os_wait_on_value_fn);
@@ -308,10 +296,6 @@ typedef OS_SHARED_MEMORY_UNLOCK_REGION_FN(os_shared_memory_region_unlock_fn);
 
 #define OS_FNS \
 	X(add_file_watch)              \
-	X(alloc_arena)                 \
-	X(close)                       \
-	X(open_for_write)              \
-	X(read_file)                   \
 	X(read_whole_file)             \
 	X(shared_memory_region_lock)   \
 	X(shared_memory_region_unlock) \
@@ -341,8 +325,6 @@ struct OS {
 	iptr             context;
 	iptr             error_handle;
 	GLWorkerThreadContext compute_worker;
-
-	char *export_pipe_name;
 
 	DEBUG_DECL(renderdoc_start_frame_capture_fn *start_frame_capture;)
 	DEBUG_DECL(renderdoc_end_frame_capture_fn   *end_frame_capture;)

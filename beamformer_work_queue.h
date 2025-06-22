@@ -2,19 +2,19 @@
 #ifndef _BEAMFORMER_WORK_QUEUE_H_
 #define _BEAMFORMER_WORK_QUEUE_H_
 
-#define BEAMFORMER_SHARED_MEMORY_VERSION (6UL)
+#define BEAMFORMER_SHARED_MEMORY_VERSION (7UL)
 
 typedef struct BeamformComputeFrame BeamformComputeFrame;
 typedef struct ShaderReloadContext  ShaderReloadContext;
 
 typedef enum {
-	BW_COMPUTE,
-	BW_COMPUTE_INDIRECT,
-	BW_RELOAD_SHADER,
-	BW_SAVE_FRAME,
-	BW_SEND_FRAME,
-	BW_UPLOAD_BUFFER,
-} BeamformWorkType;
+	BeamformerWorkKind_Compute,
+	BeamformerWorkKind_ComputeIndirect,
+	BeamformerWorkKind_ReloadShader,
+	BeamformerWorkKind_SendFrame,
+	BeamformerWorkKind_ExportBuffer,
+	BeamformerWorkKind_UploadBuffer,
+} BeamformerWorkKind;
 
 typedef enum {
 	BU_KIND_CHANNEL_MAPPING,
@@ -26,23 +26,29 @@ typedef enum {
 } BeamformerUploadKind;
 
 typedef struct {
+	BeamformerUploadKind kind;
 	i32 size;
 	i32 shared_memory_offset;
-	BeamformerUploadKind kind;
 } BeamformerUploadContext;
 
+typedef enum {
+	BeamformerExportKind_BeamformedData,
+	BeamformerExportKind_Stats,
+} BeamformerExportKind;
+
 typedef struct {
-	BeamformComputeFrame *frame;
-	iptr                  file_handle;
-} BeamformOutputFrameContext;
+	BeamformerExportKind kind;
+	i32 size;
+} BeamformerExportContext;
 
 #define BEAMFORMER_SHARED_MEMORY_LOCKS \
 	X(None)            \
-	X(Parameters)      \
-	X(FocalVectors)    \
 	X(ChannelMapping)  \
+	X(FocalVectors)    \
+	X(Parameters)      \
+	X(ScratchSpace)    \
 	X(SparseElements)  \
-	X(RawData)         \
+	X(ExportSync)      \
 	X(DispatchCompute)
 
 #define X(name) BeamformerSharedMemoryLockKind_##name,
@@ -52,16 +58,15 @@ typedef enum {BEAMFORMER_SHARED_MEMORY_LOCKS BeamformerSharedMemoryLockKind_Coun
 /* NOTE: discriminated union based on type */
 typedef struct {
 	union {
-		BeamformComputeFrame       *frame;
-		BeamformerUploadContext     upload_context;
-		BeamformOutputFrameContext  output_frame_ctx;
-		ShaderReloadContext        *shader_reload_context;
-		ImagePlaneTag               compute_indirect_plane;
-		void                       *generic;
+		BeamformComputeFrame    *frame;
+		BeamformerUploadContext  upload_context;
+		BeamformerExportContext  export_context;
+		ShaderReloadContext     *shader_reload_context;
+		ImagePlaneTag            compute_indirect_plane;
+		void                    *generic;
 	};
 	BeamformerSharedMemoryLockKind lock;
-
-	BeamformWorkType type;
+	BeamformerWorkKind kind;
 } BeamformWork;
 
 typedef struct {
@@ -79,11 +84,12 @@ typedef BEAMFORM_WORK_QUEUE_PUSH_FN(beamform_work_queue_push_fn);
 typedef BEAMFORM_WORK_QUEUE_PUSH_COMMIT_FN(beamform_work_queue_push_commit_fn);
 
 #define BEAMFORMER_SHARED_MEMORY_SIZE (GB(2))
-#define BEAMFORMER_RF_DATA_OFF        (sizeof(BeamformerSharedMemory) + 4096ULL \
+#define BEAMFORMER_SCRATCH_OFF        (sizeof(BeamformerSharedMemory) + 4096ULL \
                                        - (uintptr_t)(sizeof(BeamformerSharedMemory) & 4095ULL))
-#define BEAMFORMER_MAX_RF_DATA_SIZE   (BEAMFORMER_SHARED_MEMORY_SIZE - BEAMFORMER_RF_DATA_OFF)
+#define BEAMFORMER_SCRATCH_SIZE       (BEAMFORMER_SHARED_MEMORY_SIZE - BEAMFORMER_SCRATCH_OFF)
+#define BEAMFORMER_MAX_RF_DATA_SIZE   (BEAMFORMER_SCRATCH_SIZE)
 
-typedef align_as(64) struct {
+typedef struct {
 	u32 version;
 
 	/* NOTE(rnp): causes future library calls to fail.
@@ -113,8 +119,8 @@ typedef align_as(64) struct {
 		};
 	};
 
-	ComputeShaderKind compute_stages[MAX_COMPUTE_SHADER_STAGES];
-	u32               compute_stages_count;
+	BeamformerShaderKind compute_stages[MAX_COMPUTE_SHADER_STAGES];
+	u32                  compute_stages_count;
 
 	/* TODO(rnp): hack: we need a different way of dispatching work for export */
 	b32 start_compute_from_main;

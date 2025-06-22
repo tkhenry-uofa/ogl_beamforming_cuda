@@ -180,7 +180,7 @@ function FILE_WATCH_CALLBACK_FN(reload_shader_indirect)
 	BeamformerCtx *ctx = src->beamformer_context;
 	BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
 	if (work) {
-		work->type = BW_RELOAD_SHADER;
+		work->kind = BeamformerWorkKind_ReloadShader,
 		work->shader_reload_context = src;
 		beamform_work_queue_push_commit(ctx->beamform_work_queue);
 		os_wake_waiters(&os->compute_worker.sync_variable);
@@ -291,8 +291,8 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 	sm->version = BEAMFORMER_SHARED_MEMORY_VERSION;
 
 	/* NOTE: default compute shader pipeline */
-	sm->compute_stages[0]    = ComputeShaderKind_Decode;
-	sm->compute_stages[1]    = ComputeShaderKind_DASCompute;
+	sm->compute_stages[0]    = BeamformerShaderKind_Decode;
+	sm->compute_stages[1]    = BeamformerShaderKind_DASCompute;
 	sm->compute_stages_count = 2;
 
 	if (ctx->gl.vendor_id == GL_VENDOR_NVIDIA
@@ -325,15 +325,16 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 	);
 	#undef X
 
+	ComputeShaderCtx *cs = &ctx->csctx;
 	#define X(e, sn, f, nh, pretty_name) do if (s8(f).len > 0) {          \
 		ShaderReloadContext *src = push_struct(memory, typeof(*src)); \
 		src->beamformer_context  = ctx;                               \
 		if (nh) src->header = compute_parameters_header;              \
 		src->path    = s8(static_path_join("shaders", f ".glsl"));    \
 		src->name    = src->path;                                     \
-		src->shader  = ctx->csctx.programs + ShaderKind_##e;          \
+		src->shader  = cs->programs + BeamformerShaderKind_##e;       \
 		src->gl_type = GL_COMPUTE_SHADER;                             \
-		src->kind    = ShaderKind_##e;                                \
+		src->kind    = BeamformerShaderKind_##e;                      \
 		src->link    = src;                                           \
 		os_add_file_watch(&ctx->os, memory, src->path, reload_shader_indirect, (iptr)src); \
 		reload_shader_indirect(&ctx->os, src->path, (iptr)src, *memory); \
@@ -372,7 +373,7 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 	render_2d->path    = s8(static_path_join("shaders", "render_2d.frag.glsl"));
 	render_2d->name    = s8("shaders/render_2d.glsl");
 	render_2d->gl_type = GL_FRAGMENT_SHADER;
-	render_2d->kind    = ShaderKind_Render2D;
+	render_2d->kind    = BeamformerShaderKind_Render2D;
 	render_2d->shader  = &fvr->shader;
 	render_2d->header  = s8(""
 	"layout(location = 0) in  vec2 texture_coordinate;\n"

@@ -104,7 +104,7 @@ main(void)
 {
 	BeamformerCtx   ctx   = {0};
 	BeamformerInput input = {.executable_reloaded = 1};
-	Arena temp_memory = os_alloc_arena((Arena){0}, MB(16));
+	Arena temp_memory = os_alloc_arena(MB(16));
 	ctx.error_stream  = stream_alloc(&temp_memory, MB(1));
 
 	ctx.ui_backing_store        = sub_arena(&temp_memory, MB(2), KB(4));
@@ -121,7 +121,6 @@ main(void)
 	ctx.os.context               = (iptr)&w32_ctx;
 	ctx.os.compute_worker.asleep = 1;
 	ctx.os.error_handle          = GetStdHandle(STD_ERROR_HANDLE);
-	ctx.os.export_pipe_name      = OS_EXPORT_PIPE_NAME;
 
 	setup_beamformer(&ctx, &input, &temp_memory);
 	os_wake_waiters(&ctx.os.compute_worker.sync_variable);

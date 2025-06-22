@@ -698,7 +698,7 @@ main(i32 argc, char *argv[])
 	u64 start_time = os_get_timer_counter();
 
 	b32 result  = 1;
-	Arena arena = os_alloc_arena((Arena){0}, MB(8));
+	Arena arena = os_alloc_arena(MB(8));
 	check_rebuild_self(arena, argc, argv);
 
 	Options options = parse_options(argc, argv);

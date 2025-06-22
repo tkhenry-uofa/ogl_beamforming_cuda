@@ -4,7 +4,6 @@
  * be provided by any platform the beamformer is ported to. */
 
 #define OS_SHARED_MEMORY_NAME "/ogl_beamformer_shared_memory"
-#define OS_EXPORT_PIPE_NAME   "/tmp/beamformer_output_pipe"
 
 #define OS_PATH_SEPARATOR_CHAR '/'
 #define OS_PATH_SEPARATOR      "/"
@@ -92,29 +91,12 @@ os_round_up_to_page_size(iz value)
 
 function OS_ALLOC_ARENA_FN(os_alloc_arena)
 {
-	Arena result = old;
-	capacity = os_round_up_to_page_size(capacity);
-	iz old_size = old.end - old.beg;
-	if (old_size < capacity) {
-		if (old.beg) munmap(old.beg, old_size);
-		result.beg = mmap(0, capacity, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
-		if (result.beg == MAP_FAILED)
-			os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
-		result.end = result.beg + capacity;
-	}
-	return result;
-}
-
-function OS_CLOSE_FN(os_close)
-{
-	close(file);
-}
-
-function OS_OPEN_FOR_WRITE_FN(os_open_for_write)
-{
-	iptr result = open(fname, O_WRONLY|O_TRUNC);
-	if (result == -1)
-		result = INVALID_FILE;
+	Arena result = {0};
+	capacity   = os_round_up_to_page_size(capacity);
+	result.beg = mmap(0, capacity, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+	if (result.beg == MAP_FAILED)
+		os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
+	result.end = result.beg + capacity;
 	return result;
 }
 
@@ -151,17 +133,6 @@ os_file_exists(char *path)
 	struct stat st;
 	b32 result = stat(path, &st) == 0;
 	return result;
-}
-
-function OS_READ_FILE_FN(os_read_file)
-{
-	iz r = 0, total_read = 0;
-	do {
-		if (r != -1)
-			total_read += r;
-		r = read(file, buf + total_read, size - total_read);
-	} while (r);
-	return total_read;
 }
 
 function SharedMemoryRegion
