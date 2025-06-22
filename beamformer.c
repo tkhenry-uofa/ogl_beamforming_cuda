@@ -701,7 +701,7 @@ coalesce_timing_table(ComputeTimingTable *t, ComputeShaderStats *stats)
 	u32 seen_info_test = 0;
 
 	while (t->read_index != target) {
-		ComputeTimingInfo info = t->buffer[t->read_index++];
+		ComputeTimingInfo info = t->buffer[(t->read_index++) % countof(t->buffer)];
 		switch (info.kind) {
 		case ComputeTimingInfoKind_ComputeFrameBegin:{
 			assert(t->compute_frame_active == 0);
