@@ -14,7 +14,6 @@
  * [ ]: refactor: add_variable_no_link()
  * [ ]: refactor: draw_text_limited should clamp to rect and measure text itself
  * [ ]: ui leaks split beamform views on hot-reload
- * [ ]: add tag based selection to frame views
  * [ ]: draw the ui with a post-order traversal instead of pre-order traversal
  * [ ]: consider V_HOVER_GROUP and use that to implement submenus
  * [ ]: menu's need to support nested groups
@@ -26,6 +25,7 @@
  * [ ]: visual indicator for broken shader stage gh#27
  * [ ]: bug: cross-plane view with different dimensions for each plane
  * [ ]: refactor: make table_skip_rows useful
+ * [ ]: refactor: better method of grouping variables for views such as FrameView/ComputeStatsView
  */
 
 #define BG_COLOUR              (v4){.r = 0.15, .g = 0.12, .b = 0.13, .a = 1.0}
@@ -36,6 +36,15 @@
 
 #define MENU_PLUS_COLOUR       (v4){.r = 0.33, .g = 0.42, .b = 1.00, .a = 1.0}
 #define MENU_CLOSE_COLOUR      FOCUSED_COLOUR
+
+read_only global v4 g_colour_palette[] = {
+	{{0.32, 0.20, 0.50, 1.00}},
+	{{0.14, 0.39, 0.61, 1.00}},
+	{{0.61, 0.14, 0.25, 1.00}},
+	{{0.20, 0.60, 0.24, 1.00}},
+	{{0.80, 0.60, 0.20, 1.00}},
+	{{0.15, 0.51, 0.74, 1.00}},
+};
 
 #define HOVER_SPEED            5.0f
 
@@ -111,10 +120,19 @@ typedef struct {
 	RegionSplitDirection direction;
 } RegionSplit;
 
+#define COMPUTE_STATS_VIEW_LIST \
+	X(Average, "Average") \
+	X(Bar,     "Bar")
+
+#define X(kind, ...) ComputeStatsViewKind_ ##kind,
+typedef enum {COMPUTE_STATS_VIEW_LIST ComputeStatsViewKind_Count} ComputeStatsViewKind;
+#undef X
+
 /* TODO(rnp): this should be refactored to not need a BeamformerCtx */
 typedef struct {
 	BeamformerCtx *ctx;
-	void          *stats;
+	Variable      *cycler;
+	ComputeStatsViewKind kind;
 } ComputeStatsView;
 
 typedef struct {
@@ -220,6 +238,7 @@ struct Variable {
 		void               *generic;
 		BeamformerVariable  beamformer_variable;
 		ComputeProgressBar  compute_progress_bar;
+		ComputeStatsView    compute_stats_view;
 		RegionSplit         region_split;
 		ScaleBar            scale_bar;
 		UIButtonID          button;
@@ -882,14 +901,20 @@ add_ui_split(BeamformerUI *ui, Variable *parent, Arena *arena, s8 name, f32 frac
 }
 
 function Variable *
-add_global_menu(BeamformerUI *ui, Arena *arena, Variable *parent)
+add_global_menu_to_group(BeamformerUI *ui, Arena *arena, Variable *group)
 {
-	Variable *result = add_variable_group(ui, 0, &ui->arena, s8(""), VariableGroupKind_List, ui->small_font);
-	result->parent = parent;
-	#define X(id, text) add_button(ui, result, &ui->arena, s8(text), UI_BID_ ##id, 0, ui->small_font);
+	#define X(id, text) add_button(ui, group, arena, s8(text), UI_BID_ ##id, 0, ui->small_font);
 	GLOBAL_MENU_BUTTONS
 	#undef X
-	return result;
+	return group;
+}
+
+function Variable *
+add_global_menu(BeamformerUI *ui, Arena *arena, Variable *parent)
+{
+	Variable *result = add_variable_group(ui, 0, arena, s8(""), VariableGroupKind_List, ui->small_font);
+	result->parent = parent;
+	return add_global_menu_to_group(ui, arena, result);
 }
 
 function Variable *
@@ -1048,12 +1073,9 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	lateral->zoom_starting_coord = F32_INFINITY;
 	axial->zoom_starting_coord   = F32_INFINITY;
 
-	Variable *menu = result->view.menu;
-	/* TODO(rnp): push to head of list? */
-	Variable *old_menu_first = menu->group.first;
-	Variable *old_menu_last  = menu->group.last;
-	menu->group.first = menu->group.last = 0;
-
+	Variable *menu = result->view.menu = add_variable_group(ui, 0, arena, s8(""),
+	                                                        VariableGroupKind_List, ui->small_font);
+	menu->parent = result;
 	#define X(id, text) add_button(ui, menu, arena, s8(text), UI_BID_ ##id, 0, ui->small_font);
 	FRAME_VIEW_BUTTONS
 	#undef X
@@ -1063,12 +1085,12 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 		#define X(_type, _id, pretty) s8_comp(pretty),
 		read_only local_persist s8 labels[] = {IMAGE_PLANE_TAGS s8_comp("Any")};
 		#undef X
-		bv->cycler = add_variable_cycler(ui, menu, arena, 0, ui->small_font, s8("Live: "),
+		bv->cycler = add_variable_cycler(ui, menu, arena, 0, ui->small_font, s8("Live:"),
 		                                 &bv->cycler_state, labels, countof(labels));
 		bv->cycler_state = IPT_LAST;
 	} break;
 	case FVT_INDEXED: {
-		bv->cycler = add_variable_cycler(ui, menu, arena, 0, ui->small_font, s8("Index: "),
+		bv->cycler = add_variable_cycler(ui, menu, arena, 0, ui->small_font, s8("Index:"),
 		                                 &bv->cycler_state, 0, MAX_BEAMFORMED_SAVED_FRAMES);
 	} break;
 	default: break;
@@ -1081,10 +1103,7 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	                                            V_INPUT|V_RADIO_BUTTON, VT_B32, ui->small_font);
 	bv->lateral_scale_bar_active = add_variable(ui, menu, arena, s8("Lateral Scale Bar"),
 	                                            V_INPUT|V_RADIO_BUTTON, VT_B32, ui->small_font);
-
-	menu->group.last->next = old_menu_first;
-	menu->group.last       = old_menu_last;
-
+	add_global_menu_to_group(ui, arena, menu);
 	return result;
 }
 
@@ -1104,11 +1123,27 @@ add_compute_progress_bar(Variable *parent, BeamformerCtx *ctx)
 }
 
 function Variable *
-add_compute_stats_view(BeamformerUI *ui, Variable *parent, Arena *arena, VariableType type)
+add_compute_stats_view(BeamformerUI *ui, Variable *parent, Arena *arena, BeamformerCtx *ctx)
 {
 	/* TODO(rnp): this can be closable once we have a way of opening new views */
-	Variable *result   = add_ui_view(ui, parent, arena, s8(""), UIViewFlag_CustomText, 1, 0);
-	result->view.child = add_variable(ui, result, &ui->arena, s8(""), 0, type, ui->small_font);
+	Variable *result   = add_ui_view(ui, parent, arena, s8(""), UIViewFlag_CustomText, 0, 0);
+	result->view.child = add_variable(ui, result, &ui->arena, s8(""), 0,
+	                                  VT_COMPUTE_STATS_VIEW, ui->small_font);
+
+	Variable *menu = result->view.menu = add_variable_group(ui, 0, arena, s8(""),
+	                                                        VariableGroupKind_List, ui->small_font);
+	menu->parent = result;
+
+	#define X(_k, label) s8_comp(label),
+	read_only local_persist s8 labels[] = {COMPUTE_STATS_VIEW_LIST};
+	#undef X
+
+	ComputeStatsView *csv = &result->view.child->compute_stats_view;
+	/* TODO(rnp): refactor to not need the beamformer ctx */
+	csv->ctx    = ctx;
+	csv->cycler = add_variable_cycler(ui, menu, arena, 0, ui->small_font, s8("Stats View:"),
+	                                  &csv->kind, labels, countof(labels));
+	add_global_menu_to_group(ui, arena, menu);
 	return result;
 }
 
@@ -1318,7 +1353,10 @@ function s8
 push_custom_view_title(Stream *s, Variable *var)
 {
 	switch (var->type) {
-	case VT_COMPUTE_STATS_VIEW:{ stream_append_s8(s, s8("Compute Stats (Average)")); } break;
+	case VT_COMPUTE_STATS_VIEW:{
+		stream_append_s8(s, s8("Compute Stats: "));
+		stream_append_variable(s, var->compute_stats_view.cycler);
+	}break;
 	case VT_COMPUTE_PROGRESS_BAR:{
 		stream_append_s8(s, s8("Compute Progress: "));
 		stream_append_f64(s, 100 * *var->compute_progress_bar.progress, 100);
@@ -2029,54 +2067,154 @@ draw_compute_progress_bar(BeamformerUI *ui, Arena arena, ComputeProgressBar *sta
 	return result;
 }
 
-function v2
-draw_compute_stats_view(BeamformerCtx *ctx, Arena arena, Rect r)
+function s8
+push_compute_time(Arena *arena, s8 prefix, f32 time)
 {
-	#define X(e, n, s, h, pn) [BeamformerShaderKind_##e] = s8_comp(pn ":"),
+	Stream sb = arena_stream(*arena);
+	stream_append_s8(&sb, prefix);
+	stream_append_f64_e(&sb, time);
+	return arena_stream_commit(arena, &sb);
+}
+
+function v2
+draw_compute_stats_bar_view(BeamformerUI *ui, Arena arena, ComputeShaderStats *stats, u32 *stages,
+                            u32 stages_count, f32 compute_time_sum, TextSpec ts, Rect r, v2 mouse)
+{
+	read_only local_persist s8 frame_labels[] = {s8_comp("0:"), s8_comp("-1:"), s8_comp("-2:"), s8_comp("-3:")};
+	f32 total_times[countof(frame_labels)] = {0};
+	Table *table = table_new(&arena, countof(frame_labels), TextAlignment_Right, TextAlignment_Left);
+	for (u32 i = 0; i < countof(frame_labels); i++) {
+		TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
+		cells[0].text = frame_labels[i];
+		u32 frame_index = (stats->latest_frame_index - i) % countof(stats->table.times);
+		u32 seen_shaders = 0;
+		for (u32 j = 0; j < stages_count; j++) {
+			if ((seen_shaders & (1 << stages[j])) == 0)
+				total_times[i] += stats->table.times[frame_index][stages[j]];
+			seen_shaders |= (1 << stages[j]);
+		}
+	}
+
+	#define X(e, n, s, h, pn) [BeamformerShaderKind_##e] = s8_comp(pn ": "),
 	read_only local_persist s8 labels[BeamformerShaderKind_ComputeCount] = {COMPUTE_SHADERS};
 	#undef X
 
-	BeamformerSharedMemory *sm    = ctx->shared_memory.region;
-	ComputeShaderStats     *stats = ctx->compute_shader_stats;
-	BeamformerUI *ui     = ctx->ui;
+	v2 result = table_extent(table, arena, ts.font);
+
+	f32 remaining_width = r.size.w - result.w - table->cell_pad.w;
+	f32 average_width = 0.8 * remaining_width;
+
+	s8 mouse_text = s8("");
+	v2 text_pos;
+
+	u32 row_index = 0;
+	TableIterator *it = table_iterator_new(table, TIK_ROWS, &arena, 0, r.pos, ts.font);
+	for (TableRow *row = table_iterator_next(it, &arena);
+	     row;
+	     row = table_iterator_next(it, &arena))
+	{
+		Rect cr   = it->cell_rect;
+		cr.size.w = table->widths[0];
+		ts.limits.size.w = cr.size.w;
+		draw_table_cell(ui, arena, (TableCell *)row->data, cr, table->alignment[0], ts, mouse);
+
+		u32 frame_index = (stats->latest_frame_index - row_index) % countof(stats->table.times);
+		f32 total_width = average_width * total_times[row_index] / compute_time_sum;
+		Rect rect;
+		rect.pos  = add_v2(cr.pos, (v2){.x = cr.size.w + table->cell_pad.w , .y = cr.size.h * 0.15});
+		rect.size = (v2){.y = 0.7 * cr.size.h};
+		for (u32 i = 0; i < stages_count; i++) {
+			rect.size.w = total_width * stats->table.times[frame_index][stages[i]] / total_times[row_index];
+			Color color = colour_from_normalized(g_colour_palette[stages[i] % countof(g_colour_palette)]);
+			DrawRectangleRec(rect.rl, color);
+			if (point_in_rect(mouse, rect)) {
+				text_pos   = add_v2(rect.pos, (v2){.x = table->cell_pad.w});
+				mouse_text = push_compute_time(&arena, labels[stages[i]],
+				                               stats->table.times[frame_index][stages[i]]);
+			}
+			rect.pos.x += rect.size.w;
+		}
+		row_index++;
+	}
+
+	v2 start = add_v2(r.pos, (v2){.x = table->widths[0] + average_width + table->cell_pad.w});
+	v2 end   = add_v2(start, (v2){.y = result.y});
+	DrawLineEx(start.rl, end.rl, 4, colour_from_normalized(FG_COLOUR));
+
+	if (mouse_text.len) {
+		ts.font = &ui->small_font;
+		ts.flags &= ~TF_LIMITED;
+		ts.flags |=  TF_OUTLINED;
+		ts.outline_colour = (v4){.a = 1};
+		ts.outline_thick  = 1;
+		draw_text(mouse_text, text_pos, &ts);
+	}
+
+	return result;
+}
+
+function void
+push_table_time_row(Table *table, Arena *arena, s8 label, f32 time)
+{
+	assert(table->columns == 3);
+	TableCell *cells = table_push_row(table, arena, TRK_CELLS)->data;
+	cells[0].text = label;
+	cells[1].text = push_compute_time(arena, s8(""), time);
+	cells[2].text = s8("[s]");
+}
+
+function v2
+draw_compute_stats_view(BeamformerUI *ui, Arena arena, Variable *view, Rect r, v2 mouse)
+{
+	assert(view->type == VT_COMPUTE_STATS_VIEW);
+
+	ComputeStatsView *csv = &view->compute_stats_view;
+	BeamformerSharedMemory *sm    = csv->ctx->shared_memory.region;
+	ComputeShaderStats     *stats = csv->ctx->compute_shader_stats;
 	f32 compute_time_sum = 0;
 	u32 stages           = sm->compute_stages_count;
 	TextSpec text_spec   = {.font = &ui->font, .colour = FG_COLOUR, .flags = TF_LIMITED};
 
-	static_assert(countof(labels) <= 32, "shader kind bitfield test");
-	u32 seen_shaders = 0;
-	Table *table = table_new(&arena, stages + 2, TextAlignment_Left, TextAlignment_Left, TextAlignment_Left);
-	for (u32 i = 0; i < stages; i++) {
-		TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
+	u32 compute_stages[MAX_COMPUTE_SHADER_STAGES];
+	mem_copy(compute_stages, sm->compute_stages, stages * sizeof(*compute_stages));
 
-		Stream sb = arena_stream(arena);
-		BeamformerShaderKind index = sm->compute_stages[i];
-		if ((seen_shaders & (1 << index)) == 0) {
+	static_assert(BeamformerShaderKind_ComputeCount <= 32, "shader kind bitfield test");
+	u32 seen_shaders = 0;
+	for (u32 i = 0; i < stages; i++) {
+		BeamformerShaderKind index = compute_stages[i];
+		if ((seen_shaders & (1 << index)) == 0)
 			compute_time_sum += stats->average_times[index];
-			stream_append_f64_e(&sb, stats->average_times[index]);
-			seen_shaders |= (1 << index);
-			cells[0].text = labels[index];
-			cells[1].text = arena_stream_commit(&arena, &sb);
-			cells[2].text = s8("[s]");
-		}
+		seen_shaders |= (1 << index);
 	}
 
-	TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
-	Stream sb = arena_stream(arena);
-	stream_append_f64_e(&sb, compute_time_sum);
-	cells[0].text = s8("Compute Total:");
-	cells[1].text = arena_stream_commit(&arena, &sb);
-	cells[2].text = s8("[s]");
+	v2 result = {0};
 
-	cells = table_push_row(table, &arena, TRK_CELLS)->data;
-	sb    = arena_stream(arena);
-	stream_append_f64_e(&sb, stats->rf_time_delta_average);
-	cells[0].text = s8("RF Upload Delta:");
-	cells[1].text = arena_stream_commit(&arena, &sb);
-	cells[2].text = s8("[s]");
+	Table *table = table_new(&arena, 2, TextAlignment_Left, TextAlignment_Left, TextAlignment_Left);
+	switch (csv->kind) {
+	case ComputeStatsViewKind_Average:{
+		#define X(e, n, s, h, pn) [BeamformerShaderKind_##e] = s8_comp(pn ":"),
+		read_only local_persist s8 labels[BeamformerShaderKind_ComputeCount] = {COMPUTE_SHADERS};
+		#undef X
+		da_reserve(&arena, table, stages);
+		for (u32 i = 0; i < stages; i++) {
+			push_table_time_row(table, &arena, labels[compute_stages[i]],
+			                    stats->average_times[compute_stages[i]]);
+		}
+	}break;
+	case ComputeStatsViewKind_Bar:{
+		result = draw_compute_stats_bar_view(ui, arena, stats, compute_stages, stages, compute_time_sum,
+		                                     text_spec, r, mouse);
+		r.pos = add_v2(r.pos, (v2){.y = result.y});
+	}break;
+	InvalidDefaultCase;
+	}
 
-	table_extent(table, arena, text_spec.font);
-	return draw_table(ui, arena, table, r, text_spec, (v2){0}, 0);
+	push_table_time_row(table, &arena, s8("Compute Total:"),   compute_time_sum);
+	push_table_time_row(table, &arena, s8("RF Upload Delta:"), stats->rf_time_delta_average);
+
+	result = add_v2(result, table_extent(table, arena, text_spec.font));
+	draw_table(ui, arena, table, r, text_spec, (v2){0}, 0);
+	return result;
 }
 
 struct variable_iterator { Variable *current; };
@@ -2272,7 +2410,7 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec tex
 	case VT_COMPUTE_PROGRESS_BAR: {
 		size = draw_compute_progress_bar(ui, ui->arena, &var->compute_progress_bar, r);
 	} break;
-	case VT_COMPUTE_STATS_VIEW:{ size = draw_compute_stats_view(var->generic, ui->arena, r); }break;
+	case VT_COMPUTE_STATS_VIEW:{ size = draw_compute_stats_view(ui, ui->arena, var, r, mouse); }break;
 	InvalidDefaultCase;
 	}
 
@@ -2969,9 +3107,7 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	split = split->region_split.right;
 
 	split->region_split.left  = add_compute_progress_bar(split, ctx);
-	split->region_split.right = add_compute_stats_view(ui, split, &ui->arena, VT_COMPUTE_STATS_VIEW);
-	/* TODO(rnp): refactor to not need the beamformer ctx */
-	split->region_split.right->group.first->generic = ctx;
+	split->region_split.right = add_compute_stats_view(ui, split, &ui->arena, ctx);
 
 	ctx->ui_read_params = 1;
 
