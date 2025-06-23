@@ -683,10 +683,13 @@ build_tests(Arena arena, CommandList cc)
 	cmd_append(&arena, &cc, "-I.", "-Ihelpers");
 
 	b32 result = 1;
+	iz cc_count = cc.count;
 	#define X(prog, ...) \
+		cmd_pdb(&arena, &cc, prog); \
 		result &= cc_single_file(arena, cc, 1, "tests/" prog ".c", \
 		                         OUTPUT("tests/" prog),            \
-		                         arg_list(char *, ##__VA_ARGS__));
+		                         arg_list(char *, ##__VA_ARGS__)); \
+		cc.count = cc_count;
 	TEST_PROGRAMS
 	#undef X
 	return result;
