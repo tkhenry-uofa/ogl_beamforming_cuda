@@ -26,6 +26,7 @@
   #define debugbreak()  __debugbreak()
   #define unreachable() __assume(0)
 
+  #define atomic_store_u64(ptr, n)     *((volatile u64 *)(ptr)) = (n)
   #define atomic_store_u32(ptr, n)     *((volatile u32 *)(ptr)) = (n)
   #define atomic_load_u64(ptr)         *((volatile u64 *)(ptr))
   #define atomic_load_u32(ptr)         *((volatile u32 *)(ptr))
@@ -54,7 +55,7 @@
   #endif
   #define unreachable() __builtin_unreachable()
 
-  #define atomic_store_u32(ptr, n)      __atomic_store_n(ptr,    n, __ATOMIC_RELEASE)
+  #define atomic_store_u64(ptr, n)      __atomic_store_n(ptr,    n, __ATOMIC_RELEASE)
   #define atomic_load_u64(ptr)          __atomic_load_n(ptr,        __ATOMIC_ACQUIRE)
   #define atomic_add_u64(ptr, n)        __atomic_fetch_add(ptr,  n, __ATOMIC_ACQ_REL)
   #define atomic_and_u64(ptr, n)        __atomic_and_fetch(ptr,  n, __ATOMIC_RELEASE)
@@ -64,6 +65,7 @@
   #define atomic_and_u32                atomic_and_u64
   #define atomic_cas_u32                atomic_cas_u64
   #define atomic_load_u32               atomic_load_u64
+  #define atomic_store_u32              atomic_store_u64
 
   #define atan2_f32(y, x) __builtin_atan2f(y, x)
   #define ceil_f32(a)     __builtin_ceilf(a)

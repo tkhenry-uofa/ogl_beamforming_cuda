@@ -160,20 +160,6 @@ push_compute_timing_info(ComputeTimingTable *t, ComputeTimingInfo info)
 	t->buffer[index] = info;
 }
 
-function BeamformComputeFrame *
-beamformer_get_newest_frame(BeamformerCtx *ctx, b32 average_frame)
-{
-	BeamformComputeFrame *result = 0;
-	if (average_frame) {
-		u32 a_index = !(ctx->averaged_frame_index % countof(ctx->averaged_frames));
-		result      = ctx->averaged_frames + a_index;
-	} else {
-		u32 index = (ctx->next_render_frame_index - 1) % countof(ctx->beamform_frames);
-		result = ctx->beamform_frames + index;
-	}
-	return result;
-}
-
 function b32
 fill_frame_compute_work(BeamformerCtx *ctx, BeamformWork *work, ImagePlaneTag plane)
 {
@@ -526,8 +512,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			if (success && ctx->csctx.raw_data_ssbo) {
 				/* TODO(rnp): this check seems off */
 				can_commit = 0;
-				BeamformComputeFrame *frame = beamformer_get_newest_frame(ctx, bp->output_points[3] > 1);
-				fill_frame_compute_work(ctx, work, frame->image_plane_tag);
+				fill_frame_compute_work(ctx, work, ctx->latest_frame->image_plane_tag);
 			}
 		}break;
 		case BeamformerWorkKind_ExportBuffer:{
@@ -538,7 +523,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			BeamformerExportContext *ec = &work->export_context;
 			switch (ec->kind) {
 			case BeamformerExportKind_BeamformedData:{
-				BeamformComputeFrame *frame = beamformer_get_newest_frame(ctx, bp->output_points[3] > 1);
+				BeamformComputeFrame *frame = ctx->latest_frame;
 				assert(frame->ready_to_present);
 				u32 texture  = frame->frame.texture;
 				uv3 dim      = frame->frame.dim;
@@ -681,13 +666,16 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				push_compute_timing_info(ctx->compute_timing_table, info);
 			}
 
+			frame->ready_to_present = 1;
 			if (did_sum_shader) {
 				u32 aframe_index = (ctx->averaged_frame_index % countof(ctx->averaged_frames));
 				ctx->averaged_frames[aframe_index].image_plane_tag  = frame->image_plane_tag;
 				ctx->averaged_frames[aframe_index].ready_to_present = 1;
 				atomic_add_u32(&ctx->averaged_frame_index, 1);
+				atomic_store_u64((u64 *)&ctx->latest_frame, (u64)(ctx->averaged_frames + aframe_index));
+			} else {
+				atomic_store_u64((u64 *)&ctx->latest_frame, (u64)frame);
 			}
-			frame->ready_to_present = 1;
 			cs->processing_compute  = 0;
 
 			push_compute_timing_info(ctx->compute_timing_table,
@@ -823,12 +811,10 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 	}
 
 	BeamformerSharedMemory *sm = ctx->shared_memory.region;
-	BeamformerParameters   *bp = &sm->parameters;
-	b32 averaging = bp->output_points[3] > 1;
 	if (sm->locks[BeamformerSharedMemoryLockKind_DispatchCompute] && ctx->os.compute_worker.asleep) {
 		if (sm->start_compute_from_main) {
 			BeamformWork *work = beamform_work_queue_push(ctx->beamform_work_queue);
-			ImagePlaneTag tag  = beamformer_get_newest_frame(ctx, averaging)->image_plane_tag;
+			ImagePlaneTag tag  = ctx->latest_frame->image_plane_tag;
 			if (fill_frame_compute_work(ctx, work, tag))
 				beamform_work_queue_push_commit(ctx->beamform_work_queue);
 			atomic_store_u32(&sm->start_compute_from_main, 0);
@@ -836,8 +822,8 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 		ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
 	}
 
-	BeamformComputeFrame *frame = beamformer_get_newest_frame(ctx, averaging);
-	draw_ui(ctx, input, frame->ready_to_present? &frame->frame : 0, frame->image_plane_tag);
+	draw_ui(ctx, input, ctx->latest_frame->ready_to_present ? &ctx->latest_frame->frame : 0,
+	        ctx->latest_frame->image_plane_tag);
 
 	ctx->frame_view_render_context.updated = 0;
 

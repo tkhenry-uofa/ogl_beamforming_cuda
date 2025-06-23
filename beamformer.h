@@ -197,7 +197,9 @@ typedef struct {
 	b32    ui_read_params;
 
 	BeamformComputeFrame beamform_frames[MAX_BEAMFORMED_SAVED_FRAMES];
+	BeamformComputeFrame *latest_frame;
 	u32 next_render_frame_index;
+	u32 display_frame_index;
 
 	/* NOTE: this will only be used when we are averaging */
 	u32                  averaged_frame_index;

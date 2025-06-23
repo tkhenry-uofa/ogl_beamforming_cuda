@@ -277,6 +277,7 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 
 	glfwMakeContextCurrent(raylib_window_handle);
 
+	ctx->latest_frame         = ctx->beamform_frames;
 	ctx->beamform_work_queue  = push_struct(memory, BeamformWorkQueue);
 	ctx->compute_shader_stats = push_struct(memory, ComputeShaderStats);
 	ctx->compute_timing_table = push_struct(memory, ComputeTimingTable);

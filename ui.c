@@ -3019,7 +3019,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformFrame *frame_to_draw
 			b32 dispatch = ctx->os.shared_memory_region_lock(&ctx->shared_memory, sm->locks,
 			                                                 BeamformerSharedMemoryLockKind_DispatchCompute,
 			                                                 0);
-			sm->start_compute_from_main |= dispatch & beamformer_get_newest_frame(ctx, 0)->ready_to_present;
+			sm->start_compute_from_main |= dispatch & ctx->latest_frame->ready_to_present;
 			ctx->os.shared_memory_region_unlock(&ctx->shared_memory, sm->locks, lock);
 		}
 	}
