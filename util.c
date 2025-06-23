@@ -636,8 +636,8 @@ function v2
 floor_v2(v2 a)
 {
 	v2 result;
-	result.x = (u32)a.x;
-	result.y = (u32)a.y;
+	result.x = (i32)a.x;
+	result.y = (i32)a.y;
 	return result;
 }
 

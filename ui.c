@@ -1352,7 +1352,7 @@ push_custom_view_title(Stream *s, Variable *var)
 function v2
 draw_text_base(Font font, s8 text, v2 pos, Color colour)
 {
-	v2 off = pos;
+	v2 off = floor_v2(pos);
 	for (iz i = 0; i < text.len; i++) {
 		/* NOTE: assumes font glyphs are ordered ASCII */
 		i32 idx = text.data[i] - 0x20;
