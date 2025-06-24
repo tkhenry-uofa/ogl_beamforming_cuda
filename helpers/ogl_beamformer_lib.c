@@ -358,6 +358,20 @@ beamformer_export_buffer(BeamformerExportContext export_context)
 	return result;
 }
 
+function b32
+beamformer_read_output(void *out, iz size, i32 timeout_ms)
+{
+	b32 result = 0;
+	if (try_wait_sync(BeamformerSharedMemoryLockKind_ExportSync, timeout_ms)) {
+		if (lib_try_lock(BeamformerSharedMemoryLockKind_ScratchSpace, 0)) {
+			mem_copy(out, (u8 *)g_bp + BEAMFORMER_SCRATCH_OFF, size);
+			lib_release_lock(BeamformerSharedMemoryLockKind_ScratchSpace);
+			result = 1;
+		}
+	}
+	return result;
+}
+
 b32
 beamform_data_synchronized(void *data, u32 data_size, u32 output_points[3], f32 *out_data, i32 timeout_ms)
 {
@@ -381,10 +395,7 @@ beamform_data_synchronized(void *data, u32 data_size, u32 output_points[3], f32 
 			if (beamformer_export_buffer(export) &&
 			    lib_try_lock(BeamformerSharedMemoryLockKind_DispatchCompute, 0))
 			{
-				if (try_wait_sync(BeamformerSharedMemoryLockKind_ExportSync, timeout_ms)) {
-					mem_copy(out_data, (u8 *)g_bp + BEAMFORMER_SCRATCH_OFF, output_size);
-					result = 1;
-				}
+				result = beamformer_read_output(out_data, output_size, timeout_ms);
 			}
 		} else {
 			g_lib_last_error = BF_LIB_ERR_KIND_EXPORT_SPACE_OVERFLOW;
@@ -406,10 +417,7 @@ beamformer_compute_timings(BeamformerComputeStatsTable *output, i32 timeout_ms)
 		if (beamformer_export_buffer(export) &&
 		    lib_try_lock(BeamformerSharedMemoryLockKind_DispatchCompute, 0))
 		{
-			if (try_wait_sync(BeamformerSharedMemoryLockKind_ExportSync, timeout_ms)) {
-				mem_copy(output, (u8 *)g_bp + BEAMFORMER_SCRATCH_OFF, sizeof(*output));
-				result = 1;
-			}
+			result = beamformer_read_output(output, sizeof(*output), timeout_ms);
 		}
 	}
 	return result;
