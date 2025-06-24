@@ -654,10 +654,8 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				do_compute_shader(ctx, arena, frame, stages[i]);
 				glEndQuery(GL_TIME_ELAPSED);
 			}
-			/* NOTE(rnp): block until work completes so that we can record timings */
-			glFinish();
-			cs->processing_progress = 1;
 
+			/* NOTE(rnp): the first of these blocks until work completes */
 			for (u32 i = 0; i < stage_count; i++) {
 				ComputeTimingInfo info = {0};
 				info.kind   = ComputeTimingInfoKind_Shader;
@@ -665,6 +663,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				glGetQueryObjectui64v(cs->shader_timer_ids[i], GL_QUERY_RESULT, &info.timer_count);
 				push_compute_timing_info(ctx->compute_timing_table, info);
 			}
+			cs->processing_progress = 1;
 
 			frame->ready_to_present = 1;
 			if (did_sum_shader) {
