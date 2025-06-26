@@ -282,7 +282,13 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
 		glBindImageTexture(0, csctx->hadamard_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8I);
 		glBindImageTexture(1, csctx->channel_mapping_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16I);
-		glDispatchCompute(ceil_f32((f32)csctx->dec_data_dim.x / DECODE_LOCAL_SIZE_X),
+
+		/* NOTE(rnp): decode 2 samples per dispatch when data is i16 */
+		i32 local_size_x = DECODE_LOCAL_SIZE_X;
+		if (shader == BeamformerShaderKind_Decode)
+			local_size_x *= 2;
+
+		glDispatchCompute(ceil_f32((f32)csctx->dec_data_dim.x / local_size_x),
 		                  ceil_f32((f32)csctx->dec_data_dim.y / DECODE_LOCAL_SIZE_Y),
 		                  ceil_f32((f32)csctx->dec_data_dim.z / DECODE_LOCAL_SIZE_Z));
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;

@@ -11,15 +11,22 @@
 #if   defined(INPUT_DATA_TYPE_FLOAT)
 	#define INPUT_DATA_TYPE      float
 	#define RF_SAMPLES_PER_INDEX 1
-	#define RESULT_TYPE_CAST(x)  vec2(x, 0)
+	#define RESULT_TYPE_CAST(x)  vec4((x), 0, 0, 0)
+	#define SAMPLE_DATA_TYPE     float
+	#define SAMPLE_TYPE_CAST(x)  (x)
 #elif defined(INPUT_DATA_TYPE_FLOAT_COMPLEX)
 	#define INPUT_DATA_TYPE      vec2
 	#define RF_SAMPLES_PER_INDEX 1
-	#define RESULT_TYPE_CAST(x)  (x)
+	#define RESULT_TYPE_CAST(x)  vec4((x), 0, 0)
+	#define SAMPLE_DATA_TYPE     vec2
+	#define SAMPLE_TYPE_CAST(x)  (x)
 #else
 	#define INPUT_DATA_TYPE      int
 	#define RF_SAMPLES_PER_INDEX 2
-	#define RESULT_TYPE_CAST(x)  vec2(x, 0)
+	#define RESULT_TYPE_CAST(x)  (x)
+	#define SAMPLE_DATA_TYPE     vec4
+	/* NOTE(rnp): for i16 rf_data we decode 2 samples at once */
+	#define SAMPLE_TYPE_CAST(x)  vec4(((x) << 16) >> 16, 0, (x) >> 16, 0)
 #endif
 
 layout(std430, binding = 1) readonly restrict buffer buffer_1 {
@@ -33,16 +40,9 @@ layout(std430, binding = 2) writeonly restrict buffer buffer_2 {
 layout(r8i,  binding = 0) readonly restrict uniform iimage2D hadamard;
 layout(r16i, binding = 1) readonly restrict uniform iimage1D channel_mapping;
 
-INPUT_DATA_TYPE sample_rf_data(int index, uint lfs)
+SAMPLE_DATA_TYPE sample_rf_data(int index)
 {
-	INPUT_DATA_TYPE result;
-#if defined(INPUT_DATA_TYPE_FLOAT) || defined(INPUT_DATA_TYPE_FLOAT_COMPLEX)
-	result = rf_data[index];
-#else
-	/* NOTE(rnp): for i16 rf_data we grab 2 samples at a time. We need to shift
-	 * arithmetically (maintaining the sign) to get the desired element. */
-	result = (rf_data[index] << lfs) >> 16;
-#endif
+	SAMPLE_DATA_TYPE result = SAMPLE_TYPE_CAST(rf_data[index]);
 	return result;
 }
 
@@ -53,28 +53,31 @@ void main()
 	int transmit    = int(gl_GlobalInvocationID.z);
 
 	/* NOTE(rnp): stores output as a 3D matrix with ordering of {samples, channels, transmits} */
-	uint out_off = dec_data_dim.x * dec_data_dim.y * transmit + dec_data_dim.x * channel + time_sample;
+	uint out_off  = dec_data_dim.x * dec_data_dim.y * transmit + dec_data_dim.x * channel;
+	out_off      += RF_SAMPLES_PER_INDEX * time_sample;
 
 	int rf_channel = imageLoad(channel_mapping, channel).x;
 
 	/* NOTE(rnp): samples input as 2D matrix of {samples * transmits + padding, channels} */
 	int rf_stride = int(dec_data_dim.x) / RF_SAMPLES_PER_INDEX;
-	int rf_offset = (int(rf_raw_dim.x) * rf_channel + time_sample) / RF_SAMPLES_PER_INDEX;
+	int rf_offset = (int(rf_raw_dim.x) * rf_channel) / RF_SAMPLES_PER_INDEX + time_sample;
 
-	uint lfs = ((~time_sample) & 1u) * 16;
-	vec2 result = vec2(0);
+	vec4 result = vec4(0);
 	switch (decode) {
 	case DECODE_MODE_NONE: {
-		result = RESULT_TYPE_CAST(sample_rf_data(rf_offset + rf_stride * transmit, lfs));
+		result = RESULT_TYPE_CAST(sample_rf_data(rf_offset + rf_stride * transmit));
 	} break;
 	case DECODE_MODE_HADAMARD: {
-		INPUT_DATA_TYPE sum = INPUT_DATA_TYPE(0);
+		SAMPLE_DATA_TYPE sum = SAMPLE_DATA_TYPE(0);
 		for (int i = 0; i < dec_data_dim.z; i++) {
-			sum += imageLoad(hadamard, ivec2(i, transmit)).x * sample_rf_data(rf_offset, lfs);
+			sum += imageLoad(hadamard, ivec2(i, transmit)).x * sample_rf_data(rf_offset);
 			rf_offset += rf_stride;
 		}
 		result = RESULT_TYPE_CAST(sum) / float(dec_data_dim.z);
 	} break;
 	}
-	out_data[out_off] = result;
+	out_data[out_off + 0] = result.xy;
+#if RF_SAMPLES_PER_INDEX == 2
+	out_data[out_off + 1] = result.zw;
+#endif
 }
