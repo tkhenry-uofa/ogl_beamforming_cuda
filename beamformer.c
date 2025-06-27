@@ -1,6 +1,5 @@
 /* See LICENSE for license details. */
 /* TODO(rnp):
- * [ ]: refactor: compute shader timers should be generated based on the pipeline stage limit
  * [ ]: reinvestigate ring buffer raw_data_ssbo
  *      - to minimize latency the main thread should manage the subbuffer upload so that the
  *        compute thread can just keep computing. This way we can keep the copmute thread busy
@@ -123,7 +122,7 @@ alloc_shader_storage(BeamformerCtx *ctx, u32 rf_raw_size, Arena a)
 	i32 storage_flags = GL_DYNAMIC_STORAGE_BIT;
 	glDeleteBuffers(1, &cs->raw_data_ssbo);
 	glCreateBuffers(1, &cs->raw_data_ssbo);
-	glNamedBufferStorage(cs->raw_data_ssbo, rf_raw_size, 0, storage_flags);
+	glNamedBufferStorage(cs->raw_data_ssbo, 2 * rf_raw_size, 0, storage_flags);
 	LABEL_GL_OBJECT(GL_BUFFER, cs->raw_data_ssbo, s8("Raw_RF_SSBO"));
 
 	iz rf_decoded_size = 2 * sizeof(f32) * cs->dec_data_dim.x * cs->dec_data_dim.y * cs->dec_data_dim.z;
@@ -278,8 +277,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 	case BeamformerShaderKind_Decode:
 	case BeamformerShaderKind_DecodeFloat:
 	case BeamformerShaderKind_DecodeFloatComplex:{
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, csctx->rf_data_ssbos[output_ssbo_idx]);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, csctx->rf_data_ssbos[output_ssbo_idx]);
 		glBindImageTexture(0, csctx->hadamard_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8I);
 		glBindImageTexture(1, csctx->channel_mapping_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16I);
 
@@ -288,9 +286,22 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformComputeFrame *frame, 
 		if (shader == BeamformerShaderKind_Decode)
 			local_size_x *= 2;
 
+		iz raw_size = csctx->rf_raw_size;
+		glProgramUniform1ui(csctx->programs[shader], DECODE_FIRST_PASS_UNIFORM_LOC, 1);
+		glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo, 0,        raw_size);
+		glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 2, csctx->raw_data_ssbo, raw_size, raw_size);
 		glDispatchCompute(ceil_f32((f32)csctx->dec_data_dim.x / local_size_x),
 		                  ceil_f32((f32)csctx->dec_data_dim.y / DECODE_LOCAL_SIZE_Y),
 		                  ceil_f32((f32)csctx->dec_data_dim.z / DECODE_LOCAL_SIZE_Z));
+
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+		glProgramUniform1ui(csctx->programs[shader], DECODE_FIRST_PASS_UNIFORM_LOC, 0);
+		glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo, raw_size, raw_size);
+		glDispatchCompute(ceil_f32((f32)csctx->dec_data_dim.x / local_size_x),
+		                  ceil_f32((f32)csctx->dec_data_dim.y / DECODE_LOCAL_SIZE_Y),
+		                  ceil_f32((f32)csctx->dec_data_dim.z / DECODE_LOCAL_SIZE_Z));
+
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 	}break;
 	case BeamformerShaderKind_CudaDecode:{
@@ -423,6 +434,7 @@ shader_text_with_header(ShaderReloadContext *ctx, OS *os, Arena *arena)
 		"layout(local_size_x = " str(DECODE_LOCAL_SIZE_X) ", "
 		       "local_size_y = " str(DECODE_LOCAL_SIZE_Y) ", "
 		       "local_size_z = " str(DECODE_LOCAL_SIZE_Z) ") in;\n\n"
+		"layout(location = " str(DECODE_FIRST_PASS_UNIFORM_LOC) ") uniform bool u_first_pass;\n\n"
 		DECODE_TYPES
 		));
 		#undef X

@@ -14,6 +14,7 @@
 #define GL_DYNAMIC_STORAGE_BIT             0x0100
 #define GL_SHADER_IMAGE_ACCESS_BARRIER_BIT 0x00000020
 #define GL_TEXTURE_UPDATE_BARRIER_BIT      0x00000100
+#define GL_SHADER_STORAGE_BARRIER_BIT      0x00002000
 
 #define GL_UNSIGNED_INT_8_8_8_8            0x8035
 #define GL_TEXTURE_3D                      0x806F
@@ -67,6 +68,7 @@ typedef uint64_t  GLuint64;
 	X(glAttachShader,                        void,   (GLuint program, GLuint shader)) \
 	X(glBeginQuery,                          void,   (GLenum target, GLuint id)) \
 	X(glBindBufferBase,                      void,   (GLenum target, GLuint index, GLuint buffer)) \
+	X(glBindBufferRange,                     void,   (GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size)) \
 	X(glBindFramebuffer,                     void,   (GLenum target, GLuint framebuffer)) \
 	X(glBindImageTexture,                    void,   (GLuint unit, GLuint texture, GLint level, GLboolean layered, GLint layer, GLenum access, GLenum format)) \
 	X(glBindTextureUnit,                     void,   (GLuint unit, GLuint texture)) \

@@ -73,6 +73,8 @@ typedef enum {
 #define DECODE_LOCAL_SIZE_Y  1
 #define DECODE_LOCAL_SIZE_Z 16
 
+#define DECODE_FIRST_PASS_UNIFORM_LOC 1
+
 #define DAS_LOCAL_SIZE_X 32
 #define DAS_LOCAL_SIZE_Y  1
 #define DAS_LOCAL_SIZE_Z 32
