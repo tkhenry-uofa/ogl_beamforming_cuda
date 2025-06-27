@@ -40,7 +40,7 @@ layout(std430, binding = 2) writeonly restrict buffer buffer_2 {
 layout(r8i,  binding = 0) readonly restrict uniform iimage2D hadamard;
 layout(r16i, binding = 1) readonly restrict uniform iimage1D channel_mapping;
 
-SAMPLE_DATA_TYPE sample_rf_data(int index)
+SAMPLE_DATA_TYPE sample_rf_data(uint index)
 {
 	SAMPLE_DATA_TYPE result = SAMPLE_TYPE_CAST(rf_data[index]);
 	return result;
@@ -48,19 +48,18 @@ SAMPLE_DATA_TYPE sample_rf_data(int index)
 
 void main()
 {
-	int time_sample = int(gl_GlobalInvocationID.x);
-	int channel     = int(gl_GlobalInvocationID.y);
-	int transmit    = int(gl_GlobalInvocationID.z);
+	uint time_sample = gl_GlobalInvocationID.x * RF_SAMPLES_PER_INDEX;
+	uint channel     = gl_GlobalInvocationID.y;
+	uint transmit    = gl_GlobalInvocationID.z;
 
 	/* NOTE(rnp): stores output as a 3D matrix with ordering of {samples, channels, transmits} */
-	uint out_off  = dec_data_dim.x * dec_data_dim.y * transmit + dec_data_dim.x * channel;
-	out_off      += RF_SAMPLES_PER_INDEX * time_sample;
+	uint out_off = dec_data_dim.x * dec_data_dim.y * transmit + dec_data_dim.x * channel + time_sample;
 
-	int rf_channel = imageLoad(channel_mapping, channel).x;
+	int rf_channel = imageLoad(channel_mapping, int(channel)).x;
 
 	/* NOTE(rnp): samples input as 2D matrix of {samples * transmits + padding, channels} */
-	int rf_stride = int(dec_data_dim.x) / RF_SAMPLES_PER_INDEX;
-	int rf_offset = (int(rf_raw_dim.x) * rf_channel) / RF_SAMPLES_PER_INDEX + time_sample;
+	uint rf_stride = dec_data_dim.x / RF_SAMPLES_PER_INDEX;
+	uint rf_offset = (rf_raw_dim.x * rf_channel + time_sample) / RF_SAMPLES_PER_INDEX;
 
 	vec4 result = vec4(0);
 	switch (decode) {
