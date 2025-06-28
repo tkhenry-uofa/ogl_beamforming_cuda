@@ -268,15 +268,6 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 	dump_gl_params(&ctx->gl, *memory, &ctx->os);
 	validate_gl_requirements(&ctx->gl, *memory);
 
-	GLWorkerThreadContext *worker = &ctx->os.compute_worker;
-	/* TODO(rnp): we should lock this down after we have something working */
-	worker->user_context  = (iptr)ctx;
-	worker->window_handle = glfwCreateWindow(320, 240, "", 0, raylib_window_handle);
-	worker->handle        = os_create_thread(*memory, (iptr)worker, s8("[compute]"),
-	                                         compute_worker_thread_entry_point);
-
-	glfwMakeContextCurrent(raylib_window_handle);
-
 	ctx->latest_frame         = ctx->beamform_frames;
 	ctx->beamform_work_queue  = push_struct(memory, BeamformWorkQueue);
 	ctx->compute_shader_stats = push_struct(memory, ComputeShaderStats);
@@ -295,6 +286,15 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 	sm->compute_stages[0]    = BeamformerShaderKind_Decode;
 	sm->compute_stages[1]    = BeamformerShaderKind_DASCompute;
 	sm->compute_stages_count = 2;
+
+	GLWorkerThreadContext *worker = &ctx->os.compute_worker;
+	/* TODO(rnp): we should lock this down after we have something working */
+	worker->user_context  = (iptr)ctx;
+	worker->window_handle = glfwCreateWindow(320, 240, "", 0, raylib_window_handle);
+	worker->handle        = os_create_thread(*memory, (iptr)worker, s8("[compute]"),
+	                                         compute_worker_thread_entry_point);
+
+	glfwMakeContextCurrent(raylib_window_handle);
 
 	if (ctx->gl.vendor_id == GL_VENDOR_NVIDIA
 	    && load_cuda_lib(&ctx->os, s8(OS_CUDA_LIB_NAME), (iptr)&ctx->cuda_lib, *memory))
