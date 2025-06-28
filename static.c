@@ -269,11 +269,11 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 	validate_gl_requirements(&ctx->gl, *memory);
 
 	GLWorkerThreadContext *worker = &ctx->os.compute_worker;
+	/* TODO(rnp): we should lock this down after we have something working */
+	worker->user_context  = (iptr)ctx;
 	worker->window_handle = glfwCreateWindow(320, 240, "", 0, raylib_window_handle);
 	worker->handle        = os_create_thread(*memory, (iptr)worker, s8("[compute]"),
 	                                         compute_worker_thread_entry_point);
-	/* TODO(rnp): we should lock this down after we have something working */
-	worker->user_context  = (iptr)ctx;
 
 	glfwMakeContextCurrent(raylib_window_handle);
 
