@@ -308,7 +308,7 @@ send_frame(i16 *restrict i16_data, BeamformerParameters *restrict bp)
 	b32 result    = 0;
 	u32 data_size = bp->rf_raw_dim[0] * bp->rf_raw_dim[1] * sizeof(i16);
 
-	if (beamformer_push_data_with_compute(i16_data, data_size, IPT_XZ, 100))
+	if (beamformer_push_data_with_compute(i16_data, data_size, BeamformerViewPlaneTag_XZ, 100))
 	//if (beamformer_push_data(i16_data, data_size, 100))
 		result = beamformer_start_compute(-1);
 	if (!result) printf("lib error: %s\n", beamformer_get_last_error_string());
