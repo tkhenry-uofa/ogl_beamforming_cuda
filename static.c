@@ -456,6 +456,7 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 	"layout(location = " str(FRAME_VIEW_LOG_SCALE_LOC)     ") uniform bool  u_log_scale;\n"
 	"layout(location = " str(FRAME_VIEW_BB_COLOUR_LOC)     ") uniform vec4  u_bb_colour   = vec4(" str(FRAME_VIEW_BB_COLOUR) ");\n"
 	"layout(location = " str(FRAME_VIEW_BB_FRACTION_LOC)   ") uniform float u_bb_fraction = " str(FRAME_VIEW_BB_FRACTION) ";\n"
+	"layout(location = " str(FRAME_VIEW_SOLID_BB_LOC)      ") uniform bool  u_solid_bb;\n"
 	"\n"
 	"layout(binding = 0) uniform sampler3D u_texture;\n");
 

@@ -245,16 +245,23 @@ v3_dot(v3 a, v3 b)
 }
 
 function f32
-v3_length_squared(v3 a)
+v3_magnitude_squared(v3 a)
 {
 	f32 result = v3_dot(a, a);
+	return result;
+}
+
+function f32
+v3_magnitude(v3 a)
+{
+	f32 result = sqrt_f32(v3_dot(a, a));
 	return result;
 }
 
 function v3
 v3_normalize(v3 a)
 {
-	v3 result = v3_scale(a, 1.0f / sqrt_f32(v3_length_squared(a)));
+	v3 result = v3_scale(a, 1.0f / v3_magnitude(a));
 	return result;
 }
 
@@ -361,6 +368,49 @@ m4_mul(m4 a, m4 b)
 	return result;
 }
 
+/* NOTE(rnp): based on:
+ * https://web.archive.org/web/20131215123403/ftp://download.intel.com/design/PentiumIII/sml/24504301.pdf
+ * TODO(rnp): redo with SIMD as given in the link (but need to rewrite for column-major)
+ */
+function m4
+m4_inverse(m4 m)
+{
+	m4 result;
+	result.E[ 0] =  m.E[5] * m.E[10] * m.E[15] - m.E[5] * m.E[11] * m.E[14] - m.E[9] * m.E[6] * m.E[15] + m.E[9] * m.E[7] * m.E[14] + m.E[13] * m.E[6] * m.E[11] - m.E[13] * m.E[7] * m.E[10];
+	result.E[ 4] = -m.E[4] * m.E[10] * m.E[15] + m.E[4] * m.E[11] * m.E[14] + m.E[8] * m.E[6] * m.E[15] - m.E[8] * m.E[7] * m.E[14] - m.E[12] * m.E[6] * m.E[11] + m.E[12] * m.E[7] * m.E[10];
+	result.E[ 8] =  m.E[4] * m.E[ 9] * m.E[15] - m.E[4] * m.E[11] * m.E[13] - m.E[8] * m.E[5] * m.E[15] + m.E[8] * m.E[7] * m.E[13] + m.E[12] * m.E[5] * m.E[11] - m.E[12] * m.E[7] * m.E[ 9];
+	result.E[12] = -m.E[4] * m.E[ 9] * m.E[14] + m.E[4] * m.E[10] * m.E[13] + m.E[8] * m.E[5] * m.E[14] - m.E[8] * m.E[6] * m.E[13] - m.E[12] * m.E[5] * m.E[10] + m.E[12] * m.E[6] * m.E[ 9];
+	result.E[ 1] = -m.E[1] * m.E[10] * m.E[15] + m.E[1] * m.E[11] * m.E[14] + m.E[9] * m.E[2] * m.E[15] - m.E[9] * m.E[3] * m.E[14] - m.E[13] * m.E[2] * m.E[11] + m.E[13] * m.E[3] * m.E[10];
+	result.E[ 5] =  m.E[0] * m.E[10] * m.E[15] - m.E[0] * m.E[11] * m.E[14] - m.E[8] * m.E[2] * m.E[15] + m.E[8] * m.E[3] * m.E[14] + m.E[12] * m.E[2] * m.E[11] - m.E[12] * m.E[3] * m.E[10];
+	result.E[ 9] = -m.E[0] * m.E[ 9] * m.E[15] + m.E[0] * m.E[11] * m.E[13] + m.E[8] * m.E[1] * m.E[15] - m.E[8] * m.E[3] * m.E[13] - m.E[12] * m.E[1] * m.E[11] + m.E[12] * m.E[3] * m.E[ 9];
+	result.E[13] =  m.E[0] * m.E[ 9] * m.E[14] - m.E[0] * m.E[10] * m.E[13] - m.E[8] * m.E[1] * m.E[14] + m.E[8] * m.E[2] * m.E[13] + m.E[12] * m.E[1] * m.E[10] - m.E[12] * m.E[2] * m.E[ 9];
+	result.E[ 2] =  m.E[1] * m.E[ 6] * m.E[15] - m.E[1] * m.E[ 7] * m.E[14] - m.E[5] * m.E[2] * m.E[15] + m.E[5] * m.E[3] * m.E[14] + m.E[13] * m.E[2] * m.E[ 7] - m.E[13] * m.E[3] * m.E[ 6];
+	result.E[ 6] = -m.E[0] * m.E[ 6] * m.E[15] + m.E[0] * m.E[ 7] * m.E[14] + m.E[4] * m.E[2] * m.E[15] - m.E[4] * m.E[3] * m.E[14] - m.E[12] * m.E[2] * m.E[ 7] + m.E[12] * m.E[3] * m.E[ 6];
+	result.E[10] =  m.E[0] * m.E[ 5] * m.E[15] - m.E[0] * m.E[ 7] * m.E[13] - m.E[4] * m.E[1] * m.E[15] + m.E[4] * m.E[3] * m.E[13] + m.E[12] * m.E[1] * m.E[ 7] - m.E[12] * m.E[3] * m.E[ 5];
+	result.E[14] = -m.E[0] * m.E[ 5] * m.E[14] + m.E[0] * m.E[ 6] * m.E[13] + m.E[4] * m.E[1] * m.E[14] - m.E[4] * m.E[2] * m.E[13] - m.E[12] * m.E[1] * m.E[ 6] + m.E[12] * m.E[2] * m.E[ 5];
+	result.E[ 3] = -m.E[1] * m.E[ 6] * m.E[11] + m.E[1] * m.E[ 7] * m.E[10] + m.E[5] * m.E[2] * m.E[11] - m.E[5] * m.E[3] * m.E[10] - m.E[ 9] * m.E[2] * m.E[ 7] + m.E[ 9] * m.E[3] * m.E[ 6];
+	result.E[ 7] =  m.E[0] * m.E[ 6] * m.E[11] - m.E[0] * m.E[ 7] * m.E[10] - m.E[4] * m.E[2] * m.E[11] + m.E[4] * m.E[3] * m.E[10] + m.E[ 8] * m.E[2] * m.E[ 7] - m.E[ 8] * m.E[3] * m.E[ 6];
+	result.E[11] = -m.E[0] * m.E[ 5] * m.E[11] + m.E[0] * m.E[ 7] * m.E[ 9] + m.E[4] * m.E[1] * m.E[11] - m.E[4] * m.E[3] * m.E[ 9] - m.E[ 8] * m.E[1] * m.E[ 7] + m.E[ 8] * m.E[3] * m.E[ 5];
+	result.E[15] =  m.E[0] * m.E[ 5] * m.E[10] - m.E[0] * m.E[ 6] * m.E[ 9] - m.E[4] * m.E[1] * m.E[10] + m.E[4] * m.E[2] * m.E[ 9] + m.E[ 8] * m.E[1] * m.E[ 6] - m.E[ 8] * m.E[2] * m.E[ 5];
+
+	f32 determinant = m.E[0] * result.E[0] + m.E[1] * result.E[4] + m.E[2] * result.E[8] + m.E[3] * result.E[12];
+	determinant = 1.0f / determinant;
+	for(i32 i = 0; i < 16; i++)
+		result.E[i] *= determinant;
+	return result;
+}
+
+function m4
+m4_translation(v3 delta)
+{
+	m4 result;
+	result.c[0] = (v4){{1, 0, 0, delta.x}};
+	result.c[1] = (v4){{0, 1, 0, delta.y}};
+	result.c[2] = (v4){{0, 0, 1, delta.z}};
+	result.c[3] = (v4){{0, 0, 0, 1}};
+	return result;
+}
+
 function m4
 m4_rotation_about_y(f32 turns)
 {
@@ -384,13 +434,7 @@ y_aligned_volume_transform(v3 extent, v3 translation, f32 rotation_turns)
 	S.c[3] = (v4){{0,        0,        0,        1}};
 
 	m4 R = m4_rotation_about_y(rotation_turns);
-
-	m4 T;
-	T.c[0] = (v4){{1, 0, 0, translation.x}};
-	T.c[1] = (v4){{0, 1, 0, translation.y}};
-	T.c[2] = (v4){{0, 0, 1, translation.z}};
-	T.c[3] = (v4){{0, 0, 0, 1}};
-
+	m4 T = m4_translation(translation);
 	m4 result = m4_mul(m4_mul(R, S), T);
 	return result;
 }
@@ -440,5 +484,51 @@ camera_look_at(v3 camera, v3 point)
 	result.c[1] = (v4){{right.y,     up.y,        normal.y,    0}};
 	result.c[2] = (v4){{right.z,     up.z,        normal.z,    0}};
 	result.c[3] = (v4){{translate.x, translate.y, translate.z, 1}};
+	return result;
+}
+
+/* NOTE(rnp): adapted from "Essential Mathematics for Games and Interactive Applications" (Verth, Bishop) */
+function f32
+obb_raycast(m4 obb_orientation, v3 obb_size, v3 obb_center, ray ray)
+{
+	v3 p = v3_sub(obb_center, ray.origin);
+	v3 X = obb_orientation.c[0].xyz;
+	v3 Y = obb_orientation.c[1].xyz;
+	v3 Z = obb_orientation.c[2].xyz;
+
+	/* NOTE(rnp): projects direction vector onto OBB axis */
+	v3 f;
+	f.x = v3_dot(X, ray.direction);
+	f.y = v3_dot(Y, ray.direction);
+	f.z = v3_dot(Z, ray.direction);
+
+	/* NOTE(rnp): projects relative vector onto OBB axis */
+	v3 e;
+	e.x = v3_dot(X, p);
+	e.y = v3_dot(Y, p);
+	e.z = v3_dot(Z, p);
+
+	f32 result = 0;
+	f32 t[6] = {0};
+	for (i32 i = 0; i < 3; i++) {
+		if (f32_cmp(f.E[i], 0)) {
+			if (-e.E[i] - obb_size.E[i] > 0 || -e.E[i] + obb_size.E[i] < 0)
+				result = -1.0f;
+			f.E[i] = F32_EPSILON;
+		}
+		t[i * 2 + 0] = (e.E[i] + obb_size.E[i]) / f.E[i];
+		t[i * 2 + 1] = (e.E[i] - obb_size.E[i]) / f.E[i];
+	}
+
+	if (result != -1) {
+		f32 tmin = MAX(MAX(MIN(t[0], t[1]), MIN(t[2], t[3])), MIN(t[4], t[5]));
+		f32 tmax = MIN(MIN(MAX(t[0], t[1]), MAX(t[2], t[3])), MAX(t[4], t[5]));
+		if (tmax >= 0 && tmin <= tmax) {
+			result = tmin > 0 ? tmin : tmax;
+		} else {
+			result = -1;
+		}
+	}
+
 	return result;
 }

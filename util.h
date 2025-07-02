@@ -206,6 +206,12 @@ typedef union {
 	f32 E[16];
 } m4;
 
+/* TODO(rnp): delete raylib */
+typedef struct {
+	v3 origin;
+	v3 direction;
+} ray;
+
 typedef union {
 	struct { v2 pos, size; };
 	Rectangle rl;
@@ -339,5 +345,6 @@ struct OS {
 #define LABEL_GL_OBJECT(type, id, s) {s8 _s = (s); glObjectLabel(type, id, _s.len, (c8 *)_s.data);}
 
 #include "util.c"
+#include "math.c"
 
 #endif /* _UTIL_H_ */

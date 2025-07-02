@@ -627,5 +627,3 @@ lookup_file_watch_directory(FileWatchContext *ctx, u64 hash)
 	}
 	return result;
 }
-
-#include "math.c"

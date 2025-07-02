@@ -67,6 +67,7 @@ typedef struct {
 #define FRAME_VIEW_LOG_SCALE_LOC      6
 #define FRAME_VIEW_BB_COLOUR_LOC      7
 #define FRAME_VIEW_BB_FRACTION_LOC    8
+#define FRAME_VIEW_SOLID_BB_LOC      10
 
 #define FRAME_VIEW_BB_COLOUR   0.92, 0.88, 0.78, 1.0
 #define FRAME_VIEW_BB_FRACTION 0.007f
