@@ -55,8 +55,8 @@
 #define static_assert _Static_assert
 
 /* NOTE: garbage to get the prepocessor to properly stringize the value of a macro */
-#define str_(x) #x
-#define str(x) str_(x)
+#define str_(...) #__VA_ARGS__
+#define str(...) str_(__VA_ARGS__)
 
 #define countof(a)       (sizeof(a) / sizeof(*a))
 #define ARRAY_COUNT(a)   (sizeof(a) / sizeof(*a))
@@ -70,6 +70,8 @@
 #define ORONE(x)         ((x)? (x) : 1)
 #define SIGN(x)          ((x) < 0? -1 : 1)
 #define swap(a, b)       do {typeof(a) __tmp = (a); (a) = (b); (b) = __tmp;} while(0)
+
+#define f32_cmp(x, y)    (ABS((x) - (y)) <= F32_EPSILON * MAX(1.0f, MAX(ABS(x), ABS(y))))
 
 #define EachElement(array, it)         (u64 it = 0; it < countof(array); it += 1)
 #define EachEnumValue(type, it)        (type it = (type)0; it < type##_Count; it = (type)(it + 1))
@@ -100,6 +102,10 @@
 #define I32_MAX          (0x7FFFFFFFL)
 #define U32_MAX          (0xFFFFFFFFUL)
 #define F32_INFINITY     (1e+300*1e+300)
+#define F32_EPSILON      (1e-6)
+#ifndef PI
+  #define PI             (3.14159265358979323846f)
+#endif
 
 typedef char      c8;
 typedef uint8_t   u8;

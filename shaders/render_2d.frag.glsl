@@ -1,5 +1,4 @@
 /* See LICENSE for license details. */
-layout(binding = 0) uniform sampler3D u_out_data_tex;
 
 /* input:  h [0,360] | s,v [0, 1] *
  * output: rgb [0,1]              */
@@ -12,15 +11,13 @@ vec3 hsv2rgb(vec3 hsv)
 
 void main()
 {
-	ivec3 out_data_dim = textureSize(u_out_data_tex, 0);
+	ivec3 out_data_dim = textureSize(u_texture, 0);
 
 	//vec2 min_max = texelFetch(u_out_data_tex, ivec3(0), textureQueryLevels(u_out_data_tex) - 1).xy;
 
 	/* TODO(rnp): select between x and y and specify slice */
-	ivec2 coord     = ivec2(texture_coordinate * vec2(out_data_dim.xz));
-	ivec3 smp_coord = ivec3(coord.x, out_data_dim.y / 2, coord.y);
-	float smp       = length(texelFetch(u_out_data_tex, smp_coord, 0).xy);
-
+	vec3 tex_coord = vec3(texture_coordinate.x, 0.5, texture_coordinate.y);
+	float smp = length(texture(u_texture, tex_coord).xy);
 	float threshold_val = pow(10.0f, u_threshold / 20.0f);
 	smp = clamp(smp, 0.0f, threshold_val);
 	smp = smp / threshold_val;
