@@ -1,6 +1,5 @@
 /* See LICENSE for license details. */
 /* TODO(rnp):
- * [ ]: MSAA for 3D views
  * [ ]: refactor: render_2d.frag should be merged into render_3d.frag
  * [ ]: refactor: ui should be in its own thread and that thread should only be concerned with the ui
  * [ ]: refactor: ui shouldn't fully destroy itself on hot reload
@@ -775,15 +774,15 @@ table_end_subtable(Table *table)
 }
 
 function void
-resize_frame_view(BeamformerFrameView *view, uv2 dim)
+resize_frame_view(BeamformerFrameView *view, uv2 dim, b32 depth)
 {
 	glDeleteTextures(countof(view->textures), view->textures);
-	glCreateTextures(GL_TEXTURE_2D, countof(view->textures), view->textures);
+	glCreateTextures(GL_TEXTURE_2D, countof(view->textures) - !!depth, view->textures);
 
 	view->texture_dim     = dim;
 	view->texture_mipmaps = ctz_u32(MAX(dim.x, dim.y)) + 1;
 	glTextureStorage2D(view->textures[0], view->texture_mipmaps, GL_RGBA8, dim.x, dim.y);
-	glTextureStorage2D(view->textures[1], 1, GL_DEPTH_COMPONENT24, dim.x, dim.y);
+	if (depth) glTextureStorage2D(view->textures[1], 1, GL_DEPTH_COMPONENT24, dim.x, dim.y);
 
 	glGenerateTextureMipmap(view->textures[0]);
 
@@ -1094,7 +1093,9 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 
 	switch (kind) {
 	case BeamformerFrameViewKind_3DXPlane:{
-		resize_frame_view(bv, (uv2){{1024, 1024}});
+		resize_frame_view(bv, (uv2){{FRAME_VIEW_RENDER_TARGET_SIZE}}, 0);
+		glTextureParameteri(bv->textures[0], GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTextureParameteri(bv->textures[0], GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		fill_variable(bv->x_plane_shifts + 0, var, s8("XZ Shift"), V_INPUT|V_IMAGING_PARAM,
 		              VT_X_PLANE_SHIFT, ui->small_font);
 		fill_variable(bv->x_plane_shifts + 1, var, s8("YZ Shift"), V_INPUT|V_IMAGING_PARAM,
@@ -1277,7 +1278,7 @@ ui_copy_frame(BeamformerUI *ui, Variable *view, RegionSplitDirection direction)
 	                   bv->frame->dim.x, bv->frame->dim.y, bv->frame->dim.z);
 	glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
 	/* TODO(rnp): x vs y here */
-	resize_frame_view(bv, (uv2){.x = bv->frame->dim.x, .y = bv->frame->dim.z});
+	resize_frame_view(bv, (uv2){.x = bv->frame->dim.x, .y = bv->frame->dim.z}, 1);
 }
 
 function v3
@@ -1461,7 +1462,7 @@ view_update(BeamformerUI *ui, BeamformerFrameView *view)
 	    view->kind != BeamformerFrameViewKind_3DXPlane &&
 	    !uv2_equal(current, target) && !uv2_equal(target, (uv2){0}))
 	{
-		resize_frame_view(view, target);
+		resize_frame_view(view, target, 1);
 		view->needs_update = 1;
 	}
 
@@ -1479,7 +1480,7 @@ update_frame_views(BeamformerUI *ui, Rect window)
 		if (view_update(ui, view)) {
 			if (!fbo_bound) {
 				fbo_bound = 1;
-				glBindFramebuffer(GL_FRAMEBUFFER, ctx->framebuffer);
+				glBindFramebuffer(GL_FRAMEBUFFER, ctx->framebuffers[0]);
 				glUseProgram(ctx->shaders[0]);
 				glEnable(GL_DEPTH_TEST);
 			}
@@ -1490,11 +1491,7 @@ update_frame_views(BeamformerUI *ui, Rect window)
 				if ( shader_3d) { glUseProgram(ctx->shaders[0]); shader_3d = 0; }
 			}
 
-			glNamedFramebufferTexture(ctx->framebuffer, GL_COLOR_ATTACHMENT0, view->textures[0], 0);
-			glNamedFramebufferTexture(ctx->framebuffer, GL_DEPTH_ATTACHMENT,  view->textures[1], 0);
-			glClearNamedFramebufferfv(ctx->framebuffer, GL_COLOR, 0, (f32 []){0, 0, 0, 0});
-			glClearNamedFramebufferfv(ctx->framebuffer, GL_DEPTH, 0, (f32 []){1});
-
+			u32 fb      = ctx->framebuffers[0];
 			u32 program = ctx->shaders[shader_3d];
 			glViewport(0, 0, view->texture_dim.w, view->texture_dim.h);
 			glProgramUniform1f(program,  FRAME_VIEW_THRESHOLD_LOC,     view->threshold.real32);
@@ -1503,8 +1500,20 @@ update_frame_views(BeamformerUI *ui, Rect window)
 			glProgramUniform1ui(program, FRAME_VIEW_LOG_SCALE_LOC,     view->log_scale->bool32);
 
 			if (view->kind == BeamformerFrameViewKind_3DXPlane) {
+				glNamedFramebufferRenderbuffer(fb, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, ctx->renderbuffers[0]);
+				glNamedFramebufferRenderbuffer(fb, GL_DEPTH_ATTACHMENT,  GL_RENDERBUFFER, ctx->renderbuffers[1]);
+				glClearNamedFramebufferfv(fb, GL_COLOR, 0, (f32 []){0, 0, 0, 0});
+				glClearNamedFramebufferfv(fb, GL_DEPTH, 0, (f32 []){1});
 				render_3D_xplane(ui, view, ctx->shaders[1]);
+				/* NOTE(rnp): resolve multisampled scene */
+				glNamedFramebufferTexture(ctx->framebuffers[1], GL_COLOR_ATTACHMENT0, view->textures[0], 0);
+				glBlitNamedFramebuffer(fb, ctx->framebuffers[1], 0, 0, FRAME_VIEW_RENDER_TARGET_SIZE,
+				                       0, 0, FRAME_VIEW_RENDER_TARGET_SIZE, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 			} else {
+				glNamedFramebufferTexture(fb, GL_COLOR_ATTACHMENT0, view->textures[0], 0);
+				glNamedFramebufferTexture(fb, GL_DEPTH_ATTACHMENT,  view->textures[1], 0);
+				glClearNamedFramebufferfv(fb, GL_COLOR, 0, (f32 []){0, 0, 0, 0});
+				glClearNamedFramebufferfv(fb, GL_DEPTH, 0, (f32 []){1});
 				glBindVertexArray(ctx->vao);
 				glBindTextureUnit(0, view->frame->texture);
 				glDrawArrays(GL_TRIANGLES, 0, 6);

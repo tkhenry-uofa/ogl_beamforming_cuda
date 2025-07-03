@@ -381,8 +381,17 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 	os_wake_waiters(&worker->sync_variable);
 
 	FrameViewRenderContext *fvr = &ctx->frame_view_render_context;
-	glCreateFramebuffers(1, &fvr->framebuffer);
-	LABEL_GL_OBJECT(GL_FRAMEBUFFER, fvr->framebuffer, s8("Frame View Render Framebuffer"));
+	glCreateFramebuffers(countof(fvr->framebuffers), fvr->framebuffers);
+	LABEL_GL_OBJECT(GL_FRAMEBUFFER, fvr->framebuffers[0], s8("Frame View Framebuffer"));
+	LABEL_GL_OBJECT(GL_FRAMEBUFFER, fvr->framebuffers[1], s8("Frame View Resolving Framebuffer"));
+
+	glCreateRenderbuffers(countof(fvr->renderbuffers), fvr->renderbuffers);
+	i32 msaa_samples = ctx->gl.vendor_id == GL_VENDOR_ARM? 4 : 8;
+	glNamedRenderbufferStorageMultisample(fvr->renderbuffers[0], msaa_samples, GL_RGBA8,
+	                                      FRAME_VIEW_RENDER_TARGET_SIZE);
+	glNamedRenderbufferStorageMultisample(fvr->renderbuffers[1], msaa_samples, GL_DEPTH_COMPONENT24,
+	                                      FRAME_VIEW_RENDER_TARGET_SIZE);
+
 	f32 vertices[] = {
 		-1,  1, 0, 0,
 		-1, -1, 0, 1,
