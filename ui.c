@@ -173,12 +173,11 @@ typedef enum {
 } VariableGroupKind;
 
 typedef struct {
+	VariableGroupKind kind;
+	b32       expanded;
 	Variable *first;
 	Variable *last;
 	Variable *container;
-	/* TODO(rnp): explore why this can't be at the start of the struct */
-	VariableGroupKind kind;
-	b32       expanded;
 } VariableGroup;
 
 typedef enum {
@@ -1294,7 +1293,7 @@ ui_add_live_frame_view(BeamformerUI *ui, Variable *view, RegionSplitDirection di
 
 	Variable *new_region = ui_split_region(ui, region, view, direction);
 	new_region->region_split.right = add_beamformer_frame_view(ui, new_region, &ui->arena, kind, 1);
-	ui_fill_live_frame_view(ui, new_region->region_split.right->group.first->generic);
+	ui_fill_live_frame_view(ui, new_region->region_split.right->view.child->generic);
 }
 
 function void
@@ -1304,7 +1303,7 @@ ui_copy_frame(BeamformerUI *ui, Variable *view, RegionSplitDirection direction)
 	assert(region->type == VT_UI_REGION_SPLIT);
 	assert(view->type   == VT_UI_VIEW);
 
-	BeamformerFrameView *old = view->group.first->generic;
+	BeamformerFrameView *old = view->view.child->generic;
 	/* TODO(rnp): hack; it would be better if this was unreachable with a 0 old->frame */
 	if (!old->frame)
 		return;
@@ -1313,7 +1312,7 @@ ui_copy_frame(BeamformerUI *ui, Variable *view, RegionSplitDirection direction)
 	new_region->region_split.right = add_beamformer_frame_view(ui, new_region, &ui->arena,
 	                                                           BeamformerFrameViewKind_Copy, 1);
 
-	BeamformerFrameView *bv = new_region->region_split.right->group.first->generic;
+	BeamformerFrameView *bv = new_region->region_split.right->view.child->generic;
 	ScaleBar *lateral  = &bv->lateral_scale_bar.scale_bar;
 	ScaleBar *axial    = &bv->axial_scale_bar.scale_bar;
 	lateral->min_value = &bv->min_coordinate.x;
@@ -1828,7 +1827,7 @@ draw_title_bar(BeamformerUI *ui, Arena arena, Variable *ui_view, Rect r, v2 mous
 	s8 title = ui_view->name;
 	if (view->flags & UIViewFlag_CustomText) {
 		Stream buf = arena_stream(arena);
-		push_custom_view_title(&buf, ui_view->group.first);
+		push_custom_view_title(&buf, ui_view->view.child);
 		title = arena_stream_commit(&arena, &buf);
 	}
 
@@ -3324,13 +3323,12 @@ ui_end_interact(BeamformerUI *ui, v2 mouse)
 	if (start_compute) ui->flush_params = 1;
 	if (it->var->flags & V_UPDATE_VIEW) {
 		Variable *parent = it->var->parent;
-		BeamformerFrameView *frame;
+		BeamformerFrameView *frame = parent->generic;
 		/* TODO(rnp): more straight forward way of achieving this */
-		if (parent->type == VT_BEAMFORMER_FRAME_VIEW) {
-			frame = parent->generic;
-		} else {
-			assert(parent->parent->group.first->type == VT_BEAMFORMER_FRAME_VIEW);
-			frame = parent->parent->group.first->generic;
+		if (parent->type != VT_BEAMFORMER_FRAME_VIEW) {
+			assert(parent->parent->type == VT_UI_VIEW);
+			assert(parent->parent->view.child->type == VT_BEAMFORMER_FRAME_VIEW);
+			frame = parent->parent->view.child->generic;
 		}
 		frame->needs_update = 1;
 	}
