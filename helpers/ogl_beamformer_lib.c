@@ -44,8 +44,7 @@ os_open_shared_memory_area(char *name)
 	SharedMemoryRegion result = {0};
 	iptr h = OpenFileMappingA(FILE_MAP_ALL_ACCESS, 0, name);
 	if (h != INVALID_FILE) {
-		void *new = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0,
-		                          os_round_up_to_page_size(BEAMFORMER_SHARED_MEMORY_SIZE));
+		void *new = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, BEAMFORMER_SHARED_MEMORY_SIZE);
 		if (new) {
 			u8 buffer[1024];
 			Stream sb = {.data = buffer, .cap = 1024};
@@ -419,6 +418,40 @@ beamformer_compute_timings(BeamformerComputeStatsTable *output, i32 timeout_ms)
 		{
 			result = beamformer_read_output(output, sizeof(*output), timeout_ms);
 		}
+	}
+	return result;
+}
+
+i32
+beamformer_live_parameters_get_dirty_flag(void)
+{
+	i32 result = -1;
+	if (check_shared_memory()) {
+		u32 flag = ctz_u32(g_bp->live_imaging_dirty_flags);
+		if (flag != 32) {
+			atomic_and_u32(&g_bp->live_imaging_dirty_flags, ~(1 << flag));
+			result = flag;
+		}
+	}
+	return result;
+}
+
+BeamformerLiveImagingParameters *
+beamformer_get_live_parameters(void)
+{
+	BeamformerLiveImagingParameters *result = 0;
+	if (check_shared_memory()) result = &g_bp->live_imaging_parameters;
+	return result;
+}
+
+b32
+beamformer_set_live_parameters(BeamformerLiveImagingParameters *new)
+{
+	b32 result = 0;
+	if (check_shared_memory()) {
+		mem_copy(&g_bp->live_imaging_parameters, new, sizeof(*new));
+		memory_write_barrier();
+		result = 1;
 	}
 	return result;
 }

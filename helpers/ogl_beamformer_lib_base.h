@@ -56,3 +56,9 @@ LIB_FN uint32_t beamformer_push_focal_vectors(float     *vectors,  uint32_t coun
 LIB_FN uint32_t beamformer_push_parameters(BeamformerParameters *, int32_t timeout_ms);
 LIB_FN uint32_t beamformer_push_parameters_ui(BeamformerUIParameters *, int32_t timeout_ms);
 LIB_FN uint32_t beamformer_push_parameters_head(BeamformerParametersHead *, int32_t timeout_ms);
+
+//////////////////////////
+// Live Imaging Controls
+LIB_FN int32_t  beamformer_live_parameters_get_dirty_flag(void);
+LIB_FN uint32_t beamformer_set_live_parameters(BeamformerLiveImagingParameters *);
+LIB_FN BeamformerLiveImagingParameters *beamformer_get_live_parameters(void);

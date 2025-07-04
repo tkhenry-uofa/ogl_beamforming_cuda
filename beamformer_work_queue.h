@@ -89,6 +89,10 @@ typedef BEAMFORM_WORK_QUEUE_PUSH_COMMIT_FN(beamform_work_queue_push_commit_fn);
 #define BEAMFORMER_SCRATCH_SIZE       (BEAMFORMER_SHARED_MEMORY_SIZE - BEAMFORMER_SCRATCH_OFF)
 #define BEAMFORMER_MAX_RF_DATA_SIZE   (BEAMFORMER_SCRATCH_SIZE)
 
+#define X(name, id) BeamformerLiveImagingDirtyFlags_##name = (1 << id),
+typedef enum {BEAMFORMER_LIVE_IMAGING_DIRTY_FLAG_LIST} BeamformerLiveImagingDirtyFlags;
+#undef X
+
 typedef struct {
 	u32 version;
 
@@ -127,6 +131,9 @@ typedef struct {
 
 	/* TODO(rnp): this shouldn't be needed */
 	b32 export_next_frame;
+
+	BeamformerLiveImagingParameters live_imaging_parameters;
+	BeamformerLiveImagingDirtyFlags live_imaging_dirty_flags;
 
 	BeamformWorkQueue external_work_queue;
 } BeamformerSharedMemory;

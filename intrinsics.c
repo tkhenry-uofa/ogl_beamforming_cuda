@@ -26,6 +26,8 @@
   #define debugbreak()  __debugbreak()
   #define unreachable() __assume(0)
 
+  #define memory_write_barrier()       _WriteBarrier()
+
   #define atomic_store_u64(ptr, n)     *((volatile u64 *)(ptr)) = (n)
   #define atomic_store_u32(ptr, n)     *((volatile u32 *)(ptr)) = (n)
   #define atomic_load_u64(ptr)         *((volatile u64 *)(ptr))
@@ -57,6 +59,8 @@
     #define debugbreak() asm volatile ("int3; nop")
   #endif
   #define unreachable() __builtin_unreachable()
+
+  #define memory_write_barrier()        asm volatile ("" ::: "memory")
 
   #define atomic_store_u64(ptr, n)      __atomic_store_n(ptr,    n, __ATOMIC_RELEASE)
   #define atomic_load_u64(ptr)          __atomic_load_n(ptr,        __ATOMIC_ACQUIRE)

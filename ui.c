@@ -237,7 +237,6 @@ typedef enum {
 	V_INPUT          = 1 << 0,
 	V_TEXT           = 1 << 1,
 	V_RADIO_BUTTON   = 1 << 2,
-	V_IMAGING_PARAM  = 1 << 28,
 	V_CAUSES_COMPUTE = 1 << 29,
 	V_UPDATE_VIEW    = 1 << 30,
 } VariableFlags;
@@ -377,6 +376,10 @@ struct BeamformerUI {
 	b32                    flush_params;
 
 	FrameViewRenderContext *frame_view_render_context;
+
+	/* TODO(rnp): hack? */
+	SharedMemoryRegion shared_memory;
+
 	OS *os;
 };
 
@@ -1096,10 +1099,8 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 		resize_frame_view(bv, (uv2){{FRAME_VIEW_RENDER_TARGET_SIZE}}, 0);
 		glTextureParameteri(bv->textures[0], GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTextureParameteri(bv->textures[0], GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-		fill_variable(bv->x_plane_shifts + 0, var, s8("XZ Shift"), V_INPUT|V_IMAGING_PARAM,
-		              VT_X_PLANE_SHIFT, ui->small_font);
-		fill_variable(bv->x_plane_shifts + 1, var, s8("YZ Shift"), V_INPUT|V_IMAGING_PARAM,
-		              VT_X_PLANE_SHIFT, ui->small_font);
+		fill_variable(bv->x_plane_shifts + 0, var, s8("XZ Shift"), V_INPUT, VT_X_PLANE_SHIFT, ui->small_font);
+		fill_variable(bv->x_plane_shifts + 1, var, s8("YZ Shift"), V_INPUT, VT_X_PLANE_SHIFT, ui->small_font);
 		bv->demo = add_variable(ui, menu, arena, s8("Demo Mode"), V_INPUT|V_UPDATE_VIEW|V_RADIO_BUTTON,
 		                        VT_B32, ui->small_font);
 	}break;
@@ -1294,6 +1295,15 @@ x_plane_size(BeamformerUI *ui)
 	return result;
 }
 
+function f32
+x_plane_rotation_for_view_plane(BeamformerFrameView *view, BeamformerViewPlaneTag tag)
+{
+	f32 result = view->rotation;
+	if (tag == BeamformerViewPlaneTag_YZ)
+		result += 0.25f;
+	return result;
+}
+
 function v2
 normalized_p_in_rect(Rect r, v2 p, b32 invert_y)
 {
@@ -1309,6 +1319,18 @@ x_plane_position(BeamformerUI *ui)
 	f32 y_min = ui->params.output_min_coordinate[2];
 	f32 y_max = ui->params.output_max_coordinate[2];
 	v3 result = {.y = y_min + (y_max - y_min) / 2};
+	return result;
+}
+
+function v3
+offset_x_plane_position(BeamformerUI *ui, BeamformerFrameView *view, BeamformerViewPlaneTag tag)
+{
+	BeamformerSharedMemory          *sm = ui->shared_memory.region;
+	BeamformerLiveImagingParameters *li = &sm->live_imaging_parameters;
+	m4 x_rotation = m4_rotation_about_y(x_plane_rotation_for_view_plane(view, tag));
+	v3 Z = x_rotation.c[2].xyz;
+	v3 offset = v3_scale(Z, li->image_plane_offsets[tag]);
+	v3 result = v3_add(x_plane_position(ui), offset);
 	return result;
 }
 
@@ -1370,15 +1392,6 @@ view_plane_tag_from_x_plane_shift(BeamformerFrameView *view, Variable *x_plane_s
 	return result;
 }
 
-function f32
-x_plane_rotation_for_view_plane(BeamformerFrameView *view, BeamformerViewPlaneTag tag)
-{
-	f32 result = view->rotation;
-	if (tag == BeamformerViewPlaneTag_YZ)
-		result += 0.25f;
-	return result;
-}
-
 function void
 render_single_xplane(BeamformerUI *ui, BeamformerFrameView *view, Variable *x_plane_shift,
                      u32 program, f32 rotation_turns, v3 translate, BeamformerViewPlaneTag tag)
@@ -1433,11 +1446,14 @@ render_3D_xplane(BeamformerUI *ui, BeamformerFrameView *view, u32 program)
 	glProgramUniformMatrix4fv(program, FRAME_VIEW_VIEW_MATRIX_LOC,  1, 0, view_m.E);
 	glProgramUniformMatrix4fv(program, FRAME_VIEW_PROJ_MATRIX_LOC,  1, 0, projection.E);
 
-	v3 model_translate = x_plane_position(ui);
-	render_single_xplane(ui, view, view->x_plane_shifts + 0, program, view->rotation,
+	v3 model_translate = offset_x_plane_position(ui, view, BeamformerViewPlaneTag_XZ);
+	render_single_xplane(ui, view, view->x_plane_shifts + 0, program,
+	                     x_plane_rotation_for_view_plane(view, BeamformerViewPlaneTag_XZ),
 	                     model_translate, BeamformerViewPlaneTag_XZ);
+	model_translate = offset_x_plane_position(ui, view, BeamformerViewPlaneTag_YZ);
 	model_translate.y -= 0.0001;
-	render_single_xplane(ui, view, view->x_plane_shifts + 1, program, view->rotation + 0.25f,
+	render_single_xplane(ui, view, view->x_plane_shifts + 1, program,
+	                     x_plane_rotation_for_view_plane(view, BeamformerViewPlaneTag_YZ),
 	                     model_translate, BeamformerViewPlaneTag_YZ);
 }
 
@@ -2169,13 +2185,18 @@ draw_3D_xplane_frame_view(BeamformerUI *ui, Arena arena, Variable *var, Rect dis
 	i32 id = -1;
 	if (hover_interaction(ui, mouse, auto_interaction(vr, var))) {
 		ray mouse_ray  = ray_for_x_plane_view(ui, view, normalized_p_in_rect(vr, mouse, 0));
-		v3  x_position = x_plane_position(ui);
 		v3  x_size     = v3_scale(x_plane_size(ui), 0.5f);
-		m4  x_rotation = m4_rotation_about_y(view->rotation);
+
+		f32 rotation   = x_plane_rotation_for_view_plane(view, BeamformerViewPlaneTag_XZ);
+		m4  x_rotation = m4_rotation_about_y(rotation);
+		v3  x_position = offset_x_plane_position(ui, view, BeamformerViewPlaneTag_XZ);
 
 		f32 test[2] = {0};
 		test[0] = obb_raycast(x_rotation, x_size, x_position, mouse_ray);
-		x_rotation = m4_rotation_about_y(view->rotation + 0.25);
+
+		x_position = offset_x_plane_position(ui, view, BeamformerViewPlaneTag_YZ);
+		rotation   = x_plane_rotation_for_view_plane(view, BeamformerViewPlaneTag_YZ);
+		x_rotation = m4_rotation_about_y(rotation);
 		test[1] = obb_raycast(x_rotation, x_size, x_position, mouse_ray);
 
 		if (test[0] >= 0 && test[1] >= 0) id = test[1] < test[0]? 1 : 0;
@@ -3259,9 +3280,12 @@ ui_end_interact(BeamformerUI *ui, v2 mouse)
 			m4 x_rotation = m4_rotation_about_y(rotation);
 			v3 Z = x_rotation.c[2].xyz;
 			f32 delta = v3_dot(Z, v3_sub(xp->end_point, xp->start_point));
-			/* TODO(rnp): commit to image parameters shared memory */
-			(void)delta;
 			xp->start_point = xp->end_point;
+
+			BeamformerSharedMemory          *sm = ui->shared_memory.region;
+			BeamformerLiveImagingParameters *li = &sm->live_imaging_parameters;
+			li->image_plane_offsets[plane] += delta;
+			atomic_or_u32(&sm->live_imaging_dirty_flags, BeamformerLiveImagingDirtyFlags_ImagePlaneOffsets);
 		}break;
 		default:{}break;
 		}
@@ -3454,6 +3478,7 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	ui->arena = store;
 	ui->frame_view_render_context = &ctx->frame_view_render_context;
 	ui->unit_cube_model = ctx->csctx.unit_cube_model;
+	ui->shared_memory   = ctx->shared_memory;
 
 	/* TODO: build these into the binary */
 	/* TODO(rnp): better font, this one is jank at small sizes */

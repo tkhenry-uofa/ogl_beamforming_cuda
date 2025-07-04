@@ -161,3 +161,14 @@ _Static_assert((offsetof(BeamformerParameters, output_min_coordinate) & 15) == 0
 _Static_assert((sizeof(BeamformerParameters) & 15) == 0,
                "sizeof(BeamformerParameters) must be a multiple of 16");
 #endif
+
+#define BEAMFORMER_LIVE_IMAGING_DIRTY_FLAG_LIST \
+	X(ImagePlaneOffsets, 0) \
+	X(TransmitPower,     1)
+/* NOTE(rnp): if this exceeds 32 you need to fix the flag handling code */
+
+typedef struct {
+	uint32_t active;
+	float    transmit_power;
+	float    image_plane_offsets[BeamformerViewPlaneTag_Count];
+} BeamformerLiveImagingParameters;
