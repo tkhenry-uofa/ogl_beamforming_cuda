@@ -584,6 +584,69 @@ stream_append_variable_group(Stream *s, Variable *var)
 	}
 }
 
+function s8
+push_das_shader_kind(Stream *s, DASShaderKind shader, u32 transmit_count)
+{
+	#define X(type, id, pretty, fixed_tx) s8_comp(pretty),
+	read_only local_persist s8 pretty_names[DASShaderKind_Count + 1] = {DAS_TYPES s8_comp("Invalid")};
+	#undef X
+	#define X(type, id, pretty, fixed_tx) fixed_tx,
+	read_only local_persist u8 fixed_transmits[DASShaderKind_Count + 1] = {DAS_TYPES 0};
+	#undef X
+
+	stream_append_s8(s, pretty_names[MIN(shader, DASShaderKind_Count)]);
+	if (!fixed_transmits[MIN(shader, DASShaderKind_Count)]) {
+		stream_append_byte(s, '-');
+		stream_append_u64(s, transmit_count);
+	}
+
+	return stream_to_s8(s);
+}
+
+function s8
+push_custom_view_title(Stream *s, Variable *var)
+{
+	switch (var->type) {
+	case VT_COMPUTE_STATS_VIEW:{
+		stream_append_s8(s, s8("Compute Stats: "));
+		stream_append_variable(s, var->compute_stats_view.cycler);
+	}break;
+	case VT_COMPUTE_PROGRESS_BAR:{
+		stream_append_s8(s, s8("Compute Progress: "));
+		stream_append_f64(s, 100 * *var->compute_progress_bar.progress, 100);
+		stream_append_byte(s, '%');
+	} break;
+	case VT_BEAMFORMER_FRAME_VIEW:{
+		BeamformerFrameView *bv = var->generic;
+		stream_append_s8(s, s8("Frame View"));
+		switch (bv->kind) {
+		case BeamformerFrameViewKind_Copy:{ stream_append_s8(s, s8(": Copy [")); }break;
+		case BeamformerFrameViewKind_Latest:{
+			#define X(plane, id, pretty) s8_comp(": " pretty " ["),
+			read_only local_persist s8 labels[BeamformerViewPlaneTag_Count + 1] = {
+				BEAMFORMER_VIEW_PLANE_TAG_LIST
+				s8_comp(": Live [")
+			};
+			#undef X
+			stream_append_s8(s, labels[*bv->cycler->cycler.state % (BeamformerViewPlaneTag_Count + 1)]);
+		}break;
+		case BeamformerFrameViewKind_Indexed:{
+			stream_append_s8(s, s8(": Index {"));
+			stream_append_u64(s, *bv->cycler->cycler.state % MAX_BEAMFORMED_SAVED_FRAMES);
+			stream_append_s8(s, s8("} ["));
+		}break;
+		case BeamformerFrameViewKind_3DXPlane:{ stream_append_s8(s, s8(": 3D X-Plane")); }break;
+		}
+		if (bv->kind != BeamformerFrameViewKind_3DXPlane) {
+			stream_append_hex_u64(s, bv->frame? bv->frame->id : 0);
+			stream_append_byte(s, ']');
+		}
+	}break;
+	InvalidDefaultCase;
+	}
+	return stream_to_s8(s);
+}
+
 #define table_new(a, init, ...) table_new_(a, init, arg_list(TextAlignment, ##__VA_ARGS__))
 function Table *
 table_new_(Arena *a, i32 initial_capacity, TextAlignment *alignment, i32 columns)
@@ -1565,69 +1628,6 @@ fade(Color a, f32 visibility)
 {
 	a.a = (u8)((f32)a.a * visibility);
 	return a;
-}
-
-function s8
-push_das_shader_kind(Stream *s, DASShaderKind shader, u32 transmit_count)
-{
-	#define X(type, id, pretty, fixed_tx) s8_comp(pretty),
-	read_only local_persist s8 pretty_names[DASShaderKind_Count + 1] = {DAS_TYPES s8_comp("Invalid")};
-	#undef X
-	#define X(type, id, pretty, fixed_tx) fixed_tx,
-	read_only local_persist u8 fixed_transmits[DASShaderKind_Count + 1] = {DAS_TYPES 0};
-	#undef X
-
-	stream_append_s8(s, pretty_names[MIN(shader, DASShaderKind_Count)]);
-	if (!fixed_transmits[MIN(shader, DASShaderKind_Count)]) {
-		stream_append_byte(s, '-');
-		stream_append_u64(s, transmit_count);
-	}
-
-	return stream_to_s8(s);
-}
-
-function s8
-push_custom_view_title(Stream *s, Variable *var)
-{
-	switch (var->type) {
-	case VT_COMPUTE_STATS_VIEW:{
-		stream_append_s8(s, s8("Compute Stats: "));
-		stream_append_variable(s, var->compute_stats_view.cycler);
-	}break;
-	case VT_COMPUTE_PROGRESS_BAR:{
-		stream_append_s8(s, s8("Compute Progress: "));
-		stream_append_f64(s, 100 * *var->compute_progress_bar.progress, 100);
-		stream_append_byte(s, '%');
-	} break;
-	case VT_BEAMFORMER_FRAME_VIEW:{
-		BeamformerFrameView *bv = var->generic;
-		stream_append_s8(s, s8("Frame View"));
-		switch (bv->kind) {
-		case BeamformerFrameViewKind_Copy:{ stream_append_s8(s, s8(": Copy [")); }break;
-		case BeamformerFrameViewKind_Latest:{
-			#define X(plane, id, pretty) s8_comp(": " pretty " ["),
-			read_only local_persist s8 labels[BeamformerViewPlaneTag_Count + 1] = {
-				BEAMFORMER_VIEW_PLANE_TAG_LIST
-				s8_comp(": Live [")
-			};
-			#undef X
-			stream_append_s8(s, labels[*bv->cycler->cycler.state % (BeamformerViewPlaneTag_Count + 1)]);
-		}break;
-		case BeamformerFrameViewKind_Indexed:{
-			stream_append_s8(s, s8(": Index {"));
-			stream_append_u64(s, *bv->cycler->cycler.state % MAX_BEAMFORMED_SAVED_FRAMES);
-			stream_append_s8(s, s8("} ["));
-		}break;
-		case BeamformerFrameViewKind_3DXPlane:{ stream_append_s8(s, s8(": 3D X-Plane")); }break;
-		}
-		if (bv->kind != BeamformerFrameViewKind_3DXPlane) {
-			stream_append_hex_u64(s, bv->frame? bv->frame->id : 0);
-			stream_append_byte(s, ']');
-		}
-	}break;
-	InvalidDefaultCase;
-	}
-	return stream_to_s8(s);
 }
 
 function v2
