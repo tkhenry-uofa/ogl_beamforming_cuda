@@ -1,7 +1,6 @@
 /* See LICENSE for license details. */
 /* TODO(rnp):
  * [ ]: add V_HIDES_CURSOR for disabling/restoring cursor after drag
- * [ ]: scroll on 3D X-Plane should be same as scroll on normal view
  * [ ]: live parameters control panel
  * [ ]: bug: clear color should not be transparent for a frame copy
  * [ ]: refactor: render_2d.frag should be merged into render_3d.frag
@@ -3216,14 +3215,19 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll)
 				else        hot->kind = InteractionKind_Nop;
 			}break;
 			case VT_X_PLANE_SHIFT:{
+				assert(hot->var->parent && hot->var->parent->type == VT_BEAMFORMER_FRAME_VIEW);
+				BeamformerFrameView *bv = hot->var->parent->generic;
 				if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-					assert(hot->var->parent && hot->var->parent->type == VT_BEAMFORMER_FRAME_VIEW);
-					BeamformerFrameView *bv = hot->var->parent->generic;
-					XPlaneShift *xp         = &hot->var->x_plane_shift;
+					XPlaneShift *xp = &hot->var->x_plane_shift;
 					xp->start_point = xp->end_point = bv->hit_test_point;
 					hot->kind = InteractionKind_Drag;
 				} else {
-					hot->kind = InteractionKind_Nop;
+					if (scroll) {
+						hot->kind = InteractionKind_Scroll;
+						hot->var  = &bv->threshold;
+					} else {
+						hot->kind = InteractionKind_Nop;
+					}
 				}
 			}break;
 			case VT_BEAMFORMER_FRAME_VIEW:{
