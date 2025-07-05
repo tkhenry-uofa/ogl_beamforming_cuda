@@ -129,10 +129,9 @@ typedef struct {
 typedef enum {COMPUTE_STATS_VIEW_LIST ComputeStatsViewKind_Count} ComputeStatsViewKind;
 #undef X
 
-/* TODO(rnp): this should be refactored to not need a BeamformerCtx */
 typedef struct {
-	BeamformerCtx *ctx;
-	Variable      *cycler;
+	ComputeShaderStats *compute_shader_stats;
+	Variable           *cycler;
 	ComputeStatsViewKind kind;
 } ComputeStatsView;
 
@@ -376,10 +375,8 @@ struct BeamformerUI {
 
 	FrameViewRenderContext *frame_view_render_context;
 
-	/* TODO(rnp): hack? */
-	SharedMemoryRegion shared_memory;
-
-	OS *os;
+	SharedMemoryRegion  shared_memory;
+	BeamformerCtx      *beamformer_context;
 };
 
 typedef enum {
@@ -1244,8 +1241,7 @@ add_compute_stats_view(BeamformerUI *ui, Variable *parent, Arena *arena, Beamfor
 	#undef X
 
 	ComputeStatsView *csv = &result->view.child->compute_stats_view;
-	/* TODO(rnp): refactor to not need the beamformer ctx */
-	csv->ctx    = ctx;
+	csv->compute_shader_stats = ctx->compute_shader_stats;
 	csv->cycler = add_variable_cycler(ui, menu, arena, 0, ui->small_font, s8("Stats View:"),
 	                                  &csv->kind, labels, countof(labels));
 	add_global_menu_to_group(ui, arena, menu);
@@ -2482,8 +2478,8 @@ draw_compute_stats_view(BeamformerUI *ui, Arena arena, Variable *view, Rect r, v
 	assert(view->type == VT_COMPUTE_STATS_VIEW);
 
 	ComputeStatsView *csv = &view->compute_stats_view;
-	BeamformerSharedMemory *sm    = csv->ctx->shared_memory.region;
-	ComputeShaderStats     *stats = csv->ctx->compute_shader_stats;
+	BeamformerSharedMemory *sm    = ui->shared_memory.region;
+	ComputeShaderStats     *stats = csv->compute_shader_stats;
 	f32 compute_time_sum = 0;
 	u32 stages           = sm->compute_stages_count;
 	TextSpec text_spec   = {.font = &ui->font, .colour = FG_COLOUR, .flags = TF_LIMITED};
@@ -3472,11 +3468,11 @@ ui_init(BeamformerCtx *ctx, Arena store)
 	}
 
 	ui = ctx->ui = push_struct(&store, typeof(*ui));
-	ui->os    = &ctx->os;
 	ui->arena = store;
 	ui->frame_view_render_context = &ctx->frame_view_render_context;
 	ui->unit_cube_model = ctx->csctx.unit_cube_model;
 	ui->shared_memory   = ctx->shared_memory;
+	ui->beamformer_context = ctx;
 
 	/* TODO: build these into the binary */
 	/* TODO(rnp): better font, this one is jank at small sizes */
