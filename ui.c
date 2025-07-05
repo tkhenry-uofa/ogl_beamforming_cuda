@@ -2,7 +2,6 @@
 /* TODO(rnp):
  * [ ]: add V_HIDES_CURSOR for disabling/restoring cursor after drag
  * [ ]: live parameters control panel
- * [ ]: bug: clear color should not be transparent for a frame copy
  * [ ]: refactor: render_2d.frag should be merged into render_3d.frag
  * [ ]: refactor: ui should be in its own thread and that thread should only be concerned with the ui
  * [ ]: refactor: remove all the excessive measure_texts (cell drawing, hover_interaction in params table)
@@ -861,9 +860,11 @@ resize_frame_view(BeamformerFrameView *view, uv2 dim, b32 depth)
 	glGenerateTextureMipmap(view->textures[0]);
 
 	/* NOTE(rnp): work around raylib's janky texture sampling */
+	v4 border_colour = {0};
+	if (view->kind == BeamformerFrameViewKind_Copy) border_colour = (v4){{0, 0, 0, 1}};
 	glTextureParameteri(view->textures[0], GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 	glTextureParameteri(view->textures[0], GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-	glTextureParameterfv(view->textures[0], GL_TEXTURE_BORDER_COLOR, (f32 []){0, 0, 0, 0});
+	glTextureParameterfv(view->textures[0], GL_TEXTURE_BORDER_COLOR, border_colour.E);
 	/* TODO(rnp): better choice when depth component is included */
 	glTextureParameteri(view->textures[0], GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTextureParameteri(view->textures[0], GL_TEXTURE_MIN_FILTER, GL_NEAREST);
