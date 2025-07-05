@@ -1559,6 +1559,15 @@ render_3D_xplane(BeamformerUI *ui, BeamformerFrameView *view, u32 program)
 }
 
 function b32
+frame_view_ready_to_present(BeamformerUI *ui, BeamformerFrameView *view)
+{
+	b32 result  = !uv2_equal((uv2){0}, view->texture_dim) && view->frame;
+	result     |= view->kind == BeamformerFrameViewKind_3DXPlane &&
+	              ui->latest_plane[BeamformerViewPlaneTag_Count];
+	return result;
+}
+
+function b32
 view_update(BeamformerUI *ui, BeamformerFrameView *view)
 {
 	if (view->kind == BeamformerFrameViewKind_Latest) {
@@ -1582,9 +1591,10 @@ view_update(BeamformerUI *ui, BeamformerFrameView *view)
 		resize_frame_view(view, target, 1);
 		view->dirty = 1;
 	}
+	view->dirty |= ui->frame_view_render_context->updated;
+	view->dirty |= view->kind == BeamformerFrameViewKind_3DXPlane;
 
-	b32 result = view->kind == BeamformerFrameViewKind_3DXPlane;
-	result    |= (ui->frame_view_render_context->updated || view->dirty) && view->frame;
+	b32 result = frame_view_ready_to_present(ui, view) && view->dirty;
 	return result;
 }
 
@@ -1646,12 +1656,6 @@ update_frame_views(BeamformerUI *ui, Rect window)
 		glBindVertexArray(0);
 		glDisable(GL_DEPTH_TEST);
 	}
-}
-
-function b32
-frame_view_ready_to_present(BeamformerFrameView *view)
-{
-	return !uv2_equal((uv2){0}, view->texture_dim) && view->frame;
 }
 
 function Color
@@ -2760,10 +2764,10 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec tex
 	}break;
 	case VT_BEAMFORMER_FRAME_VIEW: {
 		BeamformerFrameView *bv = var->generic;
-		if (bv->kind == BeamformerFrameViewKind_3DXPlane) {
+		if (frame_view_ready_to_present(ui, bv)) {
+			if (bv->kind == BeamformerFrameViewKind_3DXPlane)
 				draw_3D_xplane_frame_view(ui, ui->arena, var, r, mouse);
-		} else {
-			if (frame_view_ready_to_present(bv))
+			else
 				draw_beamformer_frame_view(ui, ui->arena, var, r, mouse);
 		}
 	} break;
