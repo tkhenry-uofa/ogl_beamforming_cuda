@@ -1,9 +1,10 @@
 /* See LICENSE for license details. */
 /* TODO(rnp):
- * [ ]: FrameViewMode selector.
- *      - change texture and parameters on mode switch (better integration with 3D XPlane)
- *      - menu setup code needs to be set up to filter appropriate items for each view kind
+ * [ ]: add V_HIDES_CURSOR for disabling/restoring cursor after drag
+ * [ ]: scroll on 3D X-Plane should be same as scroll on normal view
  * [ ]: live parameters control panel
+ * [ ]: bug: clear color should not be transparent for a frame copy
+ * [ ]: bug don't modify position in draw_floating_widgets when menu wants to extend past edge of screen
  * [ ]: refactor: render_2d.frag should be merged into render_3d.frag
  * [ ]: refactor: ui should be in its own thread and that thread should only be concerned with the ui
  * [ ]: refactor: remove all the excessive measure_texts (cell drawing, hover_interaction in params table)
@@ -200,10 +201,8 @@ typedef struct {
 	X(FV_COPY_VERTICAL,   "Copy Vertical")
 
 #define GLOBAL_MENU_BUTTONS \
-	X(GM_OPEN_LIVE_VIEW_RIGHT,   "Open Live View Right")    \
-	X(GM_OPEN_LIVE_VIEW_BELOW,   "Open Live View Below")    \
-	X(GM_OPEN_XPLANE_VIEW_RIGHT, "Open Live X-Plane Right") \
-	X(GM_OPEN_XPLANE_VIEW_BELOW, "Open Live X-Plane Below")
+	X(GM_OPEN_VIEW_RIGHT,   "Open View Right") \
+	X(GM_OPEN_VIEW_BELOW,   "Open View Below")
 
 #define X(id, text) UI_BID_ ##id,
 typedef enum {
@@ -237,6 +236,7 @@ typedef enum {
 	V_INPUT          = 1 << 0,
 	V_TEXT           = 1 << 1,
 	V_RADIO_BUTTON   = 1 << 2,
+	V_EXTRA_ACTION   = 1 << 3,
 	V_CAUSES_COMPUTE = 1 << 29,
 	V_UPDATE_VIEW    = 1 << 30,
 } VariableFlags;
@@ -270,55 +270,66 @@ struct Variable {
 	f32 name_width;
 };
 
+#define BEAMFORMER_FRAME_VIEW_KIND_LIST \
+	X(Latest,   "Latest")     \
+	X(3DXPlane, "3D X-Plane") \
+	X(Indexed,  "Indexed")    \
+	X(Copy,     "Copy")
+
 typedef enum {
-	BeamformerFrameViewKind_Latest,
-	BeamformerFrameViewKind_Indexed,
-	BeamformerFrameViewKind_Copy,
-	BeamformerFrameViewKind_3DXPlane,
+	#define X(kind, ...) BeamformerFrameViewKind_##kind,
+	BEAMFORMER_FRAME_VIEW_KIND_LIST
+	#undef X
+	BeamformerFrameViewKind_Count,
 } BeamformerFrameViewKind;
 
-typedef struct BeamformerFrameView {
-	union {
-		struct {
-			Variable x_plane_shifts[2];
-			v3  hit_test_point;
-			f32 rotation;
-		};
-		struct {
-			Variable lateral_scale_bar;
-			Variable axial_scale_bar;
-			v3 min_coordinate;
-			v3 max_coordinate;
-		};
-	};
-
-	/* NOTE(rnp): these are pointers because they are added to the menu and will
-	 * be put onto the freelist if the view is closed. Some are optional based on kind. */
-	Variable *lateral_scale_bar_active;
-	Variable *axial_scale_bar_active;
-	Variable *log_scale;
-	Variable *demo;
-	/* NOTE(rnp): if type is LATEST  selects which type of latest to use
-	 *            if type is INDEXED selects the index */
-	Variable *cycler;
-	u32 cycler_state;
-
-	Ruler ruler;
-
-	Variable threshold;
-	Variable dynamic_range;
-	Variable gamma;
-
-	BeamformerFrame *frame;
-	struct BeamformerFrameView *prev, *next;
+typedef struct BeamformerFrameView BeamformerFrameView;
+struct BeamformerFrameView {
+	BeamformerFrameViewKind kind;
+	b32 dirty;
+	BeamformerFrame     *frame;
+	BeamformerFrameView *prev, *next;
 
 	uv2 texture_dim;
 	u32 textures[2];
 	u32 texture_mipmaps;
 
-	BeamformerFrameViewKind kind;
-	b32 needs_update;
-} BeamformerFrameView;
+	/* NOTE(rnp): any pointers to variables are added to the menu and will
+	 * be put onto the freelist if the view is closed. */
+
+	Variable *kind_cycler;
+	Variable *log_scale;
+	Variable threshold;
+	Variable dynamic_range;
+	Variable gamma;
+
+	union {
+		/* BeamformerFrameViewKind_Latest/BeamformerFrameViewKind_Indexed */
+		struct {
+			Variable lateral_scale_bar;
+			Variable axial_scale_bar;
+			Variable *lateral_scale_bar_active;
+			Variable *axial_scale_bar_active;
+			/* NOTE(rnp): if kind is Latest  selects which plane to use
+			 *            if kind is Indexed selects the index */
+			Variable *cycler;
+			u32 cycler_state;
+
+			Ruler ruler;
+
+			v3 min_coordinate;
+			v3 max_coordinate;
+		};
+
+		/* BeamformerFrameViewKind_3DXPlane */
+		struct {
+			Variable x_plane_shifts[2];
+			Variable *demo;
+			f32 rotation;
+			v3  hit_test_point;
+		};
+	};
+};
 
 typedef enum {
 	InteractionKind_None,
@@ -634,6 +645,7 @@ push_custom_view_title(Stream *s, Variable *var)
 			stream_append_s8(s, s8("} ["));
 		}break;
 		case BeamformerFrameViewKind_3DXPlane:{ stream_append_s8(s, s8(": 3D X-Plane")); }break;
+		InvalidDefaultCase;
 		}
 		if (bv->kind != BeamformerFrameViewKind_3DXPlane) {
 			stream_append_hex_u64(s, bv->frame? bv->frame->id : 0);
@@ -863,6 +875,23 @@ resize_frame_view(BeamformerFrameView *view, uv2 dim, b32 depth)
 }
 
 function void
+ui_beamformer_frame_view_release_subresources(BeamformerUI *ui, BeamformerFrameView *bv, BeamformerFrameViewKind kind)
+{
+	if (kind == BeamformerFrameViewKind_Copy && bv->frame) {
+		glDeleteTextures(1, &bv->frame->texture);
+		bv->frame->texture = 0;
+		SLLPush(bv->frame, ui->frame_freelist);
+	}
+
+	if (kind != BeamformerFrameViewKind_3DXPlane) {
+		if (bv->axial_scale_bar.scale_bar.savepoint_stack)
+			SLLPush(bv->axial_scale_bar.scale_bar.savepoint_stack, ui->scale_bar_savepoint_freelist);
+		if (bv->lateral_scale_bar.scale_bar.savepoint_stack)
+			SLLPush(bv->lateral_scale_bar.scale_bar.savepoint_stack, ui->scale_bar_savepoint_freelist);
+	}
+}
+
+function void
 ui_variable_free(BeamformerUI *ui, Variable *var)
 {
 	if (var) {
@@ -874,17 +903,7 @@ ui_variable_free(BeamformerUI *ui, Variable *var)
 				if (var->type == VT_BEAMFORMER_FRAME_VIEW) {
 					/* TODO(rnp): instead there should be a way of linking these up */
 					BeamformerFrameView *bv = var->generic;
-					if (bv->kind == BeamformerFrameViewKind_Copy) {
-						glDeleteTextures(1, &bv->frame->texture);
-						bv->frame->texture = 0;
-						SLLPush(bv->frame, ui->frame_freelist);
-					}
-					if (bv->axial_scale_bar.scale_bar.savepoint_stack)
-						SLLPush(bv->axial_scale_bar.scale_bar.savepoint_stack,
-						        ui->scale_bar_savepoint_freelist);
-					if (bv->lateral_scale_bar.scale_bar.savepoint_stack)
-						SLLPush(bv->lateral_scale_bar.scale_bar.savepoint_stack,
-						        ui->scale_bar_savepoint_freelist);
+					ui_beamformer_frame_view_release_subresources(ui, bv, bv->kind);
 					DLLRemove(bv);
 					/* TODO(rnp): hack; use a sentinal */
 					if (bv == ui->views)
@@ -905,6 +924,16 @@ ui_variable_free(BeamformerUI *ui, Variable *var)
 			}
 		}
 	}
+}
+
+function void
+ui_variable_free_group_items(BeamformerUI *ui, Variable *group)
+{
+	assert(group->type == VT_GROUP);
+	/* NOTE(rnp): prevent traversal back to us */
+	group->group.last->parent = 0;
+	ui_variable_free(ui, group->group.first);
+	group->group.first = group->group.last = 0;
 }
 
 function void
@@ -1122,52 +1151,49 @@ add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 	return result;
 }
 
-function Variable *
-add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
-                          BeamformerFrameViewKind kind, b32 closable)
+function void
+ui_beamformer_frame_view_convert(BeamformerUI *ui, Arena *arena, Variable *view, Variable *menu,
+                                 BeamformerFrameViewKind kind, BeamformerFrameView *old, b32 log_scale)
 {
-	/* TODO(rnp): this can be always closable once we have a way of opening new views */
-	Variable *result = add_ui_view(ui, parent, arena, s8(""), UIViewFlag_CustomText, 1, closable);
-	Variable *var = result->view.child = add_variable(ui, result, arena, s8(""), 0,
-	                                                  VT_BEAMFORMER_FRAME_VIEW, ui->small_font);
+	assert(menu->group.first == menu->group.last && menu->group.first == 0);
+	assert(view->type == VT_BEAMFORMER_FRAME_VIEW);
 
-	BeamformerFrameView *bv = SLLPop(ui->view_freelist);
-	if (bv) zero_struct(bv);
-	else    bv = push_struct(arena, typeof(*bv));
-	DLLPushDown(bv, ui->views);
+	BeamformerFrameView *bv = view->generic;
+	bv->kind  = kind;
+	bv->dirty = 1;
 
-	var->generic = bv;
-	bv->kind     = kind;
-
-	fill_variable(&bv->dynamic_range, var, s8("Dynamic Range:"), V_INPUT|V_TEXT|V_UPDATE_VIEW,
+	fill_variable(&bv->dynamic_range, view, s8("Dynamic Range:"), V_INPUT|V_TEXT|V_UPDATE_VIEW,
 	              VT_F32, ui->small_font);
-	fill_variable(&bv->threshold, var, s8("Threshold:"), V_INPUT|V_TEXT|V_UPDATE_VIEW,
+	fill_variable(&bv->threshold, view, s8("Threshold:"), V_INPUT|V_TEXT|V_UPDATE_VIEW,
 	              VT_F32, ui->small_font);
-	fill_variable(&bv->gamma, var, s8("Gamma:"), V_INPUT|V_TEXT|V_UPDATE_VIEW,
+	fill_variable(&bv->gamma, view, s8("Gamma:"), V_INPUT|V_TEXT|V_UPDATE_VIEW,
 	              VT_SCALED_F32, ui->small_font);
 
-	bv->dynamic_range.real32      = 50.0f;
-	bv->threshold.real32          = 55.0f;
-	bv->gamma.scaled_real32.val   = 1.0f;
-	bv->gamma.scaled_real32.scale = 0.05f;
+	bv->dynamic_range.real32      = old? old->dynamic_range.real32      : 50.0f;
+	bv->threshold.real32          = old? old->threshold.real32          : 55.0f;
+	bv->gamma.scaled_real32.val   = old? old->gamma.scaled_real32.val   : 1.0f;
+	bv->gamma.scaled_real32.scale = old? old->gamma.scaled_real32.scale : 0.05f;
+	bv->min_coordinate = (old && old->frame)? old->frame->min_coordinate.xyz : (v3){0};
+	bv->max_coordinate = (old && old->frame)? old->frame->max_coordinate.xyz : (v3){0};
 
-	Variable *menu = result->view.menu = add_variable_group(ui, 0, arena, s8(""),
-	                                                        VariableGroupKind_List, ui->small_font);
-	menu->parent = result;
+	#define X(_t, pretty) s8_comp(pretty),
+	read_only local_persist s8 kind_labels[] = {BEAMFORMER_FRAME_VIEW_KIND_LIST};
+	#undef X
+	bv->kind_cycler = add_variable_cycler(ui, menu, arena, V_EXTRA_ACTION, ui->small_font,
+	                                      s8("Kind:"), &bv->kind, kind_labels, countof(kind_labels));
 
 	switch (kind) {
 	case BeamformerFrameViewKind_3DXPlane:{
 		resize_frame_view(bv, (uv2){{FRAME_VIEW_RENDER_TARGET_SIZE}}, 0);
 		glTextureParameteri(bv->textures[0], GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTextureParameteri(bv->textures[0], GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-		fill_variable(bv->x_plane_shifts + 0, var, s8("XZ Shift"), V_INPUT, VT_X_PLANE_SHIFT, ui->small_font);
-		fill_variable(bv->x_plane_shifts + 1, var, s8("YZ Shift"), V_INPUT, VT_X_PLANE_SHIFT, ui->small_font);
-		bv->demo = add_variable(ui, menu, arena, s8("Demo Mode"), V_INPUT|V_UPDATE_VIEW|V_RADIO_BUTTON,
-		                        VT_B32, ui->small_font);
+		fill_variable(bv->x_plane_shifts + 0, view, s8("XZ Shift"), V_INPUT, VT_X_PLANE_SHIFT, ui->small_font);
+		fill_variable(bv->x_plane_shifts + 1, view, s8("YZ Shift"), V_INPUT, VT_X_PLANE_SHIFT, ui->small_font);
+		bv->demo = add_variable(ui, menu, arena, s8("Demo Mode"), V_INPUT|V_RADIO_BUTTON, VT_B32, ui->small_font);
 	}break;
 	default:{
-		fill_variable(&bv->lateral_scale_bar, var, s8(""), V_INPUT, VT_SCALE_BAR, ui->small_font);
-		fill_variable(&bv->axial_scale_bar,   var, s8(""), V_INPUT, VT_SCALE_BAR, ui->small_font);
+		fill_variable(&bv->lateral_scale_bar, view, s8(""), V_INPUT, VT_SCALE_BAR, ui->small_font);
+		fill_variable(&bv->axial_scale_bar,   view, s8(""), V_INPUT, VT_SCALE_BAR, ui->small_font);
 		ScaleBar *lateral            = &bv->lateral_scale_bar.scale_bar;
 		ScaleBar *axial              = &bv->axial_scale_bar.scale_bar;
 		lateral->direction           = SB_LATERAL;
@@ -1177,6 +1203,12 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 		lateral->zoom_starting_coord = F32_INFINITY;
 		axial->zoom_starting_coord   = F32_INFINITY;
 
+		b32 copy = kind == BeamformerFrameViewKind_Copy;
+		lateral->min_value = copy ? &bv->min_coordinate.x : ui->params.output_min_coordinate + 0;
+		lateral->max_value = copy ? &bv->max_coordinate.x : ui->params.output_max_coordinate + 0;
+		axial->min_value   = copy ? &bv->min_coordinate.z : ui->params.output_min_coordinate + 2;
+		axial->max_value   = copy ? &bv->max_coordinate.z : ui->params.output_max_coordinate + 2;
+
 		#define X(id, text) add_button(ui, menu, arena, s8(text), UI_BID_ ##id, 0, ui->small_font);
 		FRAME_VIEW_BUTTONS
 		#undef X
@@ -1185,8 +1217,19 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 		                                            V_INPUT|V_RADIO_BUTTON, VT_B32, ui->small_font);
 		bv->lateral_scale_bar_active = add_variable(ui, menu, arena, s8("Lateral Scale Bar"),
 		                                            V_INPUT|V_RADIO_BUTTON, VT_B32, ui->small_font);
+
+		if (kind == BeamformerFrameViewKind_Latest) {
+			bv->axial_scale_bar_active->bool32   = 1;
+			bv->lateral_scale_bar_active->bool32 = 1;
+			bv->axial_scale_bar.flags   |= V_CAUSES_COMPUTE;
+			bv->lateral_scale_bar.flags |= V_CAUSES_COMPUTE;
+		}
 	}break;
 	}
+
+	bv->log_scale = add_variable(ui, menu, arena, s8("Log Scale"),
+	                             V_INPUT|V_UPDATE_VIEW|V_RADIO_BUTTON, VT_B32, ui->small_font);
+	bv->log_scale->bool32 = log_scale;
 
 	switch (kind) {
 	case BeamformerFrameViewKind_Latest:{
@@ -1204,10 +1247,32 @@ add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
 	default:{}break;
 	}
 
-	bv->log_scale = add_variable(ui, menu, arena, s8("Log Scale"),
-	                             V_INPUT|V_UPDATE_VIEW|V_RADIO_BUTTON, VT_B32, ui->small_font);
-
 	add_global_menu_to_group(ui, arena, menu);
+}
+
+function BeamformerFrameView *
+ui_beamformer_frame_view_new(BeamformerUI *ui, Arena *arena)
+{
+	BeamformerFrameView *result = SLLPop(ui->view_freelist);
+	if (result) zero_struct(result);
+	else        result = push_struct(arena, typeof(*result));
+	DLLPushDown(result, ui->views);
+	return result;
+}
+
+function Variable *
+add_beamformer_frame_view(BeamformerUI *ui, Variable *parent, Arena *arena,
+                          BeamformerFrameViewKind kind, b32 closable, BeamformerFrameView *old)
+{
+	/* TODO(rnp): this can be always closable once we have a way of opening new views */
+	Variable *result = add_ui_view(ui, parent, arena, s8(""), UIViewFlag_CustomText, 1, closable);
+	Variable *var = result->view.child = add_variable(ui, result, arena, s8(""), 0,
+	                                                  VT_BEAMFORMER_FRAME_VIEW, ui->small_font);
+	Variable *menu = result->view.menu = add_variable_group(ui, 0, arena, s8(""),
+	                                                        VariableGroupKind_List, ui->small_font);
+	menu->parent = result;
+	var->generic = ui_beamformer_frame_view_new(ui, arena);
+	ui_beamformer_frame_view_convert(ui, arena, var, menu, kind, old, old? old->log_scale->bool32 : 0);
 	return result;
 }
 
@@ -1265,33 +1330,34 @@ ui_split_region(BeamformerUI *ui, Variable *region, Variable *split_side, Region
 }
 
 function void
-ui_fill_live_frame_view(BeamformerUI *ui, BeamformerFrameView *bv)
-{
-	if (bv->kind != BeamformerFrameViewKind_3DXPlane) {
-		ScaleBar *lateral = &bv->lateral_scale_bar.scale_bar;
-		ScaleBar *axial   = &bv->axial_scale_bar.scale_bar;
-		lateral->min_value = ui->params.output_min_coordinate + 0;
-		lateral->max_value = ui->params.output_max_coordinate + 0;
-		axial->min_value   = ui->params.output_min_coordinate + 2;
-		axial->max_value   = ui->params.output_max_coordinate + 2;
-		bv->axial_scale_bar_active->bool32   = 1;
-		bv->lateral_scale_bar_active->bool32 = 1;
-		bv->axial_scale_bar.flags   |= V_CAUSES_COMPUTE;
-		bv->lateral_scale_bar.flags |= V_CAUSES_COMPUTE;
-	}
-}
-
-function void
 ui_add_live_frame_view(BeamformerUI *ui, Variable *view, RegionSplitDirection direction,
                        BeamformerFrameViewKind kind)
 {
 	Variable *region = view->parent;
 	assert(region->type == VT_UI_REGION_SPLIT);
 	assert(view->type   == VT_UI_VIEW);
-
 	Variable *new_region = ui_split_region(ui, region, view, direction);
-	new_region->region_split.right = add_beamformer_frame_view(ui, new_region, &ui->arena, kind, 1);
-	ui_fill_live_frame_view(ui, new_region->region_split.right->view.child->generic);
+	new_region->region_split.right = add_beamformer_frame_view(ui, new_region, &ui->arena, kind, 1, 0);
+}
+
+function void
+ui_beamformer_frame_view_copy_frame(BeamformerUI *ui, BeamformerFrameView *new, BeamformerFrameView *old)
+{
+	assert(old->frame);
+	new->frame = SLLPop(ui->frame_freelist);
+	if (!new->frame) new->frame = push_struct(&ui->arena, typeof(*new->frame));
+
+	mem_copy(new->frame, old->frame, sizeof(*new->frame));
+	new->frame->texture = 0;
+	new->frame->next    = 0;
+	alloc_beamform_frame(0, new->frame, old->frame->dim, s8("Frame Copy: "), ui->arena);
+
+	glCopyImageSubData(old->frame->texture, GL_TEXTURE_3D, 0, 0, 0, 0,
+	                   new->frame->texture, GL_TEXTURE_3D, 0, 0, 0, 0,
+	                   new->frame->dim.x, new->frame->dim.y, new->frame->dim.z);
+	glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
+	/* TODO(rnp): x vs y here */
+	resize_frame_view(new, (uv2){.x = new->frame->dim.x, .y = new->frame->dim.z}, 1);
 }
 
 function void
@@ -1308,38 +1374,10 @@ ui_copy_frame(BeamformerUI *ui, Variable *view, RegionSplitDirection direction)
 
 	Variable *new_region = ui_split_region(ui, region, view, direction);
 	new_region->region_split.right = add_beamformer_frame_view(ui, new_region, &ui->arena,
-	                                                           BeamformerFrameViewKind_Copy, 1);
+	                                                           BeamformerFrameViewKind_Copy, 1, old);
 
 	BeamformerFrameView *bv = new_region->region_split.right->view.child->generic;
-	ScaleBar *lateral  = &bv->lateral_scale_bar.scale_bar;
-	ScaleBar *axial    = &bv->axial_scale_bar.scale_bar;
-	lateral->min_value = &bv->min_coordinate.x;
-	lateral->max_value = &bv->max_coordinate.x;
-	axial->min_value   = &bv->min_coordinate.z;
-	axial->max_value   = &bv->max_coordinate.z;
-
-	bv->needs_update         = 1;
-	bv->threshold.real32     = old->threshold.real32;
-	bv->dynamic_range.real32 = old->dynamic_range.real32;
-	bv->gamma.real32         = old->gamma.real32;
-	bv->log_scale->bool32    = old->log_scale->bool32;
-	bv->min_coordinate       = old->frame->min_coordinate.xyz;
-	bv->max_coordinate       = old->frame->max_coordinate.xyz;
-
-	bv->frame = SLLPop(ui->frame_freelist);
-	if (!bv->frame) bv->frame = push_struct(&ui->arena, typeof(*bv->frame));
-
-	mem_copy(bv->frame, old->frame, sizeof(*bv->frame));
-	bv->frame->texture = 0;
-	bv->frame->next    = 0;
-	alloc_beamform_frame(0, bv->frame, old->frame->dim, s8("Frame Copy: "), ui->arena);
-
-	glCopyImageSubData(old->frame->texture, GL_TEXTURE_3D, 0, 0, 0, 0,
-	                   bv->frame->texture,  GL_TEXTURE_3D, 0, 0, 0, 0,
-	                   bv->frame->dim.x, bv->frame->dim.y, bv->frame->dim.z);
-	glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
-	/* TODO(rnp): x vs y here */
-	resize_frame_view(bv, (uv2){.x = bv->frame->dim.x, .y = bv->frame->dim.z}, 1);
+	ui_beamformer_frame_view_copy_frame(ui, bv, old);
 }
 
 function v3
@@ -1522,9 +1560,9 @@ view_update(BeamformerUI *ui, BeamformerFrameView *view)
 {
 	if (view->kind == BeamformerFrameViewKind_Latest) {
 		u32 index = *view->cycler->cycler.state;
-		view->needs_update |= view->frame != ui->latest_plane[index];
-		view->frame         = ui->latest_plane[index];
-		if (view->needs_update) {
+		view->dirty |= view->frame != ui->latest_plane[index];
+		view->frame  = ui->latest_plane[index];
+		if (view->dirty) {
 			view->min_coordinate = v4_from_f32_array(ui->params.output_min_coordinate).xyz;
 			view->max_coordinate = v4_from_f32_array(ui->params.output_max_coordinate).xyz;
 		}
@@ -1539,11 +1577,11 @@ view_update(BeamformerUI *ui, BeamformerFrameView *view)
 	    !uv2_equal(current, target) && !uv2_equal(target, (uv2){0}))
 	{
 		resize_frame_view(view, target, 1);
-		view->needs_update = 1;
+		view->dirty = 1;
 	}
 
 	b32 result = view->kind == BeamformerFrameViewKind_3DXPlane;
-	result    |= (ui->frame_view_render_context->updated || view->needs_update) && view->frame;
+	result    |= (ui->frame_view_render_context->updated || view->dirty) && view->frame;
 	return result;
 }
 
@@ -1595,7 +1633,7 @@ update_frame_views(BeamformerUI *ui, Rect window)
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 			}
 			glGenerateTextureMipmap(view->textures[0]);
-			view->needs_update = 0;
+			view->dirty = 0;
 		}
 	}
 	if (fbo_bound) {
@@ -2887,8 +2925,8 @@ scroll_interaction(Variable *var, f32 delta)
 	case VT_SCALED_F32:{ var->scaled_real32.val += delta * var->scaled_real32.scale; }break;
 	case VT_BEAMFORMER_FRAME_VIEW:{
 		BeamformerFrameView *bv = var->generic;
-		bv->needs_update      = 1;
 		bv->threshold.real32 += delta;
+		bv->dirty = 1;
 	} break;
 	case VT_BEAMFORMER_VARIABLE:{
 		BeamformerVariable *bv = &var->beamformer_variable;
@@ -3137,17 +3175,11 @@ ui_button_interaction(BeamformerUI *ui, Variable *button)
 	case UI_BID_FV_COPY_VERTICAL:{
 		ui_copy_frame(ui, button->parent->parent, RSD_VERTICAL);
 	}break;
-	case UI_BID_GM_OPEN_LIVE_VIEW_RIGHT:{
+	case UI_BID_GM_OPEN_VIEW_RIGHT:{
 		ui_add_live_frame_view(ui, button->parent->parent, RSD_HORIZONTAL, BeamformerFrameViewKind_Latest);
 	}break;
-	case UI_BID_GM_OPEN_LIVE_VIEW_BELOW:{
+	case UI_BID_GM_OPEN_VIEW_BELOW:{
 		ui_add_live_frame_view(ui, button->parent->parent, RSD_VERTICAL, BeamformerFrameViewKind_Latest);
-	}break;
-	case UI_BID_GM_OPEN_XPLANE_VIEW_RIGHT:{
-		ui_add_live_frame_view(ui, button->parent->parent, RSD_HORIZONTAL, BeamformerFrameViewKind_3DXPlane);
-	}break;
-	case UI_BID_GM_OPEN_XPLANE_VIEW_BELOW:{
-		ui_add_live_frame_view(ui, button->parent->parent, RSD_VERTICAL, BeamformerFrameViewKind_3DXPlane);
 	}break;
 	}
 }
@@ -3259,6 +3291,39 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll)
 }
 
 function void
+ui_extra_actions(BeamformerUI *ui, Variable *var)
+{
+	switch (var->type) {
+	case VT_CYCLER:{
+		assert(var->parent && var->parent->parent && var->parent->parent->type == VT_UI_VIEW);
+		Variable *view_var = var->parent->parent;
+		UIView   *view     = &view_var->view;
+		switch (view->child->type) {
+		case VT_BEAMFORMER_FRAME_VIEW:{
+			BeamformerFrameView *old = view->child->generic;
+			BeamformerFrameView *new = view->child->generic = ui_beamformer_frame_view_new(ui, &ui->arena);
+			BeamformerFrameViewKind last_kind = (old->kind - 1) % BeamformerFrameViewKind_Count;
+
+			/* NOTE(rnp): log_scale gets released below before its needed */
+			b32 log_scale = old->log_scale->bool32;
+			ui_variable_free_group_items(ui, view->menu);
+
+			ui_beamformer_frame_view_release_subresources(ui, old, last_kind);
+			ui_beamformer_frame_view_convert(ui, &ui->arena, view->child, view->menu, old->kind, old, log_scale);
+			if (new->kind == BeamformerFrameViewKind_Copy && old->frame)
+				ui_beamformer_frame_view_copy_frame(ui, new, old);
+
+			DLLRemove(old);
+			SLLPush(old, ui->view_freelist);
+		}break;
+		InvalidDefaultCase;
+		}
+	}break;
+	InvalidDefaultCase;
+	}
+}
+
+function void
 ui_end_interact(BeamformerUI *ui, v2 mouse)
 {
 	Interaction *it = &ui->interaction;
@@ -3328,8 +3393,11 @@ ui_end_interact(BeamformerUI *ui, v2 mouse)
 			assert(parent->parent->view.child->type == VT_BEAMFORMER_FRAME_VIEW);
 			frame = parent->parent->view.child->generic;
 		}
-		frame->needs_update = 1;
+		frame->dirty = 1;
 	}
+
+	if (it->var->flags & V_EXTRA_ACTION)
+		ui_extra_actions(ui, it->var);
 
 	ui->interaction = (Interaction){.kind = InteractionKind_None};
 }
@@ -3471,8 +3539,7 @@ ui_init(BeamformerCtx *ctx, Arena store)
 		split->region_split.left    = add_ui_split(ui, split, &ui->arena, s8(""), 0.475,
 		                                           RSD_VERTICAL, ui->font);
 		split->region_split.right   = add_beamformer_frame_view(ui, split, &ui->arena,
-		                                                        BeamformerFrameViewKind_Latest, 0);
-		ui_fill_live_frame_view(ui, split->region_split.right->view.child->generic);
+		                                                        BeamformerFrameViewKind_Latest, 0, 0);
 
 		split = split->region_split.left;
 		split->region_split.left  = add_beamformer_parameters_view(split, ctx);
