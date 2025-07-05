@@ -1,6 +1,5 @@
 /* See LICENSE for license details. */
 /* TODO(rnp):
- * [ ]: add V_HIDES_CURSOR for disabling/restoring cursor after drag
  * [ ]: live parameters control panel
  * [ ]: refactor: render_2d.frag should be merged into render_3d.frag
  * [ ]: refactor: ui should be in its own thread and that thread should only be concerned with the ui
@@ -234,6 +233,7 @@ typedef enum {
 	V_TEXT           = 1 << 1,
 	V_RADIO_BUTTON   = 1 << 2,
 	V_EXTRA_ACTION   = 1 << 3,
+	V_HIDES_CURSOR   = 1 << 4,
 	V_CAUSES_COMPUTE = 1 << 29,
 	V_UPDATE_VIEW    = 1 << 30,
 } VariableFlags;
@@ -1011,7 +1011,7 @@ function Variable *
 add_ui_split(BeamformerUI *ui, Variable *parent, Arena *arena, s8 name, f32 fraction,
              RegionSplitDirection direction, Font font)
 {
-	Variable *result = add_variable(ui, parent, arena, name, 0, VT_UI_REGION_SPLIT, font);
+	Variable *result = add_variable(ui, parent, arena, name, V_HIDES_CURSOR, VT_UI_REGION_SPLIT, font);
 	result->region_split.direction = direction;
 	result->region_split.fraction  = fraction;
 	return result;
@@ -1183,14 +1183,18 @@ ui_beamformer_frame_view_convert(BeamformerUI *ui, Arena *arena, Variable *view,
 
 	switch (kind) {
 	case BeamformerFrameViewKind_3DXPlane:{
+		view->flags |= V_HIDES_CURSOR;
 		resize_frame_view(bv, (uv2){{FRAME_VIEW_RENDER_TARGET_SIZE}}, 0);
 		glTextureParameteri(bv->textures[0], GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTextureParameteri(bv->textures[0], GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-		fill_variable(bv->x_plane_shifts + 0, view, s8("XZ Shift"), V_INPUT, VT_X_PLANE_SHIFT, ui->small_font);
-		fill_variable(bv->x_plane_shifts + 1, view, s8("YZ Shift"), V_INPUT, VT_X_PLANE_SHIFT, ui->small_font);
+		fill_variable(bv->x_plane_shifts + 0, view, s8("XZ Shift"), V_INPUT|V_HIDES_CURSOR,
+		              VT_X_PLANE_SHIFT, ui->small_font);
+		fill_variable(bv->x_plane_shifts + 1, view, s8("YZ Shift"), V_INPUT|V_HIDES_CURSOR,
+		              VT_X_PLANE_SHIFT, ui->small_font);
 		bv->demo = add_variable(ui, menu, arena, s8("Demo Mode"), V_INPUT|V_RADIO_BUTTON, VT_B32, ui->small_font);
 	}break;
 	default:{
+		view->flags &= ~V_HIDES_CURSOR;
 		fill_variable(&bv->lateral_scale_bar, view, s8(""), V_INPUT, VT_SCALE_BAR, ui->small_font);
 		fill_variable(&bv->axial_scale_bar,   view, s8(""), V_INPUT, VT_SCALE_BAR, ui->small_font);
 		ScaleBar *lateral            = &bv->lateral_scale_bar.scale_bar;
@@ -3287,15 +3291,15 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll)
 		}
 
 		ui->interaction = ui->hot_interaction;
+
+		if (ui->interaction.var->flags & V_HIDES_CURSOR) {
+			HideCursor();
+			DisableCursor();
+			/* wtf raylib */
+			SetMousePosition(input->mouse.x, input->mouse.y);
+		}
 	} else {
 		ui->interaction.kind = InteractionKind_Nop;
-	}
-
-	if (ui->interaction.kind == InteractionKind_Drag) {
-		HideCursor();
-		DisableCursor();
-		/* wtf raylib */
-		SetMousePosition(input->mouse.x, input->mouse.y);
 	}
 }
 
@@ -3340,7 +3344,6 @@ ui_end_interact(BeamformerUI *ui, v2 mouse)
 	switch (it->kind) {
 	case InteractionKind_Nop:{}break;
 	case InteractionKind_Drag:{
-		EnableCursor();
 		switch (it->var->type) {
 		case VT_X_PLANE_SHIFT:{
 			assert(it->var->parent && it->var->parent->type == VT_BEAMFORMER_FRAME_VIEW);
@@ -3404,6 +3407,9 @@ ui_end_interact(BeamformerUI *ui, v2 mouse)
 		}
 		frame->dirty = 1;
 	}
+
+	if (it->var->flags & V_HIDES_CURSOR)
+		EnableCursor();
 
 	if (it->var->flags & V_EXTRA_ACTION)
 		ui_extra_actions(ui, it->var);
