@@ -336,6 +336,17 @@ v4_lerp(v4 a, v4 b, f32 t)
 	return result;
 }
 
+function m4
+m4_identity(void)
+{
+	m4 result;
+	result.c[0] = (v4){{1, 0, 0, 0}};
+	result.c[1] = (v4){{0, 1, 0, 0}};
+	result.c[2] = (v4){{0, 0, 1, 0}};
+	result.c[3] = (v4){{0, 0, 0, 1}};
+	return result;
+}
+
 function v4
 m4_row(m4 a, u32 row)
 {
@@ -412,6 +423,17 @@ m4_translation(v3 delta)
 }
 
 function m4
+m4_scale(v3 scale)
+{
+	m4 result;
+	result.c[0] = (v4){{scale.x, 0,       0,       0}};
+	result.c[1] = (v4){{0,       scale.y, 0,       0}};
+	result.c[2] = (v4){{0,       0,       scale.z, 0}};
+	result.c[3] = (v4){{0,       0,       0,       1}};
+	return result;
+}
+
+function m4
 m4_rotation_about_y(f32 turns)
 {
 	f32 sa = sin_f32(turns * 2 * PI);
@@ -427,12 +449,7 @@ m4_rotation_about_y(f32 turns)
 function m4
 y_aligned_volume_transform(v3 extent, v3 translation, f32 rotation_turns)
 {
-	m4 S;
-	S.c[0] = (v4){{extent.x, 0,        0,        0}};
-	S.c[1] = (v4){{0,        extent.y, 0,        0}};
-	S.c[2] = (v4){{0,        0,        extent.z, 0}};
-	S.c[3] = (v4){{0,        0,        0,        1}};
-
+	m4 S = m4_scale(extent);
 	m4 R = m4_rotation_about_y(rotation_turns);
 	m4 T = m4_translation(translation);
 	m4 result = m4_mul(m4_mul(R, S), T);
@@ -447,6 +464,19 @@ m4_mul_v4(m4 a, v4 v)
 	result.y = v4_dot(m4_row(a, 1), v);
 	result.z = v4_dot(m4_row(a, 2), v);
 	result.w = v4_dot(m4_row(a, 3), v);
+	return result;
+}
+
+function m4
+orthographic_projection(f32 n, f32 f, f32 t, f32 r)
+{
+	m4 result;
+	f32 a = -2 / (f - n);
+	f32 b = - (f + n) / (f - n);
+	result.c[0] = (v4){{1 / r, 0,     0,  0}};
+	result.c[1] = (v4){{0,     1 / t, 0,  0}};
+	result.c[2] = (v4){{0,     0,     a,  0}};
+	result.c[3] = (v4){{0,     0,     b,  1}};
 	return result;
 }
 

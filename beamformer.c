@@ -486,7 +486,7 @@ DEBUG_EXPORT BEAMFORMER_RELOAD_SHADER_FN(beamformer_reload_shader)
 	if (new_program) {
 		glDeleteProgram(*src->shader);
 		*src->shader = new_program;
-		if (src->kind == BeamformerShaderKind_Render2D) ctx->frame_view_render_context.updated = 1;
+		if (src->kind == BeamformerShaderKind_Render3D) ctx->frame_view_render_context.updated = 1;
 	}
 	return new_program != 0;
 }

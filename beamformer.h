@@ -75,11 +75,9 @@ typedef struct {
 #define FRAME_VIEW_RENDER_TARGET_SIZE 1024, 1024
 
 typedef struct {
-	u32 shaders[2];       /* [0] -> 2D render, [1] -> 3D render */
+	u32 shader;
 	u32 framebuffers[2];  /* [0] -> multisample target, [1] -> normal target for resolving */
 	u32 renderbuffers[2]; /* only used for 3D views, size is fixed */
-	u32 vao;
-	u32 vbo;
 	b32 updated;
 } FrameViewRenderContext;
 

@@ -392,68 +392,13 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 	glNamedRenderbufferStorageMultisample(fvr->renderbuffers[1], msaa_samples, GL_DEPTH_COMPONENT24,
 	                                      FRAME_VIEW_RENDER_TARGET_SIZE);
 
-	f32 vertices[] = {
-		-1,  1, 0, 0,
-		-1, -1, 0, 1,
-		 1, -1, 1, 1,
-		-1,  1, 0, 0,
-		 1, -1, 1, 1,
-		 1,  1, 1, 0,
-	};
-	glCreateVertexArrays(1, &fvr->vao);
-	glCreateBuffers(1, &fvr->vbo);
-
-	glNamedBufferData(fvr->vbo, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-	glEnableVertexArrayAttrib(fvr->vao, 0);
-	glEnableVertexArrayAttrib(fvr->vao, 1);
-	glVertexArrayVertexBuffer(fvr->vao, 0, fvr->vbo, 0,               4 * sizeof(f32));
-	glVertexArrayVertexBuffer(fvr->vao, 1, fvr->vbo, 2 * sizeof(f32), 4 * sizeof(f32));
-	glVertexArrayAttribFormat(fvr->vao, 0, 2, GL_FLOAT, 0, 0);
-	glVertexArrayAttribFormat(fvr->vao, 1, 2, GL_FLOAT, 0, 2 * sizeof(f32));
-	glVertexArrayAttribBinding(fvr->vao, 0, 0);
-	glVertexArrayAttribBinding(fvr->vao, 1, 0);
-
-	ShaderReloadContext *render_2d = push_struct(memory, typeof(*render_2d));
-	render_2d->beamformer_context = ctx;
-	render_2d->path    = s8(static_path_join("shaders", "render_2d.frag.glsl"));
-	render_2d->name    = s8("shaders/render_2d.glsl");
-	render_2d->gl_type = GL_FRAGMENT_SHADER;
-	render_2d->kind    = BeamformerShaderKind_Render2D;
-	render_2d->shader  = fvr->shaders + 0;
-	render_2d->header  = s8(""
-	"layout(location = 0) in  vec2 texture_coordinate;\n"
-	"layout(location = 0) out vec4 v_out_colour;\n\n"
-	"layout(location = " str(FRAME_VIEW_DYNAMIC_RANGE_LOC) ") uniform float u_db_cutoff = 60;\n"
-	"layout(location = " str(FRAME_VIEW_THRESHOLD_LOC)     ") uniform float u_threshold = 40;\n"
-	"layout(location = " str(FRAME_VIEW_GAMMA_LOC)         ") uniform float u_gamma     = 1;\n"
-	"layout(location = " str(FRAME_VIEW_LOG_SCALE_LOC)     ") uniform bool  u_log_scale;\n"
-	"\n"
-	"layout(binding = 0) uniform sampler3D u_texture;\n");
-	render_2d->link = push_struct(memory, typeof(*render_2d));
-	render_2d->link->gl_type = GL_VERTEX_SHADER;
-	render_2d->link->link    = render_2d;
-	render_2d->link->header  = s8(""
-	"layout(location = 0) in vec2 v_position;\n"
-	"layout(location = 1) in vec2 v_texture_coordinate;\n"
-	"\n"
-	"layout(location = 0) out vec2 f_texture_coordinate;\n"
-	"\n"
-	"void main()\n"
-	"{\n"
-	"\tf_texture_coordinate = v_texture_coordinate;\n"
-	"\tgl_Position = vec4(v_position, 0, 1);\n"
-	"}\n");
-	reload_shader(&ctx->os, render_2d->path, (iptr)render_2d, *memory);
-	os_add_file_watch(&ctx->os, memory, render_2d->path, reload_shader, (iptr)render_2d);
-
 	ShaderReloadContext *render_3d = push_struct(memory, typeof(*render_3d));
 	render_3d->beamformer_context = ctx;
 	render_3d->path    = s8(static_path_join("shaders", "render_3d.frag.glsl"));
 	render_3d->name    = s8("shaders/render_3d.glsl");
 	render_3d->gl_type = GL_FRAGMENT_SHADER;
 	render_3d->kind    = BeamformerShaderKind_Render3D;
-	render_3d->shader  = fvr->shaders + 1;
+	render_3d->shader  = &fvr->shader;
 	render_3d->header  = s8(""
 	"layout(location = 0) in  vec3 normal;\n"
 	"layout(location = 1) in  vec3 texture_coordinate;\n\n"

@@ -23,11 +23,10 @@ typedef enum {
 	#define X(e, n, s, h, pn) BeamformerShaderKind_##e = n,
 	COMPUTE_SHADERS
 	#undef X
-	BeamformerShaderKind_Render2D,
 	BeamformerShaderKind_Render3D,
 	BeamformerShaderKind_Count,
 
-	BeamformerShaderKind_ComputeCount = BeamformerShaderKind_Render2D,
+	BeamformerShaderKind_ComputeCount = BeamformerShaderKind_Render3D,
 } BeamformerShaderKind;
 
 typedef struct {

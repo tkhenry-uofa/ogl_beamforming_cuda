@@ -1,7 +1,6 @@
 /* See LICENSE for license details. */
 /* TODO(rnp):
  * [ ]: live parameters control panel
- * [ ]: refactor: render_2d.frag should be merged into render_3d.frag
  * [ ]: refactor: ui should be in its own thread and that thread should only be concerned with the ui
  * [ ]: refactor: remove all the excessive measure_texts (cell drawing, hover_interaction in params table)
  * [ ]: refactor: move remaining fragment shader stuff into ui
@@ -1384,15 +1383,21 @@ ui_copy_frame(BeamformerUI *ui, Variable *view, RegionSplitDirection direction)
 }
 
 function v3
-x_plane_size(BeamformerUI *ui)
+beamformer_frame_view_plane_size(BeamformerUI *ui, BeamformerFrameView *view)
 {
-	v3 min    = v4_from_f32_array(ui->params.output_min_coordinate).xyz;
-	v3 max    = v4_from_f32_array(ui->params.output_max_coordinate).xyz;
-	v3 result = v3_sub(max, min);
-	swap(result.y, result.z);
-	result.x = MAX(1e-3, result.x);
-	result.y = MAX(1e-3, result.y);
-	result.z = MAX(1e-3, result.z);
+	v3 result;
+	if (view->kind == BeamformerFrameViewKind_3DXPlane) {
+		v3 min = v4_from_f32_array(ui->params.output_min_coordinate).xyz;
+		v3 max = v4_from_f32_array(ui->params.output_max_coordinate).xyz;
+		result = v3_sub(max, min);
+		swap(result.y, result.z);
+		result.x = MAX(1e-3, result.x);
+		result.y = MAX(1e-3, result.y);
+		result.z = MAX(1e-3, result.z);
+	} else {
+		v2 size = v2_sub(XZ(view->max_coordinate), XZ(view->min_coordinate));
+		result  = (v3){.x = size.x, .y = size.y};
+	}
 	return result;
 }
 
@@ -1438,7 +1443,7 @@ offset_x_plane_position(BeamformerUI *ui, BeamformerFrameView *view, BeamformerV
 function v3
 camera_for_x_plane_view(BeamformerUI *ui, BeamformerFrameView *view)
 {
-	v3 size   = x_plane_size(ui);
+	v3 size   = beamformer_frame_view_plane_size(ui, view);
 	v3 target = x_plane_position(ui);
 	f32 dist  = v2_magnitude(XY(size));
 	v3 result = v3_add(target, (v3){{dist, -0.5f * size.y * tan_f32(50.0f * PI / 180.0f), dist}});
@@ -1501,7 +1506,7 @@ render_single_xplane(BeamformerUI *ui, BeamformerFrameView *view, Variable *x_pl
 	if (ui->latest_plane[tag])
 		texture = ui->latest_plane[tag]->texture;
 
-	v3 scale = x_plane_size(ui);
+	v3 scale = beamformer_frame_view_plane_size(ui, view);
 	m4 model_transform = y_aligned_volume_transform(scale, translate, rotation_turns);
 
 	v4 colour = v4_lerp(FG_COLOUR, HOVERED_COLOUR, x_plane_shift->hover_t);
@@ -1533,8 +1538,6 @@ render_single_xplane(BeamformerUI *ui, BeamformerFrameView *view, Variable *x_pl
 function void
 render_3D_xplane(BeamformerUI *ui, BeamformerFrameView *view, u32 program)
 {
-	glBindVertexArray(ui->unit_cube_model.vao);
-
 	if (view->demo->bool32) {
 		view->rotation += dt_for_frame * 0.125f;
 		if (view->rotation > 1.0f) view->rotation -= 1.0f;
@@ -1546,6 +1549,7 @@ render_3D_xplane(BeamformerUI *ui, BeamformerFrameView *view, u32 program)
 
 	glProgramUniformMatrix4fv(program, FRAME_VIEW_VIEW_MATRIX_LOC,  1, 0, view_m.E);
 	glProgramUniformMatrix4fv(program, FRAME_VIEW_PROJ_MATRIX_LOC,  1, 0, projection.E);
+	glProgramUniform1f(program, FRAME_VIEW_BB_FRACTION_LOC, FRAME_VIEW_BB_FRACTION);
 
 	v3 model_translate = offset_x_plane_position(ui, view, BeamformerViewPlaneTag_XZ);
 	render_single_xplane(ui, view, view->x_plane_shifts + 0, program,
@@ -1556,6 +1560,24 @@ render_3D_xplane(BeamformerUI *ui, BeamformerFrameView *view, u32 program)
 	render_single_xplane(ui, view, view->x_plane_shifts + 1, program,
 	                     x_plane_rotation_for_view_plane(view, BeamformerViewPlaneTag_YZ),
 	                     model_translate, BeamformerViewPlaneTag_YZ);
+}
+
+function void
+render_2D_plane(BeamformerUI *ui, BeamformerFrameView *view, u32 program)
+{
+	m4 view_m     = m4_identity();
+	v3 size       = beamformer_frame_view_plane_size(ui, view);
+	m4 model      = m4_scale(size);
+	m4 projection = orthographic_projection(0, 1, size.y / 2, size.x / 2);
+
+	glProgramUniformMatrix4fv(program, FRAME_VIEW_MODEL_MATRIX_LOC, 1, 0, model.E);
+	glProgramUniformMatrix4fv(program, FRAME_VIEW_VIEW_MATRIX_LOC,  1, 0, view_m.E);
+	glProgramUniformMatrix4fv(program, FRAME_VIEW_PROJ_MATRIX_LOC,  1, 0, projection.E);
+
+	glProgramUniform1f(program, FRAME_VIEW_BB_FRACTION_LOC, 0);
+	glBindTextureUnit(0, view->frame->texture);
+	glDrawElements(GL_TRIANGLES, ui->unit_cube_model.elements, GL_UNSIGNED_SHORT,
+	               (void *)ui->unit_cube_model.elements_offset);
 }
 
 function b32
@@ -1602,24 +1624,19 @@ function void
 update_frame_views(BeamformerUI *ui, Rect window)
 {
 	FrameViewRenderContext *ctx = ui->frame_view_render_context;
-	b32 fbo_bound = 0, shader_3d = 0;
+	b32 fbo_bound = 0;
 	for (BeamformerFrameView *view = ui->views; view; view = view->next) {
 		if (view_update(ui, view)) {
 			if (!fbo_bound) {
 				fbo_bound = 1;
 				glBindFramebuffer(GL_FRAMEBUFFER, ctx->framebuffers[0]);
-				glUseProgram(ctx->shaders[0]);
+				glUseProgram(ctx->shader);
+				glBindVertexArray(ui->unit_cube_model.vao);
 				glEnable(GL_DEPTH_TEST);
 			}
 
-			if (view->kind == BeamformerFrameViewKind_3DXPlane) {
-				if (!shader_3d) { glUseProgram(ctx->shaders[1]); shader_3d = 1; }
-			} else {
-				if ( shader_3d) { glUseProgram(ctx->shaders[0]); shader_3d = 0; }
-			}
-
 			u32 fb      = ctx->framebuffers[0];
-			u32 program = ctx->shaders[shader_3d];
+			u32 program = ctx->shader;
 			glViewport(0, 0, view->texture_dim.w, view->texture_dim.h);
 			glProgramUniform1f(program,  FRAME_VIEW_THRESHOLD_LOC,     view->threshold.real32);
 			glProgramUniform1f(program,  FRAME_VIEW_DYNAMIC_RANGE_LOC, view->dynamic_range.real32);
@@ -1631,7 +1648,7 @@ update_frame_views(BeamformerUI *ui, Rect window)
 				glNamedFramebufferRenderbuffer(fb, GL_DEPTH_ATTACHMENT,  GL_RENDERBUFFER, ctx->renderbuffers[1]);
 				glClearNamedFramebufferfv(fb, GL_COLOR, 0, (f32 []){0, 0, 0, 0});
 				glClearNamedFramebufferfv(fb, GL_DEPTH, 0, (f32 []){1});
-				render_3D_xplane(ui, view, ctx->shaders[1]);
+				render_3D_xplane(ui, view, program);
 				/* NOTE(rnp): resolve multisampled scene */
 				glNamedFramebufferTexture(ctx->framebuffers[1], GL_COLOR_ATTACHMENT0, view->textures[0], 0);
 				glBlitNamedFramebuffer(fb, ctx->framebuffers[1], 0, 0, FRAME_VIEW_RENDER_TARGET_SIZE,
@@ -1641,9 +1658,7 @@ update_frame_views(BeamformerUI *ui, Rect window)
 				glNamedFramebufferTexture(fb, GL_DEPTH_ATTACHMENT,  view->textures[1], 0);
 				glClearNamedFramebufferfv(fb, GL_COLOR, 0, (f32 []){0, 0, 0, 0});
 				glClearNamedFramebufferfv(fb, GL_DEPTH, 0, (f32 []){1});
-				glBindVertexArray(ctx->vao);
-				glBindTextureUnit(0, view->frame->texture);
-				glDrawArrays(GL_TRIANGLES, 0, 6);
+				render_2D_plane(ui, view, program);
 			}
 			glGenerateTextureMipmap(view->textures[0]);
 			view->dirty = 0;
@@ -2227,7 +2242,7 @@ draw_3D_xplane_frame_view(BeamformerUI *ui, Arena arena, Variable *var, Rect dis
 	i32 id = -1;
 	if (hover_interaction(ui, mouse, auto_interaction(vr, var))) {
 		ray mouse_ray  = ray_for_x_plane_view(ui, view, normalized_p_in_rect(vr, mouse, 0));
-		v3  x_size     = v3_scale(x_plane_size(ui), 0.5f);
+		v3  x_size     = v3_scale(beamformer_frame_view_plane_size(ui, view), 0.5f);
 
 		f32 rotation   = x_plane_rotation_for_view_plane(view, BeamformerViewPlaneTag_XZ);
 		m4  x_rotation = m4_rotation_about_y(rotation);
@@ -2326,7 +2341,7 @@ draw_beamformer_frame_view(BeamformerUI *ui, Arena a, Variable *var, Rect displa
 		.y = pixels_per_meter.y * (frame->max_coordinate.z - max.z),
 	};
 
-	Rectangle  tex_r  = {texture_start.x, texture_start.y, texture_points.x, -texture_points.y};
+	Rectangle  tex_r  = {texture_start.x, texture_start.y, texture_points.x, texture_points.y};
 	NPatchInfo tex_np = { tex_r, 0, 0, 0, 0, NPATCH_NINE_PATCH };
 	DrawTextureNPatch(make_raylib_texture(view), tex_np, vr.rl, (Vector2){0}, 0, WHITE);
 
