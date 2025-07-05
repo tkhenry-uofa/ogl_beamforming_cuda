@@ -1,8 +1,11 @@
 /* See LICENSE for license details. */
 /* TODO(rnp):
+ * [ ]: FrameViewMode selector.
+ *      - change texture and parameters on mode switch (better integration with 3D XPlane)
+ *      - menu setup code needs to be set up to filter appropriate items for each view kind
+ * [ ]: live parameters control panel
  * [ ]: refactor: render_2d.frag should be merged into render_3d.frag
  * [ ]: refactor: ui should be in its own thread and that thread should only be concerned with the ui
- * [ ]: refactor: ui shouldn't fully destroy itself on hot reload
  * [ ]: refactor: remove all the excessive measure_texts (cell drawing, hover_interaction in params table)
  * [ ]: refactor: move remaining fragment shader stuff into ui
  * [ ]: refactor: scale table to rect
@@ -14,7 +17,6 @@
  * [ ]: enforce a minimum region size or allow regions themselves to scroll
  * [ ]: refactor: add_variable_no_link()
  * [ ]: refactor: draw_text_limited should clamp to rect and measure text itself
- * [ ]: ui leaks split beamform views on hot-reload
  * [ ]: draw the ui with a post-order traversal instead of pre-order traversal
  * [ ]: consider V_HOVER_GROUP and use that to implement submenus
  * [ ]: menu's need to support nested groups
@@ -3447,62 +3449,45 @@ ui_interact(BeamformerUI *ui, BeamformerInput *input, Rect window_rect)
 function void
 ui_init(BeamformerCtx *ctx, Arena store)
 {
-	/* NOTE(rnp): store the ui at the base of the passed in arena and use the rest for
-	 * temporary allocations within the ui. If needed we can recall this function to
-	 * completely clear the ui state. The is that if we store pointers to static data
-	 * such as embedded font data we will need to reset them when the executable reloads.
-	 * We could also build some sort of ui structure here and store it then iterate over
-	 * it to actually draw the ui. If we reload we may have changed it so we should
-	 * rebuild it */
-
 	BeamformerUI *ui = ctx->ui;
+	if (!ui) {
+		ui = ctx->ui = push_struct(&store, typeof(*ui));
+		ui->arena = store;
+		ui->frame_view_render_context = &ctx->frame_view_render_context;
+		ui->unit_cube_model = ctx->csctx.unit_cube_model;
+		ui->shared_memory   = ctx->shared_memory;
+		ui->beamformer_context = ctx;
 
-	/* NOTE(rnp): unload old data from GPU */
-	if (ui) {
-		UnloadFont(ui->font);
-		UnloadFont(ui->small_font);
+		/* TODO(rnp): build these into the binary */
+		/* TODO(rnp): better font, this one is jank at small sizes */
+		ui->font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
+		ui->small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 20, 0, 0);
 
-		for (BeamformerFrameView *view = ui->views; view; view = view->next)
-			if (view->textures[0])
-				glDeleteTextures(countof(view->textures), view->textures);
+		ui->floating_widget_sentinal.parent = &ui->floating_widget_sentinal;
+		ui->floating_widget_sentinal.next   = &ui->floating_widget_sentinal;
+
+		Variable *split = ui->regions = add_ui_split(ui, 0, &ui->arena, s8("UI Root"), 0.4,
+		                                             RSD_HORIZONTAL, ui->font);
+		split->region_split.left    = add_ui_split(ui, split, &ui->arena, s8(""), 0.475,
+		                                           RSD_VERTICAL, ui->font);
+		split->region_split.right   = add_beamformer_frame_view(ui, split, &ui->arena,
+		                                                        BeamformerFrameViewKind_Latest, 0);
+		ui_fill_live_frame_view(ui, split->region_split.right->view.child->generic);
+
+		split = split->region_split.left;
+		split->region_split.left  = add_beamformer_parameters_view(split, ctx);
+		split->region_split.right = add_ui_split(ui, split, &ui->arena, s8(""), 0.22,
+		                                         RSD_VERTICAL, ui->font);
+		split = split->region_split.right;
+
+		split->region_split.left  = add_compute_progress_bar(split, ctx);
+		split->region_split.right = add_compute_stats_view(ui, split, &ui->arena, ctx);
+
+		ctx->ui_read_params = 1;
+
+		/* NOTE(rnp): shrink variable size once this fires */
+		assert(ui->arena.beg - (u8 *)ui < KB(64));
 	}
-
-	ui = ctx->ui = push_struct(&store, typeof(*ui));
-	ui->arena = store;
-	ui->frame_view_render_context = &ctx->frame_view_render_context;
-	ui->unit_cube_model = ctx->csctx.unit_cube_model;
-	ui->shared_memory   = ctx->shared_memory;
-	ui->beamformer_context = ctx;
-
-	/* TODO: build these into the binary */
-	/* TODO(rnp): better font, this one is jank at small sizes */
-	ui->font       = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 28, 0, 0);
-	ui->small_font = LoadFontEx("assets/IBMPlexSans-Bold.ttf", 20, 0, 0);
-
-	ui->floating_widget_sentinal.parent = &ui->floating_widget_sentinal;
-	ui->floating_widget_sentinal.next   = &ui->floating_widget_sentinal;
-
-	Variable *split = ui->regions = add_ui_split(ui, 0, &ui->arena, s8("UI Root"), 0.4,
-	                                             RSD_HORIZONTAL, ui->font);
-	split->region_split.left    = add_ui_split(ui, split, &ui->arena, s8(""), 0.475,
-	                                           RSD_VERTICAL, ui->font);
-	split->region_split.right   = add_beamformer_frame_view(ui, split, &ui->arena,
-	                                                        BeamformerFrameViewKind_Latest, 0);
-	ui_fill_live_frame_view(ui, split->region_split.right->view.child->generic);
-
-	split = split->region_split.left;
-	split->region_split.left  = add_beamformer_parameters_view(split, ctx);
-	split->region_split.right = add_ui_split(ui, split, &ui->arena, s8(""), 0.22,
-	                                         RSD_VERTICAL, ui->font);
-	split = split->region_split.right;
-
-	split->region_split.left  = add_compute_progress_bar(split, ctx);
-	split->region_split.right = add_compute_stats_view(ui, split, &ui->arena, ctx);
-
-	ctx->ui_read_params = 1;
-
-	/* NOTE(rnp): shrink variable size once this fires */
-	assert(ui->arena.beg - (u8 *)ui < KB(64));
 }
 
 function void
