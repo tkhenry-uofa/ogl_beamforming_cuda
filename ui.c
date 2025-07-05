@@ -4,7 +4,6 @@
  * [ ]: scroll on 3D X-Plane should be same as scroll on normal view
  * [ ]: live parameters control panel
  * [ ]: bug: clear color should not be transparent for a frame copy
- * [ ]: bug don't modify position in draw_floating_widgets when menu wants to extend past edge of screen
  * [ ]: refactor: render_2d.frag should be merged into render_3d.frag
  * [ ]: refactor: ui should be in its own thread and that thread should only be concerned with the ui
  * [ ]: refactor: remove all the excessive measure_texts (cell drawing, hover_interaction in params table)
@@ -2684,21 +2683,26 @@ draw_ui_view_listing(BeamformerUI *ui, Variable *group, Arena arena, Rect r, v2 
 	return result;
 }
 
-function void
+function Rect
 draw_ui_view_container(BeamformerUI *ui, Variable *var, v2 mouse, Rect bounds)
 {
 	UIView *fw = &var->view;
+	Rect result = fw->rect;
 	if (fw->rect.size.x > 0 && fw->rect.size.y > 0) {
 		f32 line_height = ui->small_font.baseSize;
 
-		if (fw->rect.pos.y - line_height < 0) fw->rect.pos.y += line_height - fw->rect.pos.y;
-		f32 delta_x = (fw->rect.pos.x + fw->rect.size.x) - (bounds.size.x + bounds.pos.x);
+		f32 pad = MAX(line_height + 5, UI_REGION_PAD);
+		if (fw->rect.pos.y < pad)
+			fw->rect.pos.y += pad - fw->rect.pos.y;
+		result = fw->rect;
+
+		f32 delta_x = (result.pos.x + result.size.x) - (bounds.size.x + bounds.pos.x);
 		if (delta_x > 0) {
-			fw->rect.pos.x -= delta_x;
-			fw->rect.pos.x  = MAX(0, fw->rect.pos.x);
+			result.pos.x -= delta_x;
+			result.pos.x  = MAX(0, result.pos.x);
 		}
 
-		Rect container = fw->rect;
+		Rect container = result;
 		if (fw->close) {
 			container.pos.y  -= 5 + line_height;
 			container.size.y += 2 + line_height;
@@ -2714,9 +2718,10 @@ draw_ui_view_container(BeamformerUI *ui, Variable *var, v2 mouse, Rect bounds)
 			hover_interaction(ui, mouse, auto_interaction(container, var));
 		}
 		f32 roundness = 12.0f / fw->rect.size.y;
-		DrawRectangleRounded(fw->rect.rl, roundness / 2, 0, colour_from_normalized(BG_COLOUR));
-		DrawRectangleRoundedLinesEx(fw->rect.rl, roundness, 0, 2, BLACK);
+		DrawRectangleRounded(result.rl, roundness / 2, 0, colour_from_normalized(BG_COLOUR));
+		DrawRectangleRoundedLinesEx(result.rl, roundness, 0, 2, BLACK);
 	}
+	return result;
 }
 
 function void
@@ -2727,9 +2732,7 @@ draw_ui_view(BeamformerUI *ui, Variable *ui_view, Rect r, v2 mouse, TextSpec tex
 	UIView *view = &ui_view->view;
 
 	if (view->flags & UIViewFlag_Floating) {
-		draw_ui_view_container(ui, ui_view, mouse, r);
-		/* TODO(rnp): cleanup this jank */
-		r = view->rect;
+		r = draw_ui_view_container(ui, ui_view, mouse, r);
 	} else {
 		if (view->rect.size.h - r.size.h < view->rect.pos.h)
 			view->rect.pos.h = view->rect.size.h - r.size.h;
@@ -2875,6 +2878,7 @@ function void
 draw_floating_widgets(BeamformerUI *ui, Rect window_rect, v2 mouse)
 {
 	TextSpec text_spec = {.font = &ui->small_font, .colour = FG_COLOUR};
+	window_rect = shrink_rect_centered(window_rect, (v2){{UI_REGION_PAD, UI_REGION_PAD}});
 	for (Variable *var = ui->floating_widget_sentinal.parent;
 	     var != &ui->floating_widget_sentinal;
 	     var = var->parent)
