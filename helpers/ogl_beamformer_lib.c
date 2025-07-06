@@ -120,12 +120,9 @@ lib_release_lock(BeamformerSharedMemoryLockKind lock)
 function b32
 try_wait_sync(BeamformerSharedMemoryLockKind lock, i32 timeout_ms)
 {
-	b32 result = 0;
-	if (lib_try_lock(lock, 0) && lib_try_lock(lock, timeout_ms)) {
-		/* TODO(rnp): non-critical race condition */
-		lib_release_lock(lock);
-		result = 1;
-	}
+	b32 result = lib_try_lock(lock, 0) && lib_try_lock(lock, timeout_ms);
+	/* TODO(rnp): non-critical race condition */
+	if (result) lib_release_lock(lock);
 	return result;
 }
 
@@ -183,8 +180,19 @@ set_beamformer_pipeline(i32 *stages, i32 stages_count)
 b32
 beamformer_start_compute(i32 timeout_ms)
 {
-	b32 result = check_shared_memory() &&
-	             try_wait_sync(BeamformerSharedMemoryLockKind_DispatchCompute, timeout_ms);
+	i32 lock   = BeamformerSharedMemoryLockKind_DispatchCompute;
+	b32 result = check_shared_memory() && lib_try_lock(lock, timeout_ms);
+	return result;
+}
+
+b32
+beamformer_wait_for_compute_dispatch(i32 timeout_ms)
+{
+	i32 lock   = BeamformerSharedMemoryLockKind_DispatchCompute;
+	b32 result = check_shared_memory() && lib_try_lock(lock, timeout_ms);
+	/* NOTE(rnp): if you are calling this function you are probably about
+	 * to start some other work and it might be better to not do this... */
+	if (result) lib_release_lock(BeamformerSharedMemoryLockKind_DispatchCompute);
 	return result;
 }
 
@@ -266,11 +274,11 @@ beamformer_push_data_with_compute(void *data, u32 data_size, u32 image_plane_tag
 		result = image_plane_tag < BeamformerViewPlaneTag_Count;
 		if (result) {
 			BeamformWork *work = try_push_work_queue();
-			result = work != 0;
-			if (result) {
+			if (work) {
 				work->kind = BeamformerWorkKind_ComputeIndirect;
 				work->compute_indirect_plane = image_plane_tag;
 				beamform_work_queue_push_commit(&g_bp->external_work_queue);
+				result = beamformer_start_compute(0);
 			}
 		} else {
 			g_lib_last_error = BF_LIB_ERR_KIND_INVALID_IMAGE_PLANE;
@@ -391,11 +399,8 @@ beamform_data_synchronized(void *data, u32 data_size, u32 output_points[3], f32 
 			BeamformerExportContext export;
 			export.kind = BeamformerExportKind_BeamformedData;
 			export.size = output_size;
-			if (beamformer_export_buffer(export) &&
-			    lib_try_lock(BeamformerSharedMemoryLockKind_DispatchCompute, 0))
-			{
+			if (beamformer_export_buffer(export) && beamformer_start_compute(0))
 				result = beamformer_read_output(out_data, output_size, timeout_ms);
-			}
 		} else {
 			g_lib_last_error = BF_LIB_ERR_KIND_EXPORT_SPACE_OVERFLOW;
 		}
@@ -412,12 +417,8 @@ beamformer_compute_timings(BeamformerComputeStatsTable *output, i32 timeout_ms)
 		BeamformerExportContext export;
 		export.kind = BeamformerExportKind_Stats;
 		export.size = sizeof(*output);
-
-		if (beamformer_export_buffer(export) &&
-		    lib_try_lock(BeamformerSharedMemoryLockKind_DispatchCompute, 0))
-		{
+		if (beamformer_export_buffer(export) && beamformer_start_compute(0))
 			result = beamformer_read_output(output, sizeof(*output), timeout_ms);
-		}
 	}
 	return result;
 }

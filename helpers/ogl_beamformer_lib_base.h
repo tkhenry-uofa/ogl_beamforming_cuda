@@ -46,6 +46,9 @@ LIB_FN uint32_t beamformer_compute_timings(BeamformerComputeStatsTable *output, 
 /* NOTE: tells the beamformer to start beamforming and waits until it starts or for timeout_ms */
 LIB_FN uint32_t beamformer_start_compute(int32_t timeout_ms);
 
+/* NOTE: waits for previously queued beamform to start or for timeout_ms */
+LIB_FN uint32_t beamformer_wait_for_compute_dispatch(int32_t timeout_ms);
+
 /* NOTE: these functions only queue an upload; you must flush (old data functions or start_compute) */
 LIB_FN uint32_t beamformer_push_data(void *data, uint32_t size, int32_t timeout_ms);
 LIB_FN uint32_t beamformer_push_data_with_compute(void *data, uint32_t size, uint32_t image_plane_tag, int32_t timeout_ms);
