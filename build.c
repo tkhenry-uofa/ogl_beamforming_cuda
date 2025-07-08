@@ -15,6 +15,8 @@
 
 #include "util.h"
 
+#include "beamformer_parameters.h"
+
 #define OUTDIR    "out"
 #define OUTPUT(s) OUTDIR "/" s
 
@@ -424,7 +426,7 @@ function void
 check_rebuild_self(Arena arena, i32 argc, char *argv[])
 {
 	char *binary = shift(argv, argc);
-	if (needs_rebuild(binary, __FILE__, "os_win32.c", "os_linux.c", "util.c", "util.h")) {
+	if (needs_rebuild(binary, __FILE__, "os_win32.c", "os_linux.c", "util.c", "util.h", "beamformer_parameters.h")) {
 		Stream name_buffer = arena_stream(arena);
 		stream_append_s8s(&name_buffer, c_str_to_s8(binary), s8(".old"));
 		char *old_name = (char *)arena_stream_commit_zero(&arena, &name_buffer).data;
@@ -695,6 +697,51 @@ build_tests(Arena arena, CommandList cc)
 	return result;
 }
 
+function void
+stream_begin_matlab_enumeration(Stream *s, s8 name, s8 type)
+{
+	stream_append_s8s(s, s8("classdef "), name, s8(" < "), type, s8("\n"), s8("    enumeration\n"));
+}
+
+function void
+stream_append_matlab_enumeration_field(Stream *s, s8 field)
+{
+	stream_append_s8s(s, s8("        "), field, s8(",\n"));
+}
+
+function void
+stream_end_matlab_enumeration(Stream *s)
+{
+	stream_append_s8(s, s8("    end\nend\n"));
+}
+
+function b32
+build_matlab_bindings(Arena arena)
+{
+	b32 result = 1;
+	os_make_directory(OUTPUT("matlab"));
+
+	char *feedback_out = OUTPUT("matlab/LiveFeedbackFlags.m");
+	/* NOTE(rnp): if one file is outdated all files are outdated */
+	if (needs_rebuild(feedback_out, "beamformer_parameters.h")) {
+
+		Stream sb = arena_stream(arena);
+
+		#define X(name, flag) stream_append_matlab_enumeration_field(&sb, s8(#name " (" str(flag) ")"));
+
+		stream_begin_matlab_enumeration(&sb, s8("LiveFeedbackFlags"), s8("int32"));
+		BEAMFORMER_LIVE_IMAGING_DIRTY_FLAG_LIST
+		stream_end_matlab_enumeration(&sb);
+		result &= os_write_new_file(feedback_out, stream_to_s8(&sb));
+
+		#undef X
+
+		if (!result) build_log_failure("%s", feedback_out);
+	}
+
+	return result;
+}
+
 i32
 main(i32 argc, char *argv[])
 {
@@ -711,6 +758,7 @@ main(i32 argc, char *argv[])
 	CommandList c = cmd_base(&arena, &options);
 	if (!check_build_raylib(arena, c, options.debug)) return 1;
 
+	result &= build_matlab_bindings(arena);
 	result &= build_helper_library(arena, c);
 
 	if (options.tests) result &= build_tests(arena, c);
