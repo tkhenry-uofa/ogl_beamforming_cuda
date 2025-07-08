@@ -213,34 +213,33 @@ function FILE_WATCH_CALLBACK_FN(load_cuda_lib)
 }
 
 function BeamformerRenderModel
-render_model_from_arrays(f32 *vertices, f32 *normals, u16 *indices, u32 index_count)
+render_model_from_arrays(f32 *vertices, f32 *normals, u32 vertices_size, u16 *indices, u32 index_count)
 {
 	BeamformerRenderModel result = {0};
 
-	i32 buffer_size    = index_count * (6 * sizeof(f32) + sizeof(u16));
-	i32 indices_offset = index_count * (6 * sizeof(f32));
-	i32 vert_size      = index_count * 3 * sizeof(f32);
-	i32 ind_size       = index_count * sizeof(u16);
+	i32 buffer_size    = vertices_size * 2 + index_count * sizeof(u16);
+	i32 indices_offset = vertices_size * 2;
+	i32 indices_size   = index_count * sizeof(u16);
 
 	result.elements        = index_count;
 	result.elements_offset = indices_offset;
 
 	glCreateBuffers(1, &result.buffer);
 	glNamedBufferStorage(result.buffer, buffer_size, 0, GL_DYNAMIC_STORAGE_BIT);
-	glNamedBufferSubData(result.buffer, 0,              vert_size, vertices);
-	glNamedBufferSubData(result.buffer, vert_size,      vert_size, normals);
-	glNamedBufferSubData(result.buffer, indices_offset, ind_size,  indices);
+	glNamedBufferSubData(result.buffer, 0,              vertices_size, vertices);
+	glNamedBufferSubData(result.buffer, vertices_size,  vertices_size, normals);
+	glNamedBufferSubData(result.buffer, indices_offset, indices_size,  indices);
 
 	glCreateVertexArrays(1, &result.vao);
-	glVertexArrayVertexBuffer(result.vao, 0, result.buffer, 0,         3 * sizeof(f32));
-	glVertexArrayVertexBuffer(result.vao, 1, result.buffer, vert_size, 3 * sizeof(f32));
+	glVertexArrayVertexBuffer(result.vao, 0, result.buffer, 0,             3 * sizeof(f32));
+	glVertexArrayVertexBuffer(result.vao, 1, result.buffer, vertices_size, 3 * sizeof(f32));
 	glVertexArrayElementBuffer(result.vao, result.buffer);
 
 	glEnableVertexArrayAttrib(result.vao, 0);
 	glEnableVertexArrayAttrib(result.vao, 1);
 
 	glVertexArrayAttribFormat(result.vao, 0, 3, GL_FLOAT, 0, 0);
-	glVertexArrayAttribFormat(result.vao, 1, 3, GL_FLOAT, 0, vert_size);
+	glVertexArrayAttribFormat(result.vao, 1, 3, GL_FLOAT, 0, vertices_size);
 
 	glVertexArrayAttribBinding(result.vao, 0, 0);
 	glVertexArrayAttribBinding(result.vao, 1, 0);
@@ -513,6 +512,7 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 	};
 
 	cs->unit_cube_model = render_model_from_arrays(unit_cube_vertices, unit_cube_normals,
+	                                               sizeof(unit_cube_vertices),
 	                                               unit_cube_indices, countof(unit_cube_indices));
 }
 
