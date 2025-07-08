@@ -220,8 +220,7 @@ typedef struct {
 	f32 display_scale;
 	f32 scroll_scale;
 	v2  limits;
-	void         *store;
-	VariableType  store_type;
+	f32 *store;
 } BeamformerVariable;
 
 typedef struct {
@@ -575,10 +574,7 @@ stream_append_variable(Stream *s, Variable *var)
 	case VT_SCALED_F32:{ stream_append_f64(s, var->scaled_real32.val, 100); }break;
 	case VT_BEAMFORMER_VARIABLE:{
 		BeamformerVariable *bv = &var->beamformer_variable;
-		switch (bv->store_type) {
-		case VT_F32:{ stream_append_f64(s, *(f32 *)bv->store * bv->display_scale, 100); }break;
-		InvalidDefaultCase;
-		}
+		stream_append_f64(s, *bv->store * bv->display_scale, 100);
 	}break;
 	case VT_CYCLER:{
 		u32 index = *var->cycler.state;
@@ -1093,25 +1089,22 @@ add_floating_view(BeamformerUI *ui, Arena *arena, VariableType type, v2 at, Vari
 }
 
 function void
-fill_beamformer_variable_f32(Variable *var, s8 suffix, f32 *store, v2 limits, f32 display_scale,
-                             f32 scroll_scale)
+fill_beamformer_variable(Variable *var, s8 suffix, f32 *store, v2 limits, f32 display_scale, f32 scroll_scale)
 {
 	BeamformerVariable *bv = &var->beamformer_variable;
 	bv->suffix        = suffix;
 	bv->store         = store;
-	bv->store_type    = VT_F32;
 	bv->display_scale = display_scale;
 	bv->scroll_scale  = scroll_scale;
 	bv->limits        = limits;
 }
 
 function void
-add_beamformer_variable_f32(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, s8 suffix,
-                            f32 *store, v2 limits, f32 display_scale, f32 scroll_scale, u32 flags,
-                            Font font)
+add_beamformer_variable(BeamformerUI *ui, Variable *group, Arena *arena, s8 name, s8 suffix, f32 *store,
+                        v2 limits, f32 display_scale, f32 scroll_scale, u32 flags, Font font)
 {
 	Variable *var = add_variable(ui, group, arena, name, flags, VT_BEAMFORMER_VARIABLE, font);
-	fill_beamformer_variable_f32(var, suffix, store, limits, display_scale, scroll_scale);
+	fill_beamformer_variable(var, suffix, store, limits, display_scale, scroll_scale);
 }
 
 function Variable *
@@ -1127,53 +1120,53 @@ add_beamformer_parameters_view(Variable *parent, BeamformerCtx *ctx)
 	Variable *group  = result->view.child = add_variable(ui, result, &ui->arena, s8(""), 0,
 	                                                     VT_GROUP, ui->font);
 
-	add_beamformer_variable_f32(ui, group, &ui->arena, s8("Sampling Frequency:"), s8("[MHz]"),
-	                            &bp->sampling_frequency, (v2){0}, 1e-6, 0, 0, ui->font);
+	add_beamformer_variable(ui, group, &ui->arena, s8("Sampling Frequency:"), s8("[MHz]"),
+	                        &bp->sampling_frequency, (v2){0}, 1e-6, 0, 0, ui->font);
 
-	add_beamformer_variable_f32(ui, group, &ui->arena, s8("Center Frequency:"), s8("[MHz]"),
-	                            &bp->center_frequency, (v2){.y = 100e-6}, 1e-6, 1e5,
-	                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
+	add_beamformer_variable(ui, group, &ui->arena, s8("Center Frequency:"), s8("[MHz]"),
+	                        &bp->center_frequency, (v2){.y = 100e-6}, 1e-6, 1e5,
+	                        V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-	add_beamformer_variable_f32(ui, group, &ui->arena, s8("Speed of Sound:"), s8("[m/s]"),
-	                            &bp->speed_of_sound, (v2){.y = 1e6}, 1, 10,
-	                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
+	add_beamformer_variable(ui, group, &ui->arena, s8("Speed of Sound:"), s8("[m/s]"),
+	                        &bp->speed_of_sound, (v2){.y = 1e6}, 1, 10,
+	                        V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
 	group = add_variable_group(ui, group, &ui->arena, s8("Lateral Extent:"),
 	                           VariableGroupKind_Vector, ui->font);
 	{
-		add_beamformer_variable_f32(ui, group, &ui->arena, s8("Min:"), s8("[mm]"),
-		                            bp->output_min_coordinate + 0, v2_inf, 1e3, 0.5e-3,
-		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
+		add_beamformer_variable(ui, group, &ui->arena, s8("Min:"), s8("[mm]"),
+		                       bp->output_min_coordinate + 0, v2_inf, 1e3, 0.5e-3,
+		                       V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-		add_beamformer_variable_f32(ui, group, &ui->arena, s8("Max:"), s8("[mm]"),
-		                            bp->output_max_coordinate + 0, v2_inf, 1e3, 0.5e-3,
-		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
+		add_beamformer_variable(ui, group, &ui->arena, s8("Max:"), s8("[mm]"),
+		                        bp->output_max_coordinate + 0, v2_inf, 1e3, 0.5e-3,
+		                        V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 	}
 	group = end_variable_group(group);
 
 	group = add_variable_group(ui, group, &ui->arena, s8("Axial Extent:"),
 	                           VariableGroupKind_Vector, ui->font);
 	{
-		add_beamformer_variable_f32(ui, group, &ui->arena, s8("Min:"), s8("[mm]"),
-		                            bp->output_min_coordinate + 2, v2_inf, 1e3, 0.5e-3,
-		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
+		add_beamformer_variable(ui, group, &ui->arena, s8("Min:"), s8("[mm]"),
+		                        bp->output_min_coordinate + 2, v2_inf, 1e3, 0.5e-3,
+		                        V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
-		add_beamformer_variable_f32(ui, group, &ui->arena, s8("Max:"), s8("[mm]"),
-		                            bp->output_max_coordinate + 2, v2_inf, 1e3, 0.5e-3,
-		                            V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
+		add_beamformer_variable(ui, group, &ui->arena, s8("Max:"), s8("[mm]"),
+		                        bp->output_max_coordinate + 2, v2_inf, 1e3, 0.5e-3,
+		                        V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 	}
 	group = end_variable_group(group);
 
-	add_beamformer_variable_f32(ui, group, &ui->arena, s8("Off Axis Position:"), s8("[mm]"),
-	                            &bp->off_axis_pos, (v2){.x = -1e3, .y = 1e3}, 0.25e3,
-	                            0.5e-3, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
+	add_beamformer_variable(ui, group, &ui->arena, s8("Off Axis Position:"), s8("[mm]"),
+	                        &bp->off_axis_pos, (v2){.x = -1e3, .y = 1e3}, 0.25e3, 0.5e-3,
+	                        V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
 	read_only local_persist s8 beamform_plane_labels[] = {s8_comp("XZ"), s8_comp("YZ")};
 	add_variable_cycler(ui, group, &ui->arena, V_CAUSES_COMPUTE, ui->font, s8("Beamform Plane:"),
 	                    (u32 *)&bp->beamform_plane, beamform_plane_labels, countof(beamform_plane_labels));
 
-	add_beamformer_variable_f32(ui, group, &ui->arena, s8("F#:"), s8(""), &bp->f_number,
-	                            (v2){.y = 1e3}, 1, 0.1, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
+	add_beamformer_variable(ui, group, &ui->arena, s8("F#:"), s8(""), &bp->f_number, (v2){.y = 1e3},
+	                        1, 0.1, V_INPUT|V_TEXT|V_CAUSES_COMPUTE, ui->font);
 
 	read_only local_persist s8 true_false_labels[] = {s8_comp("False"), s8_comp("True")};
 	add_variable_cycler(ui, group, &ui->arena, V_CAUSES_COMPUTE, ui->font, s8("Interpolate:"),
@@ -1367,13 +1360,12 @@ add_live_controls_view(BeamformerUI *ui, Variable *parent, Arena *arena)
 
 	fill_variable(&lv->transmit_power, view, s8(""), V_INPUT|V_LIVE_CONTROL,
 	              VT_BEAMFORMER_VARIABLE, ui->small_font);
-	fill_beamformer_variable_f32(&lv->transmit_power, s8(""), &lip->transmit_power, (v2){{0, 1}},
-	                             100, 0.05);
+	fill_beamformer_variable(&lv->transmit_power, s8(""), &lip->transmit_power, (v2){{0, 1}}, 100, 0.05);
 
 	for (u32 i = 0; i < countof(lv->tgc_control_points); i++) {
 		Variable *v = lv->tgc_control_points + i;
 		fill_variable(v, view, s8(""), V_INPUT|V_LIVE_CONTROL, VT_BEAMFORMER_VARIABLE, ui->small_font);
-		fill_beamformer_variable_f32(v, s8(""), lip->tgc_control_points + i, (v2){{0, 1}}, 0, 0.05);
+		fill_beamformer_variable(v, s8(""), lip->tgc_control_points + i, (v2){{0, 1}}, 0, 0.05);
 	}
 
 	fill_variable(&lv->stop_button, view, s8("Stop Imaging"), V_INPUT|V_LIVE_CONTROL,
@@ -2098,14 +2090,8 @@ do_scale_bar(BeamformerUI *ui, Arena arena, Variable *scale_bar, v2 mouse, Rect 
 function v2
 draw_radio_button(BeamformerUI *ui, Variable *var, v2 at, v2 mouse, v4 base_colour, f32 size)
 {
-	assert(var->type == VT_B32 || var->type == VT_BEAMFORMER_VARIABLE);
-	b32 value;
-	if (var->type == VT_B32) {
-		value = var->bool32;
-	} else {
-		assert(var->beamformer_variable.store_type == VT_B32);
-		value = *(b32 *)var->beamformer_variable.store;
-	}
+	assert(var->type == VT_B32);
+	b32 value = var->bool32;
 
 	v2 result = (v2){.x = size, .y = size};
 	Rect hover_rect   = {.pos = at, .size = result};
@@ -3164,13 +3150,8 @@ scroll_interaction(Variable *var, f32 delta)
 	} break;
 	case VT_BEAMFORMER_VARIABLE:{
 		BeamformerVariable *bv = &var->beamformer_variable;
-		switch (bv->store_type) {
-		case VT_F32:{
-			f32 val = *(f32 *)bv->store + delta * bv->scroll_scale;
-			*(f32 *)bv->store = CLAMP(val, bv->limits.x, bv->limits.y);
-		}break;
-		InvalidDefaultCase;
-		}
+		f32 value  = *bv->store + delta * bv->scroll_scale;
+		*bv->store = CLAMP(value, bv->limits.x, bv->limits.y);
 	}break;
 	case VT_CYCLER:{
 		*var->cycler.state += delta > 0? 1 : -1;
@@ -3219,13 +3200,7 @@ end_text_input(InputState *is, Variable *var)
 	case VT_F32:{        var->real32            = value; }break;
 	case VT_BEAMFORMER_VARIABLE:{
 		BeamformerVariable *bv = &var->beamformer_variable;
-		switch (bv->store_type) {
-		case VT_F32:{
-			value = CLAMP(value / bv->display_scale, bv->limits.x, bv->limits.y);
-			*(f32 *)bv->store = value;
-		}break;
-		InvalidDefaultCase;
-		}
+		*bv->store = CLAMP(value / bv->display_scale, bv->limits.x, bv->limits.y);
 		var->hover_t = 0;
 	}break;
 	InvalidDefaultCase;
@@ -3490,9 +3465,7 @@ ui_begin_interact(BeamformerUI *ui, BeamformerInput *input, b32 scroll)
 				if (scroll) hot.kind = InteractionKind_Scroll;
 				else        hot.kind = InteractionKind_Set;
 			}break;
-			case VT_BEAMFORMER_VARIABLE:{
-				assert(hot.var->beamformer_variable.store_type == VT_F32);
-			} /* FALLTHROUGH */
+			case VT_BEAMFORMER_VARIABLE:
 			case VT_F32:
 			case VT_SCALED_F32:
 			{
@@ -3712,14 +3685,9 @@ ui_interact(BeamformerUI *ui, BeamformerInput *input, Rect window_rect)
 			switch (it->var->type) {
 			case VT_BEAMFORMER_VARIABLE:{
 				BeamformerVariable *bv = &it->var->beamformer_variable;
-				switch (bv->store_type) {
-				case VT_F32:{
-					/* TODO(rnp): vertical sliders? */
-					f32 mouse_frac    = CLAMP01((input->mouse.x - it->rect.pos.x) / it->rect.size.w);
-					*(f32 *)bv->store = bv->limits.x + mouse_frac * (bv->limits.y - bv->limits.x);
-				}break;
-				InvalidDefaultCase;
-				}
+				/* TODO(rnp): vertical sliders? */
+				f32 mouse_frac = CLAMP01((input->mouse.x - it->rect.pos.x) / it->rect.size.w);
+				*bv->store     = bv->limits.x + mouse_frac * (bv->limits.y - bv->limits.x);
 			}break;
 			case VT_X_PLANE_SHIFT:{
 				assert(it->var->parent && it->var->parent->type == VT_BEAMFORMER_FRAME_VIEW);
