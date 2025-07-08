@@ -5,6 +5,9 @@
  * [ ]: Have a method for the library caller to take ownership of a "compute context"
  * [ ]: Upload previously exported data for display. maybe this is a UI thing but doing it
  *      programatically would be nice.
+ * [ ]: Add interface for multi frame upload. RF upload already uses an offset into SM so
+ *      that part works fine. We just need a way of specify a multi frame upload. (Data must
+ *      be organized for simple offset access per frame).
  */
 
 /* X(enumarant, number, shader file name, needs header, pretty name) */
@@ -163,11 +166,17 @@ _Static_assert((sizeof(BeamformerParameters) & 15) == 0,
 
 #define BEAMFORMER_LIVE_IMAGING_DIRTY_FLAG_LIST \
 	X(ImagePlaneOffsets, 0) \
-	X(TransmitPower,     1)
+	X(TransmitPower,     1) \
+	X(TGCControlPoints,  2) \
+	X(SaveData,          3) \
+	X(StopImaging,       4)
 /* NOTE(rnp): if this exceeds 32 you need to fix the flag handling code */
 
 typedef struct {
 	uint32_t active;
+	uint32_t save_enabled;
+	uint32_t save_active;
 	float    transmit_power;
 	float    image_plane_offsets[BeamformerViewPlaneTag_Count];
+	float    tgc_control_points[8];
 } BeamformerLiveImagingParameters;
