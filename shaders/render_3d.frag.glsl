@@ -9,12 +9,14 @@ vec3 hsv2rgb(vec3 hsv)
 	return hsv.z - hsv.z * hsv.y * k;
 }
 
-bool bounding_box_test(vec3 coord, float p)
+/* NOTE(rnp): adapted from: https://iquilezles.org/articles/distfunctions */
+float sdf_wire_box_outside(vec3 p, vec3 b, float e)
 {
-	bool result = false;
-	bvec3 tests = bvec3(1 - step(vec3(p), coord) * step(coord, vec3(1 - p)));
-	if ((tests.x && tests.y) || (tests.x && tests.z) || (tests.y && tests.z))
-		result = true;
+	p = abs(p) - b;
+	vec3 q = abs(p + e) - e;
+	float result = min(min(length(max(vec3(p.x, q.y, q.z), 0.0)),
+	                       length(max(vec3(q.x, p.y, q.z), 0.0))),
+	                       length(max(vec3(q.x, q.y, p.z), 0.0)));
 	return result;
 }
 
@@ -35,11 +37,11 @@ void main()
 		smp = 1 - smp;
 	}
 
-	if (u_solid_bb || bounding_box_test(test_texture_coordinate, u_bb_fraction)) {
-		out_colour = u_bb_colour;
-	} else {
-		out_colour = vec4(smp, smp, smp, 1);
-	}
+	vec3  p = 2.0f * test_texture_coordinate - 1.0f;
+	float t = clamp(sdf_wire_box_outside(p, vec3(1.0f), u_bb_fraction) / u_bb_fraction, 0, 1);
+
+	out_colour = vec4(t * vec3(smp) + (1 - t) * u_bb_colour.xyz, 1);
+	if (u_solid_bb) out_colour = u_bb_colour;
 
 	//out_colour = vec4(textureQueryLod(u_texture, texture_coordinate).y, 0, 0, 1);
 	//out_colour = vec4(abs(normal), 1);
