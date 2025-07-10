@@ -533,4 +533,6 @@ beamformer_invalidate_shared_memory(BeamformerCtx *ctx)
 	DEBUG_DECL(if (sm->locks[lock])) {
 		os_shared_memory_region_unlock(&ctx->shared_memory, sm->locks, lock);
 	}
+
+	atomic_or_u32(&sm->live_imaging_dirty_flags, BeamformerLiveImagingDirtyFlags_StopImaging);
 }
