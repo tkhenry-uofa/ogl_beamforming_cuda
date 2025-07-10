@@ -5,7 +5,7 @@ fill_kronecker_sub_matrix(i32 *out, i32 out_stride, i32 scale, i32 *b, uv2 b_dim
 	for (u32 i = 0; i < b_dim.y; i++) {
 		for (u32 j = 0; j < b_dim.x; j += 4, b += 4) {
 			f32x4 vb = cvt_i32x4_f32x4(load_i32x4(b));
-			store_i32x4(cvt_f32x4_i32x4(mul_f32x4(vscale, vb)), out + j);
+			store_i32x4(out + j, cvt_f32x4_i32x4(mul_f32x4(vscale, vb)));
 		}
 		out += out_stride;
 	}
@@ -198,7 +198,6 @@ v2_magnitude(v2 a)
 	f32 result = sqrt_f32(a.x * a.x + a.y * a.y);
 	return result;
 }
-
 
 function v3
 cross(v3 a, v3 b)
@@ -560,5 +559,46 @@ obb_raycast(m4 obb_orientation, v3 obb_size, v3 obb_center, ray ray)
 		}
 	}
 
+	return result;
+}
+
+function v4
+hsv_to_rgb(v4 hsv)
+{
+	/* f(k(n))   = V - V*S*max(0, min(k, min(4 - k, 1)))
+	 * k(n)      = fmod((n + H * 6), 6)
+	 * (R, G, B) = (f(n = 5), f(n = 3), f(n = 1))
+	 */
+	align_as(16) f32 nval[4] = {5.0f, 3.0f, 1.0f, 0.0f};
+	f32x4 n   = load_f32x4(nval);
+	f32x4 H   = dup_f32x4(hsv.x);
+	f32x4 S   = dup_f32x4(hsv.y);
+	f32x4 V   = dup_f32x4(hsv.z);
+	f32x4 six = dup_f32x4(6);
+
+	f32x4 t   = add_f32x4(n, mul_f32x4(six, H));
+	f32x4 rem = floor_f32x4(div_f32x4(t, six));
+	f32x4 k   = sub_f32x4(t, mul_f32x4(rem, six));
+
+	t = min_f32x4(sub_f32x4(dup_f32x4(4), k), dup_f32x4(1));
+	t = max_f32x4(dup_f32x4(0), min_f32x4(k, t));
+	t = mul_f32x4(t, mul_f32x4(S, V));
+
+	v4 rgba;
+	store_f32x4(rgba.E, sub_f32x4(V, t));
+	rgba.a = hsv.a;
+	return rgba;
+}
+
+function f32
+ease_cubic(f32 t)
+{
+	f32 result;
+	if (t < 0.5f) {
+		result = 4.0f * t * t * t;
+	} else {
+		f32 c  = -2.0f * t + 2.0f;
+		result =  1.0f - c * c * c / 2.0f;
+	}
 	return result;
 }

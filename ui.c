@@ -2727,10 +2727,11 @@ draw_live_controls_view(BeamformerUI *ui, Arena arena, Variable *var, Rect r, v2
 
 	v2 at = {{text_off, r.pos.y}};
 
+	v4 hsv_power_slider = {{0.35 * ease_cubic(1.0f - lip->transmit_power), 0.65f, 0.65f, 1}};
 	at.y += draw_text(s8("Power:"), at, &text_spec).y;
 	at.x  = slider_off;
 	at.y += draw_variable_slider(ui, &lv->transmit_power, (Rect){.pos = at, .size = slider_size},
-	                             lip->transmit_power, g_colour_palette[2], mouse);
+	                             lip->transmit_power, hsv_to_rgb(hsv_power_slider), mouse);
 
 	at.x  = text_off;
 	at.y += draw_text(s8("TGC:"), at, &text_spec).y;
@@ -2759,7 +2760,7 @@ draw_live_controls_view(BeamformerUI *ui, Arena arena, Variable *var, Rect r, v2
 		if (lv->save_button_blink_t <= 0.0f) lv->save_button_blink_scale =  BLINK_SPEED;
 
 		v4 border_colour = BORDER_COLOUR;
-		if (active) border_colour = v4_lerp(border_colour, FOCUSED_COLOUR, lv->save_button_blink_t);
+		if (active) border_colour = v4_lerp(border_colour, FOCUSED_COLOUR, ease_cubic(lv->save_button_blink_t));
 
 		at.y += ui->font.baseSize * 0.25;
 		at.y += draw_fancy_button(ui, &lv->save_button, label, (Rect){.pos = at, .size = button_size},

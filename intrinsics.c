@@ -138,31 +138,43 @@ ctz_u32(u32 a)
 typedef float32x4_t f32x4;
 typedef int32x4_t   i32x4;
 
+#define add_f32x4(a, b)       vaddq_f32(a, b)
 #define cvt_i32x4_f32x4(a)    vcvtq_f32_s32(a)
 #define cvt_f32x4_i32x4(a)    vcvtq_s32_f32(a)
+#define div_f32x4(a, b)       vdivq_f32(a, b)
 #define dup_f32x4(f)          vdupq_n_f32(f)
+#define floor_f32x4(a)        vrndmq_f32(a)
 #define load_f32x4(a)         vld1q_f32(a)
 #define load_i32x4(a)         vld1q_s32(a)
+#define max_f32x4(a, b)       vmaxq_f32(a, b)
+#define min_f32x4(a, b)       vminq_f32(a, b)
 #define mul_f32x4(a, b)       vmulq_f32(a, b)
 #define set_f32x4(a, b, c, d) vld1q_f32((f32 []){d, c, b, a})
 #define sqrt_f32x4(a)         vsqrtq_f32(a)
-#define store_f32x4(a, o)     vst1q_f32(o, a)
-#define store_i32x4(a, o)     vst1q_s32(o, a)
+#define store_f32x4(o, a)     vst1q_f32(o, a)
+#define store_i32x4(o, a)     vst1q_s32(o, a)
+#define sub_f32x4(a, b)       vsubq_f32(a, b)
 
 #elif ARCH_X64
 #include <immintrin.h>
 typedef __m128  f32x4;
 typedef __m128i i32x4;
 
+#define add_f32x4(a, b)       _mm_add_ps(a, b)
 #define cvt_i32x4_f32x4(a)    _mm_cvtepi32_ps(a)
 #define cvt_f32x4_i32x4(a)    _mm_cvtps_epi32(a)
+#define div_f32x4(a, b)       _mm_div_ps(a, b)
 #define dup_f32x4(f)          _mm_set1_ps(f)
+#define floor_f32x4(a)        _mm_floor_ps(a)
 #define load_f32x4(a)         _mm_loadu_ps(a)
 #define load_i32x4(a)         _mm_loadu_si128((i32x4 *)a)
+#define max_f32x4(a, b)       _mm_max_ps(a, b)
+#define min_f32x4(a, b)       _mm_min_ps(a, b)
 #define mul_f32x4(a, b)       _mm_mul_ps(a, b)
 #define set_f32x4(a, b, c, d) _mm_set_ps(a, b, c, d)
 #define sqrt_f32x4(a)         _mm_sqrt_ps(a)
-#define store_f32x4(a, o)     _mm_storeu_ps(o, a)
-#define store_i32x4(a, o)     _mm_storeu_si128((i32x4 *)o, a)
+#define store_f32x4(o, a)     _mm_storeu_ps(o, a)
+#define store_i32x4(o, a)     _mm_storeu_si128((i32x4 *)o, a)
+#define sub_f32x4(a, b)       _mm_sub_ps(a, b)
 
 #endif
