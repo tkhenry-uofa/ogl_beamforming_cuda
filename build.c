@@ -417,10 +417,16 @@ cmd_base(Arena *a, Options *o)
 
 	if (o->debug && is_unix) cmd_append(a, &result, "-ggdb");
 
-	if (o->sanitize) {
-		if (!is_msvc) cmd_append(a, &result, "-fsanitize=address,undefined");
-		else build_log_warning("santizers not supported with this compiler");
+	/* NOTE(rnp): need to avoid w32-gcc for ci */
+	b32 sanitize = !is_msvc && (o->debug || o->sanitize) && !(is_w32 && is_gcc);
+	if (sanitize) {
+		cmd_append(a, &result, "-fsanitize=address,undefined");
+		/* NOTE(rnp): impossible to autodetect on GCC versions < 14 (ci has 13) */
+		cmd_append(a, &result, "-DASAN_ACTIVE=1");
+	} else {
+		cmd_append(a, &result, "-DASAN_ACTIVE=0");
 	}
+	if (!sanitize && o->sanitize) build_log_warning("santizers not supported with this compiler");
 
 	return result;
 }
@@ -778,6 +784,9 @@ main(i32 argc, char *argv[])
 	cmd_append(&arena, &c, OS_MAIN, OUTPUT_EXE("ogl"));
 	cmd_pdb(&arena, &c, "ogl");
 	if (options.debug) {
+		/* NOTE(rnp): (gnu) ld doesn't properly export global symbols without this */
+		if (is_gcc) cmd_append(&arena, &c, "-Wl,--export-dynamic");
+
 		if (!is_w32)  cmd_append(&arena, &c, "-Wl,-rpath,.");
 		if (!is_msvc) cmd_append(&arena, &c, "-L.");
 		cmd_append(&arena, &c, LINK_LIB("raylib"));

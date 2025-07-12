@@ -69,7 +69,7 @@ typedef struct {
 typedef struct {
 	iptr io_completion_handle;
 	u64  timer_frequency;
-} os_w32_context;
+} w32_context;
 
 typedef enum {
 	W32_IO_FILE_WATCH,
@@ -200,6 +200,7 @@ function OS_ALLOC_ARENA_FN(os_alloc_arena)
 	if (!result.beg)
 		os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
 	result.end = result.beg + capacity;
+	asan_poison_region(result.beg, result.end - result.beg);
 	return result;
 }
 
@@ -346,7 +347,7 @@ function OS_ADD_FILE_WATCH_FN(os_add_file_watch)
 		                          OPEN_EXISTING,
 		                          FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OVERLAPPED, 0);
 
-		os_w32_context *ctx = (os_w32_context *)os->context;
+		w32_context *ctx = (w32_context *)os->context;
 		w32_io_completion_event *event = push_struct(a, typeof(*event));
 		event->tag     = W32_IO_FILE_WATCH;
 		event->context = (iptr)dir;
@@ -401,4 +402,19 @@ function OS_SHARED_MEMORY_UNLOCK_REGION_FN(os_shared_memory_region_unlock)
 	assert(atomic_load_u32(locks + lock_index));
 	os_wake_waiters(locks + lock_index);
 	ReleaseSemaphore(ctx->semaphores[lock_index], 1, 0);
+}
+
+function void
+os_init(OS *os, Arena *program_memory)
+{
+	#define X(name) os->name = os_ ## name;
+	OS_FNS
+	#undef X
+
+	w32_context *ctx          = push_struct(program_memory, typeof(*ctx));
+	ctx->io_completion_handle = CreateIoCompletionPort(INVALID_FILE, 0, 0, 0);
+	ctx->timer_frequency      = os_get_timer_frequency();
+
+	os->error_handle = GetStdHandle(STD_ERROR_HANDLE);
+	os->context      = (iptr)ctx;
 }

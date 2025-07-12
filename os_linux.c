@@ -97,6 +97,7 @@ function OS_ALLOC_ARENA_FN(os_alloc_arena)
 	if (result.beg == MAP_FAILED)
 		os_fatal(s8("os_alloc_arena: couldn't allocate memory\n"));
 	result.end = result.beg + capacity;
+	asan_poison_region(result.beg, result.end - result.beg);
 	return result;
 }
 
@@ -293,4 +294,15 @@ function OS_SHARED_MEMORY_UNLOCK_REGION_FN(os_shared_memory_region_unlock)
 	assert(atomic_load_u32(lock));
 	atomic_store_u32(lock, 0);
 	os_wake_waiters(lock);
+}
+
+function void
+os_init(OS *os, Arena *program_memory)
+{
+	#define X(name) os->name = os_ ## name;
+	OS_FNS
+	#undef X
+
+	os->file_watch_context.handle = inotify_init1(IN_NONBLOCK|IN_CLOEXEC);
+	os->error_handle              = STDERR_FILENO;
 }

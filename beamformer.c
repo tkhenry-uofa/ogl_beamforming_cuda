@@ -141,8 +141,8 @@ alloc_shader_storage(BeamformerCtx *ctx, u32 rf_raw_size, Arena a)
 	}
 
 	/* NOTE(rnp): these are stubs when CUDA isn't supported */
-	ctx->cuda_lib.register_buffers(cs->rf_data_ssbos, countof(cs->rf_data_ssbos), cs->raw_data_ssbo);
-	ctx->cuda_lib.init(bp->rf_raw_dim, bp->dec_data_dim);
+	cs->cuda_lib.register_buffers(cs->rf_data_ssbos, countof(cs->rf_data_ssbos), cs->raw_data_ssbo);
+	cs->cuda_lib.init(bp->rf_raw_dim, bp->dec_data_dim);
 
 	i32  order    = (i32)cs->dec_data_dim.z;
 	i32 *hadamard = make_hadamard_transpose(&a, order);
@@ -309,11 +309,11 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformerComputeFrame *frame
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 	}break;
 	case BeamformerShaderKind_CudaDecode:{
-		ctx->cuda_lib.decode(0, output_ssbo_idx, 0);
+		csctx->cuda_lib.decode(0, output_ssbo_idx, 0);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 	}break;
 	case BeamformerShaderKind_CudaHilbert:
-		ctx->cuda_lib.hilbert(input_ssbo_idx, output_ssbo_idx);
+		csctx->cuda_lib.hilbert(input_ssbo_idx, output_ssbo_idx);
 		csctx->last_output_ssbo_index = !csctx->last_output_ssbo_index;
 		break;
 	case BeamformerShaderKind_Demodulate:{
@@ -581,7 +581,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				tex_type          = GL_SHORT;
 				tex_format        = GL_RED_INTEGER;
 				tex_element_count = countof(sm->channel_mapping);
-				ctx->cuda_lib.set_channel_mapping(sm->channel_mapping);
+				cs->cuda_lib.set_channel_mapping(sm->channel_mapping);
 			} break;
 			case BU_KIND_FOCAL_VECTORS: {
 				tex_1d            = cs->focal_vectors_texture;
@@ -745,7 +745,7 @@ coalesce_timing_table(ComputeTimingTable *t, ComputeShaderStats *stats)
 		}break;
 		case ComputeTimingInfoKind_Shader:{
 			stats->table.times[stats_index][info.shader] += (f32)info.timer_count / 1.0e9f;
-			seen_info_test |= (1 << info.shader);
+			seen_info_test |= (1u << info.shader);
 		}break;
 		case ComputeTimingInfoKind_RF_Data:{
 			stats->latest_rf_index = (stats->latest_rf_index + 1) % countof(stats->table.rf_time_deltas);

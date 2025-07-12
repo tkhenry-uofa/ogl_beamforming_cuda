@@ -78,7 +78,7 @@ dispatch_file_watch(OS *os, FileWatchDirectory *fw_dir, u8 *buf, Arena arena)
 function void
 clear_io_queue(OS *os, BeamformerInput *input, Arena arena)
 {
-	os_w32_context *ctx = (os_w32_context *)os->context;
+	w32_context *ctx = (w32_context *)os->context;
 
 	iptr handle = ctx->io_completion_handle;
 	w32_overlapped *overlapped;
@@ -102,43 +102,30 @@ clear_io_queue(OS *os, BeamformerInput *input, Arena arena)
 extern i32
 main(void)
 {
-	BeamformerCtx   ctx   = {0};
-	BeamformerInput input = {.executable_reloaded = 1};
-	Arena temp_memory = os_alloc_arena(MB(16));
-	ctx.error_stream  = stream_alloc(&temp_memory, MB(1));
+	Arena program_memory = os_alloc_arena(MB(16));
 
-	ctx.ui_backing_store        = sub_arena(&temp_memory, MB(2), KB(4));
-	ctx.os.compute_worker.arena = sub_arena(&temp_memory, MB(2), KB(4));
+	BeamformerCtx   *ctx   = 0;
+	BeamformerInput *input = 0;
 
-	#define X(name) ctx.os.name = os_ ## name;
-	OS_FNS
-	#undef X
+	setup_beamformer(&program_memory, &ctx, &input);
+	os_wake_waiters(&ctx->os.compute_worker.sync_variable);
 
-	os_w32_context w32_ctx = {0};
-	w32_ctx.io_completion_handle = CreateIoCompletionPort(INVALID_FILE, 0, 0, 0);
-	w32_ctx.timer_frequency      = os_get_timer_frequency();
-
-	ctx.os.context               = (iptr)&w32_ctx;
-	ctx.os.compute_worker.asleep = 1;
-	ctx.os.error_handle          = GetStdHandle(STD_ERROR_HANDLE);
-
-	setup_beamformer(&ctx, &input, &temp_memory);
-	os_wake_waiters(&ctx.os.compute_worker.sync_variable);
-
+	w32_context *w32_ctx = (w32_context *)ctx->os.context;
 	u64 last_time = os_get_timer_counter();
-	while (!ctx.should_exit) {
-		clear_io_queue(&ctx.os, &input, temp_memory);
+	while (!ctx->should_exit) {
+		clear_io_queue(&ctx->os, input, program_memory);
 
 		u64 now = os_get_timer_counter();
-		input.last_mouse = input.mouse;
-		input.mouse.rl   = GetMousePosition();
-		input.dt         = (f32)((f64)(now - last_time) / (f64)w32_ctx.timer_frequency);
-		last_time        = now;
+		input->last_mouse = input->mouse;
+		input->mouse.rl   = GetMousePosition();
+		input->dt         = (f32)((f64)(now - last_time) / (f64)w32_ctx->timer_frequency);
+		last_time         = now;
 
-		beamformer_frame_step(&ctx, &input);
+		beamformer_frame_step(ctx, input);
 
-		input.executable_reloaded = 0;
+		input->executable_reloaded = 0;
 	}
 
-	beamformer_invalidate_shared_memory(&ctx);
+	beamformer_invalidate_shared_memory(ctx);
+	beamformer_debug_ui_deinit(ctx);
 }

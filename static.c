@@ -9,6 +9,7 @@
 global void *debug_lib;
 
 #define DEBUG_ENTRY_POINTS \
+	X(beamformer_debug_ui_deinit)      \
 	X(beamformer_frame_step)           \
 	X(beamformer_complete_compute)     \
 	X(beamformer_compute_setup)        \
@@ -268,6 +269,7 @@ function OS_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
 			os_wait_on_value(&ctx->sync_variable, 1, (u32)-1);
 			atomic_store_u32(&ctx->asleep, 0);
 		}
+		asan_poison_region(ctx->arena.beg, ctx->arena.end - ctx->arena.beg);
 		beamformer_complete_compute(ctx->user_context, ctx->arena, ctx->gl_context);
 	}
 
@@ -277,11 +279,25 @@ function OS_THREAD_ENTRY_POINT_FN(compute_worker_thread_entry_point)
 }
 
 function void
-setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
+setup_beamformer(Arena *memory, BeamformerCtx **o_ctx, BeamformerInput **o_input)
 {
-	debug_init(&ctx->os, (iptr)input, memory);
+	Arena  compute_arena = sub_arena(memory, MB(2), KB(4));
+	Stream error         = stream_alloc(memory, MB(1));
+	Arena  ui_arena      = sub_arena(memory, MB(2), KB(4));
 
-	ctx->window_size  = (iv2){{1280, 840}};
+	BeamformerCtx   *ctx   = *o_ctx   = push_struct(memory, typeof(*ctx));
+	BeamformerInput *input = *o_input = push_struct(memory, typeof(*input));
+
+	ctx->window_size = (iv2){{1280, 840}};
+	ctx->error_stream = error;
+	ctx->ui_backing_store = ui_arena;
+	input->executable_reloaded = 1;
+
+	os_init(&ctx->os, memory);
+	ctx->os.compute_worker.arena  = compute_arena;
+	ctx->os.compute_worker.asleep = 1;
+
+	debug_init(&ctx->os, (iptr)input, memory);
 
 	SetConfigFlags(FLAG_VSYNC_HINT|FLAG_WINDOW_ALWAYS_RUN);
 	InitWindow(ctx->window_size.w, ctx->window_size.h, "OGL Beamformer");
@@ -328,13 +344,13 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 
 	glfwMakeContextCurrent(raylib_window_handle);
 
+	ComputeShaderCtx *cs = &ctx->csctx;
 	if (ctx->gl.vendor_id == GL_VENDOR_NVIDIA
-	    && load_cuda_lib(&ctx->os, s8(OS_CUDA_LIB_NAME), (iptr)&ctx->cuda_lib, *memory))
+	    && load_cuda_lib(&ctx->os, s8(OS_CUDA_LIB_NAME), (iptr)&cs->cuda_lib, *memory))
 	{
-		os_add_file_watch(&ctx->os, memory, s8(OS_CUDA_LIB_NAME), load_cuda_lib,
-		                  (iptr)&ctx->cuda_lib);
+		os_add_file_watch(&ctx->os, memory, s8(OS_CUDA_LIB_NAME), load_cuda_lib, (iptr)&cs->cuda_lib);
 	} else {
-		#define X(name, symname) if (!ctx->cuda_lib.name) ctx->cuda_lib.name = cuda_ ## name ## _stub;
+		#define X(name, symname) if (!cs->cuda_lib.name) cs->cuda_lib.name = cuda_ ## name ## _stub;
 		CUDA_LIB_FNS
 		#undef X
 	}
@@ -358,7 +374,6 @@ setup_beamformer(BeamformerCtx *ctx, BeamformerInput *input, Arena *memory)
 	);
 	#undef X
 
-	ComputeShaderCtx *cs = &ctx->csctx;
 	#define X(e, sn, f, nh, pretty_name) do if (s8(f).len > 0) {          \
 		ShaderReloadContext *src = push_struct(memory, typeof(*src)); \
 		src->beamformer_context  = ctx;                               \

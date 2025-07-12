@@ -73,47 +73,37 @@ dispatch_file_watch_events(OS *os, Arena arena)
 extern i32
 main(void)
 {
-	BeamformerCtx   ctx   = {0};
-	BeamformerInput input = {.executable_reloaded = 1};
-	Arena temp_memory = os_alloc_arena(MB(16));
-	ctx.error_stream  = stream_alloc(&temp_memory, MB(1));
+	Arena program_memory = os_alloc_arena(MB(16));
 
-	ctx.ui_backing_store        = sub_arena(&temp_memory, MB(2), KB(4));
-	ctx.os.compute_worker.arena = sub_arena(&temp_memory, MB(2), KB(4));
+	BeamformerCtx   *ctx   = 0;
+	BeamformerInput *input = 0;
 
-	#define X(name) ctx.os.name = os_ ## name;
-	OS_FNS
-	#undef X
-
-	ctx.os.file_watch_context.handle = inotify_init1(IN_NONBLOCK|IN_CLOEXEC);
-	ctx.os.compute_worker.asleep     = 1;
-	ctx.os.error_handle              = STDERR_FILENO;
-
-	setup_beamformer(&ctx, &input, &temp_memory);
-	os_wake_waiters(&ctx.os.compute_worker.sync_variable);
+	setup_beamformer(&program_memory, &ctx, &input);
+	os_wake_waiters(&ctx->os.compute_worker.sync_variable);
 
 	struct pollfd fds[1] = {{0}};
-	fds[0].fd     = (i32)ctx.os.file_watch_context.handle;
+	fds[0].fd     = (i32)ctx->os.file_watch_context.handle;
 	fds[0].events = POLLIN;
 
 	u64 last_time = os_get_timer_counter();
-	while (!ctx.should_exit) {
+	while (!ctx->should_exit) {
 		poll(fds, countof(fds), 0);
 		if (fds[0].revents & POLLIN)
-			dispatch_file_watch_events(&ctx.os, temp_memory);
+			dispatch_file_watch_events(&ctx->os, program_memory);
 
 		u64 now = os_get_timer_counter();
-		input.last_mouse = input.mouse;
-		input.mouse.rl   = GetMousePosition();
-		input.dt         = (f32)((f64)(now - last_time) / (f64)os_get_timer_frequency());
-		last_time        = now;
+		input->last_mouse = input->mouse;
+		input->mouse.rl   = GetMousePosition();
+		input->dt         = (f32)((f64)(now - last_time) / (f64)os_get_timer_frequency());
+		last_time         = now;
 
-		beamformer_frame_step(&ctx, &input);
+		beamformer_frame_step(ctx, input);
 
-		input.executable_reloaded = 0;
+		input->executable_reloaded = 0;
 	}
 
-	beamformer_invalidate_shared_memory(&ctx);
+	beamformer_invalidate_shared_memory(ctx);
+	beamformer_debug_ui_deinit(ctx);
 
 	/* NOTE: make sure this will get cleaned up after external
 	 * programs release their references */

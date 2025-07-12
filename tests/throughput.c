@@ -111,7 +111,7 @@ os_read_file_simp(char *fname)
 
 #elif OS_WINDOWS
 
-global os_w32_context os_context;
+global w32_context os_context;
 
 function void
 os_init_timer(void)

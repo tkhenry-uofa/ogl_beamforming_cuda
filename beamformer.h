@@ -107,6 +107,9 @@ typedef struct {
 	u32 focal_vectors_texture;
 	u32 hadamard_texture;
 
+	uv4 dec_data_dim;
+	u32 rf_raw_size;
+
 	f32 processing_progress;
 	b32 processing_compute;
 
@@ -114,10 +117,8 @@ typedef struct {
 
 	u32 shader_timer_ids[MAX_COMPUTE_SHADER_STAGES];
 
-	uv4 dec_data_dim;
-	u32 rf_raw_size;
-
 	BeamformerRenderModel unit_cube_model;
+	CudaLib cuda_lib;
 } ComputeShaderCtx;
 
 typedef enum {
@@ -214,6 +215,22 @@ typedef struct {
 	/* TODO(rnp): this is nasty and should be removed */
 	b32    ui_read_params;
 
+	ComputeShaderCtx  csctx;
+
+	/* TODO(rnp): ideally this would go in the UI but its hard to manage with the UI
+	 * destroying itself on hot-reload */
+	FrameViewRenderContext frame_view_render_context;
+
+	OS     os;
+	Stream error_stream;
+
+	BeamformWorkQueue *beamform_work_queue;
+
+	ComputeShaderStats *compute_shader_stats;
+	ComputeTimingTable *compute_timing_table;
+
+	SharedMemoryRegion shared_memory;
+
 	BeamformerComputeFrame beamform_frames[MAX_BEAMFORMED_SAVED_FRAMES];
 	BeamformerComputeFrame *latest_frame;
 	u32 next_render_frame_index;
@@ -222,23 +239,6 @@ typedef struct {
 	/* NOTE: this will only be used when we are averaging */
 	u32                    averaged_frame_index;
 	BeamformerComputeFrame averaged_frames[2];
-
-	ComputeShaderCtx  csctx;
-
-	/* TODO(rnp): ideally this would go in the UI but its hard to manage with the UI
-	 * destroying itself on hot-reload */
-	FrameViewRenderContext frame_view_render_context;
-
-	CudaLib cuda_lib;
-	OS      os;
-	Stream  error_stream;
-
-	BeamformWorkQueue *beamform_work_queue;
-
-	ComputeShaderStats *compute_shader_stats;
-	ComputeTimingTable *compute_timing_table;
-
-	SharedMemoryRegion shared_memory;
 } BeamformerCtx;
 
 struct ShaderReloadContext {
@@ -264,5 +264,8 @@ typedef BEAMFORMER_COMPLETE_COMPUTE_FN(beamformer_complete_compute_fn);
 #define BEAMFORMER_RELOAD_SHADER_FN(name) b32 name(OS *os, BeamformerCtx *ctx, \
                                                    ShaderReloadContext *src, Arena arena, s8 shader_name)
 typedef BEAMFORMER_RELOAD_SHADER_FN(beamformer_reload_shader_fn);
+
+#define BEAMFORMER_DEBUG_UI_DEINIT_FN(name) void name(BeamformerCtx *ctx)
+typedef BEAMFORMER_DEBUG_UI_DEINIT_FN(beamformer_debug_ui_deinit_fn);
 
 #endif /*_BEAMFORMER_H_ */
