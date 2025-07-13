@@ -21,14 +21,6 @@
 #include "beamformer.h"
 #include "beamformer_work_queue.c"
 
-#if _DEBUG
-  #if OS_LINUX
-    #include "os_linux.c"
-  #elif OS_WINDOWS
-    #include "os_win32.c"
-  #endif
-#endif
-
 global f32 dt_for_frame;
 global u32 cycle_t;
 
@@ -858,3 +850,12 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 	if (WindowShouldClose())
 		ctx->should_exit = 1;
 }
+
+/* NOTE(rnp): functions defined in these shouldn't be visible to the whole program */
+#if _DEBUG
+  #if OS_LINUX
+    #include "os_linux.c"
+  #elif OS_WINDOWS
+    #include "os_win32.c"
+  #endif
+#endif
