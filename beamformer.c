@@ -21,6 +21,14 @@
 #include "beamformer.h"
 #include "beamformer_work_queue.c"
 
+#if _DEBUG
+  #if OS_LINUX
+    #include "os_linux.c"
+  #elif OS_WINDOWS
+    #include "os_win32.c"
+  #endif
+#endif
+
 global f32 dt_for_frame;
 global u32 cycle_t;
 
@@ -458,7 +466,7 @@ shader_text_with_header(ShaderReloadContext *ctx, OS *os, Arena *arena)
 
 	s8 result = arena_stream_commit(arena, &sb);
 	if (ctx->path.len) {
-		s8 file = os->read_whole_file(arena, (c8 *)ctx->path.data);
+		s8 file = os_read_whole_file(arena, (c8 *)ctx->path.data);
 		assert(file.data == result.data + result.len);
 		result.len += file.len;
 	}
@@ -540,9 +548,8 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 		}break;
 		case BeamformerWorkKind_ExportBuffer:{
 			/* TODO(rnp): better way of handling DispatchCompute barrier */
-			post_sync_barrier(&ctx->shared_memory, BeamformerSharedMemoryLockKind_DispatchCompute,
-			                  sm->locks, ctx->os.shared_memory_region_unlock);
-			ctx->os.shared_memory_region_lock(&ctx->shared_memory, sm->locks, (i32)work->lock, (u32)-1);
+			post_sync_barrier(&ctx->shared_memory, BeamformerSharedMemoryLockKind_DispatchCompute, sm->locks);
+			os_shared_memory_region_lock(&ctx->shared_memory, sm->locks, (i32)work->lock, (u32)-1);
 			BeamformerExportContext *ec = &work->export_context;
 			switch (ec->kind) {
 			case BeamformerExportKind_BeamformedData:{
@@ -566,12 +573,11 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			}break;
 			InvalidDefaultCase;
 			}
-			ctx->os.shared_memory_region_unlock(&ctx->shared_memory, sm->locks, (i32)work->lock);
-			post_sync_barrier(&ctx->shared_memory, BeamformerSharedMemoryLockKind_ExportSync, sm->locks,
-			                  ctx->os.shared_memory_region_unlock);
+			os_shared_memory_region_unlock(&ctx->shared_memory, sm->locks, (i32)work->lock);
+			post_sync_barrier(&ctx->shared_memory, BeamformerSharedMemoryLockKind_ExportSync, sm->locks);
 		}break;
 		case BeamformerWorkKind_UploadBuffer:{
-			ctx->os.shared_memory_region_lock(&ctx->shared_memory, sm->locks, (i32)work->lock, (u32)-1);
+			os_shared_memory_region_lock(&ctx->shared_memory, sm->locks, (i32)work->lock, (u32)-1);
 			BeamformerUploadContext *uc = &work->upload_context;
 			u32 tex_type, tex_format, tex_1d = 0, buffer = 0;
 			i32 tex_element_count;
@@ -628,15 +634,14 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			}
 
 			atomic_and_u32(&sm->dirty_regions, ~(sm->dirty_regions & 1 << (work->lock - 1)));
-			ctx->os.shared_memory_region_unlock(&ctx->shared_memory, sm->locks, (i32)work->lock);
+			os_shared_memory_region_unlock(&ctx->shared_memory, sm->locks, (i32)work->lock);
 		}break;
 		case BeamformerWorkKind_ComputeIndirect:{
 			fill_frame_compute_work(ctx, work, work->compute_indirect_plane);
 			DEBUG_DECL(work->kind = BeamformerWorkKind_ComputeIndirect;)
 		} /* FALLTHROUGH */
 		case BeamformerWorkKind_Compute:{
-			post_sync_barrier(&ctx->shared_memory, work->lock, sm->locks,
-			                  ctx->os.shared_memory_region_unlock);
+			post_sync_barrier(&ctx->shared_memory, work->lock, sm->locks);
 
 			push_compute_timing_info(ctx->compute_timing_table,
 			                         (ComputeTimingInfo){.kind = ComputeTimingInfoKind_ComputeFrameBegin});
@@ -842,7 +847,7 @@ DEBUG_EXPORT BEAMFORMER_FRAME_STEP_FN(beamformer_frame_step)
 				beamform_work_queue_push_commit(ctx->beamform_work_queue);
 			atomic_store_u32(&sm->start_compute_from_main, 0);
 		}
-		ctx->os.wake_waiters(&ctx->os.compute_worker.sync_variable);
+		os_wake_waiters(&ctx->os.compute_worker.sync_variable);
 	}
 
 	draw_ui(ctx, input, ctx->latest_frame->ready_to_present ? &ctx->latest_frame->frame : 0,

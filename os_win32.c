@@ -407,10 +407,6 @@ function OS_SHARED_MEMORY_UNLOCK_REGION_FN(os_shared_memory_region_unlock)
 function void
 os_init(OS *os, Arena *program_memory)
 {
-	#define X(name) os->name = os_ ## name;
-	OS_FNS
-	#undef X
-
 	w32_context *ctx          = push_struct(program_memory, typeof(*ctx));
 	ctx->io_completion_handle = CreateIoCompletionPort(INVALID_FILE, 0, 0, 0);
 	ctx->timer_frequency      = os_get_timer_frequency();

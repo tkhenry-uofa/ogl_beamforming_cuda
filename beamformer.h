@@ -6,6 +6,15 @@
 #include <rlgl.h>
 
 #include "util.h"
+
+///////////////////
+// REQUIRED OS API
+function OS_READ_WHOLE_FILE_FN(os_read_whole_file);
+function OS_SHARED_MEMORY_LOCK_REGION_FN(os_shared_memory_region_lock);
+function OS_SHARED_MEMORY_UNLOCK_REGION_FN(os_shared_memory_region_unlock);
+function OS_WAKE_WAITERS_FN(os_wake_waiters);
+function OS_WRITE_FILE_FN(os_write_file);
+
 #include "opengl.h"
 #include "util_gl.c"
 

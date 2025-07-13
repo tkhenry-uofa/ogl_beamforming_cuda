@@ -326,15 +326,6 @@ typedef OS_SHARED_MEMORY_LOCK_REGION_FN(os_shared_memory_region_lock_fn);
 #define OS_SHARED_MEMORY_UNLOCK_REGION_FN(name) void name(SharedMemoryRegion *sm, i32 *locks, i32 lock_index)
 typedef OS_SHARED_MEMORY_UNLOCK_REGION_FN(os_shared_memory_region_unlock_fn);
 
-#define OS_FNS \
-	X(add_file_watch)              \
-	X(read_whole_file)             \
-	X(shared_memory_region_lock)   \
-	X(shared_memory_region_unlock) \
-	X(wake_waiters)                \
-	X(write_new_file)              \
-	X(write_file)
-
 #define RENDERDOC_GET_API_FN(name) b32 name(u32 version, void **out_api)
 typedef RENDERDOC_GET_API_FN(renderdoc_get_api_fn);
 
@@ -350,9 +341,6 @@ typedef align_as(16) u8 RenderDocAPI[216];
 #define RENDERDOC_END_FRAME_CAPTURE(a)   (renderdoc_end_frame_capture_fn *)  RENDERDOC_API_FN_ADDR(a, 168)
 
 struct OS {
-#define X(name) os_ ## name ## _fn *name;
-	OS_FNS
-#undef X
 	FileWatchContext file_watch_context;
 	iptr             context;
 	iptr             error_handle;

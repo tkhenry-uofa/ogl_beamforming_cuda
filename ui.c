@@ -3849,15 +3849,14 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformerFrame *frame_to_dr
 	if (ui->flush_params) {
 		i32 lock = BeamformerSharedMemoryLockKind_Parameters;
 		validate_ui_parameters(&ui->params);
-		if (ctx->os.shared_memory_region_lock(&ctx->shared_memory, sm->locks, lock, 0)) {
+		if (os_shared_memory_region_lock(&ctx->shared_memory, sm->locks, lock, 0)) {
 			mem_copy(&sm->parameters_ui, &ui->params, sizeof(ui->params));
 			ui->flush_params = 0;
 			atomic_or_u32(&sm->dirty_regions, (1 << (lock - 1)));
-			b32 dispatch = ctx->os.shared_memory_region_lock(&ctx->shared_memory, sm->locks,
-			                                                 BeamformerSharedMemoryLockKind_DispatchCompute,
-			                                                 0);
+			b32 dispatch = os_shared_memory_region_lock(&ctx->shared_memory, sm->locks,
+			                                            BeamformerSharedMemoryLockKind_DispatchCompute, 0);
 			sm->start_compute_from_main |= dispatch & ctx->latest_frame->ready_to_present;
-			ctx->os.shared_memory_region_unlock(&ctx->shared_memory, sm->locks, lock);
+			os_shared_memory_region_unlock(&ctx->shared_memory, sm->locks, lock);
 		}
 	}
 

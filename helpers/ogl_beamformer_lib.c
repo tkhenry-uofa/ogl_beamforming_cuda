@@ -4,11 +4,6 @@
 #include "../util.h"
 #include "../beamformer_parameters.h"
 #include "ogl_beamformer_lib_base.h"
-#include "../beamformer_work_queue.c"
-
-global SharedMemoryRegion      g_shared_memory;
-global BeamformerSharedMemory *g_bp;
-global BeamformerLibErrorKind  g_lib_last_error;
 
 #if OS_LINUX
 #include "../os_linux.c"
@@ -20,6 +15,12 @@ W32(iptr) OpenFileMappingA(u32, b32, c8 *);
 #else
 #error Unsupported Platform
 #endif
+
+#include "../beamformer_work_queue.c"
+
+global SharedMemoryRegion      g_shared_memory;
+global BeamformerSharedMemory *g_bp;
+global BeamformerLibErrorKind  g_lib_last_error;
 
 #if OS_LINUX
 

@@ -18,7 +18,7 @@ compile_shader(OS *os, Arena a, u32 type, s8 shader, s8 name)
 		glGetShaderInfoLog(sid, len, &out_len, (char *)(buf.data + buf.widx));
 		stream_commit(&buf, out_len);
 		glDeleteShader(sid);
-		os->write_file(os->error_handle, stream_to_s8(&buf));
+		os_write_file(os->error_handle, stream_to_s8(&buf));
 
 		sid = 0;
 	}
@@ -42,7 +42,7 @@ link_program(OS *os, Arena a, u32 *shader_ids, i32 shader_id_count)
 		glGetProgramInfoLog(result, buf.cap - buf.widx, &len, (c8 *)(buf.data + buf.widx));
 		stream_reset(&buf, len);
 		stream_append_byte(&buf, '\n');
-		os->write_file(os->error_handle, stream_to_s8(&buf));
+		os_write_file(os->error_handle, stream_to_s8(&buf));
 		glDeleteProgram(result);
 		result = 0;
 	}
@@ -66,7 +66,7 @@ load_shader(OS *os, Arena arena, s8 *shader_texts, u32 *shader_types, i32 count,
 	if (result) {
 		Stream buf = arena_stream(arena);
 		stream_append_s8s(&buf, s8("loaded: "), name, s8("\n"));
-		os->write_file(os->error_handle, stream_to_s8(&buf));
+		os_write_file(os->error_handle, stream_to_s8(&buf));
 		LABEL_GL_OBJECT(GL_PROGRAM, result, name);
 	}
 

@@ -48,7 +48,7 @@ dispatch_file_watch(OS *os, FileWatchDirectory *fw_dir, u8 *buf, Arena arena)
 			stream_append_s8(&path, s8("unknown file watch event: "));
 			stream_append_u64(&path, fni->action);
 			stream_append_byte(&path, '\n');
-			os->write_file(os->error_handle, stream_to_s8(&path));
+			os_write_file(os->error_handle, stream_to_s8(&path));
 			stream_reset(&path, 0);
 		}
 

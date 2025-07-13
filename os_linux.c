@@ -299,10 +299,6 @@ function OS_SHARED_MEMORY_UNLOCK_REGION_FN(os_shared_memory_region_unlock)
 function void
 os_init(OS *os, Arena *program_memory)
 {
-	#define X(name) os->name = os_ ## name;
-	OS_FNS
-	#undef X
-
 	os->file_watch_context.handle = inotify_init1(IN_NONBLOCK|IN_CLOEXEC);
 	os->error_handle              = STDERR_FILENO;
 }
