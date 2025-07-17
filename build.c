@@ -30,7 +30,7 @@
   #define DEBUG_FLAGS     "-O0", "-D_DEBUG", "-Wno-unused-function"
   #define OPTIMIZED_FLAGS "-O3"
   #define EXTRA_FLAGS     "-Werror", "-Wextra", "-Wshadow", "-Wconversion", "-Wno-unused-parameter", \
-                          "-Wno-error=unused-function", "-ffast-math"
+                          "-Wno-error=unused-function", "-funsafe-math-optimizations", "-fno-math-errno"
 #endif
 
 #define is_aarch64 ARCH_ARM64
