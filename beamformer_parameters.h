@@ -14,7 +14,7 @@
 #define COMPUTE_SHADERS \
 	X(CudaDecode,         0, "",         0, "CUDA Decode")   \
 	X(CudaHilbert,        1, "",         0, "CUDA Hilbert")  \
-	X(DASCompute,         2, "das",      1, "DAS")           \
+	X(DAS,                2, "das",      1, "DAS")           \
 	X(Decode,             3, "decode",   1, "Decode")        \
 	X(DecodeFloat,        4, "",         1, "Decode (F32)")  \
 	X(DecodeFloatComplex, 5, "",         1, "Decode (F32C)") \
@@ -22,9 +22,13 @@
 	X(MinMax,             7, "min_max",  0, "Min/Max")       \
 	X(Sum,                8, "sum",      0, "Sum")
 
+#define COMPUTE_SHADERS_INTERNAL \
+	COMPUTE_SHADERS \
+	X(DASFast, 9, "", 1, "DAS (Fast)")
+
 typedef enum {
 	#define X(e, n, s, h, pn) BeamformerShaderKind_##e = n,
-	COMPUTE_SHADERS
+	COMPUTE_SHADERS_INTERNAL
 	#undef X
 	BeamformerShaderKind_Render3D,
 	BeamformerShaderKind_Count,
@@ -78,12 +82,18 @@ typedef enum {
 
 #define DECODE_FIRST_PASS_UNIFORM_LOC 1
 
-#define DAS_LOCAL_SIZE_X 32
-#define DAS_LOCAL_SIZE_Y  1
-#define DAS_LOCAL_SIZE_Z 32
+#define DAS_LOCAL_SIZE_X  16
+#define DAS_LOCAL_SIZE_Y   1
+#define DAS_LOCAL_SIZE_Z  16
 
-#define DAS_VOXEL_OFFSET_UNIFORM_LOC 2
-#define DAS_CYCLE_T_UNIFORM_LOC      3
+#define DAS_FAST_LOCAL_SIZE_X 16
+#define DAS_FAST_LOCAL_SIZE_Y  1
+#define DAS_FAST_LOCAL_SIZE_Z 16
+
+#define DAS_VOXEL_OFFSET_UNIFORM_LOC  2
+#define DAS_CYCLE_T_UNIFORM_LOC       3
+#define DAS_VOXEL_MATRIX_LOC          4
+#define DAS_FAST_CHANNEL_UNIFORM_LOC  5
 
 #define MIN_MAX_MIPS_LEVEL_UNIFORM_LOC 1
 #define SUM_PRESCALE_UNIFORM_LOC       1

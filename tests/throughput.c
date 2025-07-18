@@ -357,7 +357,7 @@ execute_study(s8 study, Arena arena, Stream path, Options *options)
 	u32 shader_stage_count = 0;
 	if (options->cuda) shader_stages[shader_stage_count++] = BeamformerShaderKind_CudaDecode;
 	else               shader_stages[shader_stage_count++] = BeamformerShaderKind_Decode;
-	shader_stages[shader_stage_count++] = BeamformerShaderKind_DASCompute;
+	shader_stages[shader_stage_count++] = BeamformerShaderKind_DAS;
 
 	set_beamformer_pipeline(shader_stages, shader_stage_count);
 

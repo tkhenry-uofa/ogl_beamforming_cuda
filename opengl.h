@@ -30,6 +30,7 @@
 #define GL_R8I                             0x8231
 #define GL_R16I                            0x8233
 #define GL_DEBUG_OUTPUT_SYNCHRONOUS        0x8242
+#define GL_MAX_COMPUTE_SHARED_MEMORY_SIZE  0x8262
 #define GL_BUFFER                          0x82E0
 #define GL_PROGRAM                         0x82E2
 #define GL_MIRRORED_REPEAT                 0x8370

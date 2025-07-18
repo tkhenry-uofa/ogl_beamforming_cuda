@@ -266,13 +266,58 @@ compute_cursor_finished(struct compute_cursor *cursor)
 	return result;
 }
 
+function b32
+das_can_use_fast(BeamformerParameters *bp)
+{
+	b32 result  = !bp->coherency_weighting;
+	return result;
+}
+
+function m4
+das_voxel_transform_matrix(BeamformerParameters *bp)
+{
+	v3 min = v4_from_f32_array(bp->output_min_coordinate).xyz;
+	v3 max = v4_from_f32_array(bp->output_max_coordinate).xyz;
+	v3 extent = v3_abs(v3_sub(max, min));
+	v3 points = {{(f32)bp->output_points[0], (f32)bp->output_points[1], (f32)bp->output_points[2]}};
+
+	m4 T1 = m4_translation(v3_scale(v3_sub(points, (v3){{1.0f, 1.0f, 1.0f}}), -0.5f));
+	m4 T2 = m4_translation(v3_add(min, v3_scale(extent, 0.5f)));
+	m4 S  = m4_scale(v3_div(extent, points));
+
+	m4 R;
+	switch (bp->das_shader_id) {
+	case DASShaderKind_FORCES:
+	case DASShaderKind_UFORCES:
+	case DASShaderKind_FLASH:
+	{
+		R = m4_identity();
+		S.c[1].E[1]  = 0;
+		T2.c[3].E[1] = 0;
+	}break;
+	case DASShaderKind_HERCULES:
+	case DASShaderKind_UHERCULES:
+	case DASShaderKind_RCA_TPW:
+	case DASShaderKind_RCA_VLS:
+	{
+		R = m4_rotation_about_z(bp->beamform_plane ? 0.0f : 0.25f);
+		if (!(points.x > 1 && points.y > 1 && points.z > 1))
+			T2.c[3].E[1] = bp->off_axis_pos;
+	}break;
+	default:{ R = m4_identity(); }break;
+	}
+	m4 result = m4_mul(R, m4_mul(T2, m4_mul(S, T1)));
+	return result;
+}
+
 function void
 do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformerComputeFrame *frame, BeamformerShaderKind shader)
 {
 	ComputeShaderCtx *csctx    = &ctx->csctx;
 	BeamformerSharedMemory *sm = ctx->shared_memory.region;
 
-	glUseProgram(csctx->programs[shader]);
+	u32 program = csctx->programs[shader];
+	glUseProgram(program);
 
 	u32 output_ssbo_idx = !csctx->last_output_ssbo_index;
 	u32 input_ssbo_idx  = csctx->last_output_ssbo_index;
@@ -291,7 +336,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformerComputeFrame *frame
 			local_size_x *= 2;
 
 		iz raw_size = csctx->rf_raw_size;
-		glProgramUniform1ui(csctx->programs[shader], DECODE_FIRST_PASS_UNIFORM_LOC, 1);
+		glProgramUniform1ui(program, DECODE_FIRST_PASS_UNIFORM_LOC, 1);
 		glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo, 0,        raw_size);
 		glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 2, csctx->raw_data_ssbo, raw_size, raw_size);
 		glDispatchCompute((u32)ceil_f32((f32)csctx->dec_data_dim.x / local_size_x),
@@ -300,7 +345,7 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformerComputeFrame *frame
 
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-		glProgramUniform1ui(csctx->programs[shader], DECODE_FIRST_PASS_UNIFORM_LOC, 0);
+		glProgramUniform1ui(program, DECODE_FIRST_PASS_UNIFORM_LOC, 0);
 		glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1, csctx->raw_data_ssbo, raw_size, raw_size);
 		glDispatchCompute((u32)ceil_f32((f32)csctx->dec_data_dim.x / local_size_x),
 		                  (u32)ceil_f32((f32)csctx->dec_data_dim.y / DECODE_LOCAL_SIZE_Y),
@@ -338,42 +383,77 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformerComputeFrame *frame
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
 	}break;
-	case BeamformerShaderKind_DASCompute:{
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
-		glBindImageTexture(0, frame->frame.texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
-		glBindImageTexture(1, csctx->sparse_elements_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16I);
-		glBindImageTexture(2, csctx->focal_vectors_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
-
-		glProgramUniform1ui(csctx->programs[shader], DAS_CYCLE_T_UNIFORM_LOC, cycle_t++);
-
-		#if 1
-		/* TODO(rnp): compute max_points_per_dispatch based on something like a
-		 * transmit_count * channel_count product */
-		u32 max_points_per_dispatch = KB(64);
-		struct compute_cursor cursor = start_compute_cursor(frame->frame.dim, max_points_per_dispatch);
-		f32 percent_per_step = (f32)cursor.points_per_dispatch / (f32)cursor.total_points;
-		csctx->processing_progress = -percent_per_step;
-		for (iv3 offset = {0};
-		     !compute_cursor_finished(&cursor);
-		     offset = step_compute_cursor(&cursor))
-		{
-			csctx->processing_progress += percent_per_step;
-			/* IMPORTANT(rnp): prevents OS from coalescing and killing our shader */
-			glFinish();
-			glProgramUniform3iv(csctx->programs[shader], DAS_VOXEL_OFFSET_UNIFORM_LOC,
-			                    1, offset.E);
-			glDispatchCompute(cursor.dispatch.x, cursor.dispatch.y, cursor.dispatch.z);
+	case BeamformerShaderKind_DAS:
+	case BeamformerShaderKind_DASFast:
+	{
+		if (shader == BeamformerShaderKind_DASFast) {
+			glClearTexImage(frame->frame.texture, 0, GL_RED, GL_FLOAT, 0);
+			glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
+			glBindImageTexture(0, frame->frame.texture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RG32F);
+		} else {
+			glBindImageTexture(0, frame->frame.texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
 		}
-		#else
-		/* NOTE(rnp): use this for testing tiling code. The performance of the above path
-		 * should be the same as this path if everything is working correctly */
-		iv3 compute_dim_offset = {0};
-		glProgramUniform3iv(csctx->programs[shader], DAS_VOXEL_OFFSET_UNIFORM_LOC,
-		                    1, compute_dim_offset.E);
-		glDispatchCompute((u32)ceil_f32((f32)frame->frame.dim.x / DAS_LOCAL_SIZE_X),
-		                  (u32)ceil_f32((f32)frame->frame.dim.y / DAS_LOCAL_SIZE_Y),
-		                  (u32)ceil_f32((f32)frame->frame.dim.z / DAS_LOCAL_SIZE_Z));
-		#endif
+
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
+		glBindImageTexture(1, csctx->sparse_elements_texture, 0, GL_FALSE, 0, GL_READ_ONLY,  GL_R16I);
+		glBindImageTexture(2, csctx->focal_vectors_texture,   0, GL_FALSE, 0, GL_READ_ONLY,  GL_RG32F);
+
+		m4 voxel_transform = das_voxel_transform_matrix(&sm->parameters);
+		glProgramUniform1ui(program, DAS_CYCLE_T_UNIFORM_LOC, cycle_t++);
+		glProgramUniformMatrix4fv(program, DAS_VOXEL_MATRIX_LOC, 1, 0, voxel_transform.E);
+
+		iv3 dim = frame->frame.dim;
+		if (shader == BeamformerShaderKind_DASFast) {
+			i32 loop_end;
+			if (sm->parameters.das_shader_id == DASShaderKind_RCA_VLS ||
+			    sm->parameters.das_shader_id == DASShaderKind_RCA_TPW)
+			{
+				/* NOTE(rnp): to avoid repeatedly sampling the whole focal vectors
+				 * texture we loop over transmits for VLS/TPW */
+				loop_end = (i32)sm->parameters.dec_data_dim[2];
+			} else {
+				loop_end = (i32)sm->parameters.dec_data_dim[1];
+			}
+			f32 percent_per_step = 1.0f / (f32)loop_end;
+			csctx->processing_progress = -percent_per_step;
+			for (i32 index = 0; index < loop_end; index++) {
+				csctx->processing_progress += percent_per_step;
+				/* IMPORTANT(rnp): prevents OS from coalescing and killing our shader */
+				glFinish();
+				glProgramUniform1i(program, DAS_FAST_CHANNEL_UNIFORM_LOC, index);
+				glDispatchCompute((u32)ceil_f32((f32)dim.x / DAS_FAST_LOCAL_SIZE_X),
+				                  (u32)ceil_f32((f32)dim.y / DAS_FAST_LOCAL_SIZE_Y),
+				                  (u32)ceil_f32((f32)dim.z / DAS_FAST_LOCAL_SIZE_Z));
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			}
+		} else {
+			#if 1
+			/* TODO(rnp): compute max_points_per_dispatch based on something like a
+			 * transmit_count * channel_count product */
+			u32 max_points_per_dispatch = KB(64);
+			struct compute_cursor cursor = start_compute_cursor(dim, max_points_per_dispatch);
+			f32 percent_per_step = (f32)cursor.points_per_dispatch / (f32)cursor.total_points;
+			csctx->processing_progress = -percent_per_step;
+			for (iv3 offset = {0};
+			     !compute_cursor_finished(&cursor);
+			     offset = step_compute_cursor(&cursor))
+			{
+				csctx->processing_progress += percent_per_step;
+				/* IMPORTANT(rnp): prevents OS from coalescing and killing our shader */
+				glFinish();
+				glProgramUniform3iv(program, DAS_VOXEL_OFFSET_UNIFORM_LOC, 1, offset.E);
+				glDispatchCompute(cursor.dispatch.x, cursor.dispatch.y, cursor.dispatch.z);
+			}
+			#else
+			/* NOTE(rnp): use this for testing tiling code. The performance of the above path
+			 * should be the same as this path if everything is working correctly */
+			iv3 compute_dim_offset = {0};
+			glProgramUniform3iv(program, DAS_VOXEL_OFFSET_UNIFORM_LOC, 1, compute_dim_offset.E);
+			glDispatchCompute((u32)ceil_f32((f32)dim.x / DAS_LOCAL_SIZE_X),
+			                  (u32)ceil_f32((f32)dim.y / DAS_LOCAL_SIZE_Y),
+			                  (u32)ceil_f32((f32)dim.z / DAS_LOCAL_SIZE_Z));
+			#endif
+		}
 		glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT|GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	}break;
 	case BeamformerShaderKind_Sum:{
@@ -414,14 +494,30 @@ shader_text_with_header(ShaderReloadContext *ctx, OS *os, Arena *arena)
 	stream_append_s8s(&sb, s8("#version 460 core\n\n"), ctx->header);
 
 	switch (ctx->kind) {
-	case BeamformerShaderKind_DASCompute:{
+	case BeamformerShaderKind_DAS:
+	case BeamformerShaderKind_DASFast:
+	{
+		if (ctx->kind == BeamformerShaderKind_DAS) {
+			stream_append_s8(&sb, s8(""
+			"layout(local_size_x = " str(DAS_LOCAL_SIZE_X) ", "
+			       "local_size_y = " str(DAS_LOCAL_SIZE_Y) ", "
+			       "local_size_z = " str(DAS_LOCAL_SIZE_Z) ") in;\n\n"
+			"#define DAS_FAST 0\n\n"
+			"layout(location = " str(DAS_VOXEL_OFFSET_UNIFORM_LOC) ") uniform ivec3 u_voxel_offset;\n"
+			));
+		} else {
+			stream_append_s8(&sb, s8(""
+			"layout(local_size_x = " str(DAS_FAST_LOCAL_SIZE_X) ", "
+			       "local_size_y = " str(DAS_FAST_LOCAL_SIZE_Y) ", "
+			       "local_size_z = " str(DAS_FAST_LOCAL_SIZE_Z) ") in;\n\n"
+			"#define DAS_FAST 1\n\n"
+			"layout(location = " str(DAS_FAST_CHANNEL_UNIFORM_LOC) ") uniform int   u_channel;\n"
+			));
+		}
 		#define X(type, id, pretty, fixed_tx) "#define DAS_ID_" #type " " #id "\n"
 		stream_append_s8(&sb, s8(""
-		"layout(local_size_x = " str(DAS_LOCAL_SIZE_X) ", "
-		       "local_size_y = " str(DAS_LOCAL_SIZE_Y) ", "
-		       "local_size_z = " str(DAS_LOCAL_SIZE_Z) ") in;\n\n"
-		"layout(location = " str(DAS_VOXEL_OFFSET_UNIFORM_LOC) ") uniform ivec3 u_voxel_offset;\n"
-		"layout(location = " str(DAS_CYCLE_T_UNIFORM_LOC)      ") uniform uint  u_cycle_t;\n\n"
+		"layout(location = " str(DAS_VOXEL_MATRIX_LOC)    ") uniform mat4  u_voxel_transform;\n"
+		"layout(location = " str(DAS_CYCLE_T_UNIFORM_LOC) ") uniform uint  u_cycle_t;\n\n"
 		DAS_TYPES
 		));
 		#undef X
@@ -530,6 +626,15 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 				success &= reload_compute_shader(ctx, src, s8(" (F32)"),  arena);
 				src->kind   = BeamformerShaderKind_Decode;
 				src->shader = cs->programs + BeamformerShaderKind_Decode;
+			}
+
+			if (src->kind == BeamformerShaderKind_DAS) {
+				/* TODO(rnp): think of a better way of doing this */
+				src->kind   = BeamformerShaderKind_DASFast;
+				src->shader = cs->programs + BeamformerShaderKind_DASFast;
+				success &= reload_compute_shader(ctx, src, s8(" (Fast)"), arena);
+				src->kind   = BeamformerShaderKind_DAS;
+				src->shader = cs->programs + BeamformerShaderKind_DAS;
 			}
 
 			if (success && ctx->csctx.raw_data_ssbo) {
@@ -666,9 +771,24 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 			frame->frame.das_shader_kind = bp->das_shader_id;
 			frame->frame.compound_count  = bp->dec_data_dim[2];
 
-			b32 did_sum_shader = 0;
-			u32 stage_count    = sm->compute_stages_count;
+			u32 stage_count = sm->compute_stages_count;
 			BeamformerShaderKind *stages = sm->compute_stages;
+
+			for (u32 i = 0; i < stage_count; i++) {
+				switch (stages[i]) {
+				case BeamformerShaderKind_DASFast:{
+					if (!das_can_use_fast(bp))
+						stages[i] = BeamformerShaderKind_DAS;
+				}break;
+				case BeamformerShaderKind_DAS:{
+					if (das_can_use_fast(bp))
+						stages[i] = BeamformerShaderKind_DASFast;
+				}break;
+				default:{}break;
+				}
+			}
+
+			b32 did_sum_shader = 0;
 			for (u32 i = 0; i < stage_count; i++) {
 				did_sum_shader |= stages[i] == BeamformerShaderKind_Sum;
 				glBeginQuery(GL_TIME_ELAPSED, cs->shader_timer_ids[i]);

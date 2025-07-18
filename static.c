@@ -332,7 +332,7 @@ setup_beamformer(Arena *memory, BeamformerCtx **o_ctx, BeamformerInput **o_input
 
 	/* NOTE: default compute shader pipeline */
 	sm->compute_stages[0]    = BeamformerShaderKind_Decode;
-	sm->compute_stages[1]    = BeamformerShaderKind_DASCompute;
+	sm->compute_stages[1]    = BeamformerShaderKind_DAS;
 	sm->compute_stages_count = 2;
 
 	GLWorkerThreadContext *worker = &ctx->os.compute_worker;
@@ -387,7 +387,7 @@ setup_beamformer(Arena *memory, BeamformerCtx **o_ctx, BeamformerInput **o_input
 		os_add_file_watch(&ctx->os, memory, src->path, reload_shader_indirect, (iptr)src); \
 		reload_shader_indirect(&ctx->os, src->path, (iptr)src, *memory); \
 	} while (0);
-	COMPUTE_SHADERS
+	COMPUTE_SHADERS_INTERNAL
 	#undef X
 	os_wake_waiters(&worker->sync_variable);
 

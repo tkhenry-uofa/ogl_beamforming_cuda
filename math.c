@@ -212,6 +212,16 @@ cross(v3 a, v3 b)
 }
 
 function v3
+v3_abs(v3 a)
+{
+	v3 result;
+	result.x = ABS(a.x);
+	result.y = ABS(a.y);
+	result.z = ABS(a.z);
+	return result;
+}
+
+function v3
 v3_scale(v3 a, f32 scale)
 {
 	v3 result;
@@ -235,6 +245,16 @@ function v3
 v3_sub(v3 a, v3 b)
 {
 	v3 result = v3_add(a, v3_scale(b, -1.0f));
+	return result;
+}
+
+function v3
+v3_div(v3 a, v3 b)
+{
+	v3 result;
+	result.x = a.x / b.x;
+	result.y = a.y / b.y;
+	result.z = a.z / b.z;
 	return result;
 }
 
@@ -359,21 +379,14 @@ m4_row(m4 a, u32 row)
 	return result;
 }
 
-function v4
-m4_column(m4 a, u32 column)
-{
-	v4 result = a.c[column];
-	return result;
-}
-
 function m4
 m4_mul(m4 a, m4 b)
 {
 	m4 result;
-	for (u32 i = 0; i < countof(result.E); i++) {
-		u32 base = i / 4;
-		u32 sub  = i % 4;
-		result.E[i] = v4_dot(m4_row(a, base), m4_column(b, sub));
+	for (u32 i = 0; i < 4; i++) {
+		for (u32 j = 0; j < 4; j++) {
+			result.c[i].E[j] = v4_dot(m4_row(a, j), b.c[i]);
+		}
 	}
 	return result;
 }
@@ -414,10 +427,10 @@ function m4
 m4_translation(v3 delta)
 {
 	m4 result;
-	result.c[0] = (v4){{1, 0, 0, delta.x}};
-	result.c[1] = (v4){{0, 1, 0, delta.y}};
-	result.c[2] = (v4){{0, 0, 1, delta.z}};
-	result.c[3] = (v4){{0, 0, 0, 1}};
+	result.c[0] = (v4){{1, 0, 0, 0}};
+	result.c[1] = (v4){{0, 1, 0, 0}};
+	result.c[2] = (v4){{0, 0, 1, 0}};
+	result.c[3] = (v4){{delta.x, delta.y, delta.z, 1}};
 	return result;
 }
 
@@ -429,6 +442,19 @@ m4_scale(v3 scale)
 	result.c[1] = (v4){{0,       scale.y, 0,       0}};
 	result.c[2] = (v4){{0,       0,       scale.z, 0}};
 	result.c[3] = (v4){{0,       0,       0,       1}};
+	return result;
+}
+
+function m4
+m4_rotation_about_z(f32 turns)
+{
+	f32 sa = sin_f32(turns * 2 * PI);
+	f32 ca = cos_f32(turns * 2 * PI);
+	m4 result;
+	result.c[0] = (v4){{ca, -sa, 0, 0}};
+	result.c[1] = (v4){{sa,  ca, 0, 0}};
+	result.c[2] = (v4){{0,    0, 1, 0}};
+	result.c[3] = (v4){{0,    0, 0, 1}};
 	return result;
 }
 
@@ -448,10 +474,10 @@ m4_rotation_about_y(f32 turns)
 function m4
 y_aligned_volume_transform(v3 extent, v3 translation, f32 rotation_turns)
 {
-	m4 S = m4_scale(extent);
-	m4 R = m4_rotation_about_y(rotation_turns);
 	m4 T = m4_translation(translation);
-	m4 result = m4_mul(m4_mul(R, S), T);
+	m4 R = m4_rotation_about_y(rotation_turns);
+	m4 S = m4_scale(extent);
+	m4 result = m4_mul(T, m4_mul(R, S));
 	return result;
 }
 

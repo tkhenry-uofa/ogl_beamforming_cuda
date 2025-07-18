@@ -63,7 +63,7 @@ void main()
 		out_rf_data[rf_offset + transmit] = rf_data[in_off / RF_SAMPLES_PER_INDEX];
 	} else {
 		/* NOTE(rnp): stores output as a 3D matrix with ordering of {samples, channels, transmits} */
-		uint out_off = dec_data_dim.x * dec_data_dim.y * transmit + dec_data_dim.x * channel + time_sample;
+		uint out_off = dec_data_dim.x * dec_data_dim.z * channel + dec_data_dim.x * transmit + time_sample;
 
 		vec4 result = vec4(0);
 		switch (decode) {

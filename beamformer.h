@@ -203,6 +203,7 @@ struct BeamformerComputeFrame {
 	X(MAX_TEXTURE_SIZE,                max_2d_texture_dim,              "")      \
 	X(MAX_3D_TEXTURE_SIZE,             max_3d_texture_dim,              "")      \
 	X(MAX_SHADER_STORAGE_BLOCK_SIZE,   max_ssbo_size,                   "")      \
+	X(MAX_COMPUTE_SHARED_MEMORY_SIZE,  max_shared_memory_size,          "")      \
 	X(MAX_UNIFORM_BLOCK_SIZE,          max_ubo_size,                    "")      \
 	X(MAX_SERVER_WAIT_TIMEOUT,         max_server_wait_time,            " [ns]")
 

@@ -2589,7 +2589,7 @@ draw_compute_stats_bar_view(BeamformerUI *ui, Arena arena, ComputeShaderStats *s
 	}
 
 	#define X(e, n, s, h, pn) [BeamformerShaderKind_##e] = s8_comp(pn ": "),
-	read_only local_persist s8 labels[BeamformerShaderKind_ComputeCount] = {COMPUTE_SHADERS};
+	read_only local_persist s8 labels[BeamformerShaderKind_ComputeCount] = {COMPUTE_SHADERS_INTERNAL};
 	#undef X
 
 	v2 result = table_extent(table, arena, ts.font);
@@ -2686,7 +2686,7 @@ draw_compute_stats_view(BeamformerUI *ui, Arena arena, Variable *view, Rect r, v
 	switch (csv->kind) {
 	case ComputeStatsViewKind_Average:{
 		#define X(e, n, s, h, pn) [BeamformerShaderKind_##e] = s8_comp(pn ":"),
-		read_only local_persist s8 labels[BeamformerShaderKind_ComputeCount] = {COMPUTE_SHADERS};
+		read_only local_persist s8 labels[BeamformerShaderKind_ComputeCount] = {COMPUTE_SHADERS_INTERNAL};
 		#undef X
 		da_reserve(&arena, table, stages);
 		for (u32 i = 0; i < stages; i++) {
