@@ -341,7 +341,7 @@ os_spawn_process(CommandList *cmd, Stream sb)
 	} w32_process_info = {0};
 
 	/* TODO(rnp): warn if we need to clamp last string */
-	sb.widx = MIN(sb.widx, KB(32) - 1);
+	sb.widx = MIN(sb.widx, (i32)(KB(32) - 1));
 	if (sb.widx < sb.cap) sb.data[sb.widx]     = 0;
 	else                  sb.data[sb.widx - 1] = 0;
 
@@ -358,7 +358,7 @@ os_spawn_process(CommandList *cmd, Stream sb)
 function b32
 os_wait_close_process(iptr handle)
 {
-	b32 result = WaitForSingleObject(handle, -1) != 0xFFFFFFFFUL;
+	b32 result = WaitForSingleObject(handle, (u32)-1) != 0xFFFFFFFFUL;
 	if (result) {
 		u32 status;
 		GetExitCodeProcess(handle, &status);
