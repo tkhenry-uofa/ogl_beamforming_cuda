@@ -716,7 +716,7 @@ stream_begin_matlab_enumeration(Stream *s, s8 name, s8 type)
 function void
 stream_append_matlab_enumeration_field(Stream *s, s8 field)
 {
-	stream_append_s8s(s, s8("        "), field, s8(",\n"));
+	stream_append_s8s(s, s8("        "), field, s8("\n"));
 }
 
 function void
@@ -734,19 +734,28 @@ build_matlab_bindings(Arena arena)
 	char *feedback_out = OUTPUT("matlab/LiveFeedbackFlags.m");
 	/* NOTE(rnp): if one file is outdated all files are outdated */
 	if (needs_rebuild(feedback_out, "beamformer_parameters.h")) {
-
 		Stream sb = arena_stream(arena);
+		b32 write_result;
 
 		#define X(name, flag) stream_append_matlab_enumeration_field(&sb, s8(#name " (" str(flag) ")"));
-
 		stream_begin_matlab_enumeration(&sb, s8("LiveFeedbackFlags"), s8("int32"));
 		BEAMFORMER_LIVE_IMAGING_DIRTY_FLAG_LIST
 		stream_end_matlab_enumeration(&sb);
-		result &= os_write_new_file(feedback_out, stream_to_s8(&sb));
-
+		write_result = os_write_new_file(feedback_out, stream_to_s8(&sb));
 		#undef X
+		if (!write_result) build_log_failure("%s", feedback_out);
+		result &= write_result;
 
-		if (!result) build_log_failure("%s", feedback_out);
+		sb.widx = 0;
+		char *shader_stages_out = OUTPUT("matlab/OGLShaderStage.m");
+		#define X(name, n, ...) stream_append_matlab_enumeration_field(&sb, s8(#name " (" str(n) ")"));
+		stream_begin_matlab_enumeration(&sb, s8("OGLShaderStage"), s8("int32"));
+		COMPUTE_SHADERS
+		stream_end_matlab_enumeration(&sb);
+		write_result = os_write_new_file(shader_stages_out, stream_to_s8(&sb));
+		#undef X
+		if (!write_result) build_log_failure("%s", shader_stages_out);
+		result &= write_result;
 	}
 
 	return result;
