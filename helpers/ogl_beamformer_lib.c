@@ -118,15 +118,6 @@ lib_release_lock(BeamformerSharedMemoryLockKind lock)
 	os_shared_memory_region_unlock(&g_shared_memory, g_bp->locks, (i32)lock);
 }
 
-function b32
-try_wait_sync(BeamformerSharedMemoryLockKind lock, i32 timeout_ms)
-{
-	b32 result = lib_try_lock(lock, 0) && lib_try_lock(lock, timeout_ms);
-	/* TODO(rnp): non-critical race condition */
-	if (result) lib_release_lock(lock);
-	return result;
-}
-
 u32
 beamformer_get_api_version(void)
 {
@@ -356,7 +347,7 @@ function b32
 beamformer_export_buffer(BeamformerExportContext export_context)
 {
 	BeamformWork *work = try_push_work_queue();
-	b32 result = work != 0;
+	b32 result = work && lib_try_lock(BeamformerSharedMemoryLockKind_ExportSync, 0);
 	if (result) {
 		work->export_context = export_context;
 		work->kind = BeamformerWorkKind_ExportBuffer;
@@ -370,7 +361,8 @@ function b32
 beamformer_read_output(void *out, uz size, i32 timeout_ms)
 {
 	b32 result = 0;
-	if (try_wait_sync(BeamformerSharedMemoryLockKind_ExportSync, timeout_ms)) {
+	if (lib_try_lock(BeamformerSharedMemoryLockKind_ExportSync, timeout_ms)) {
+		lib_release_lock(BeamformerSharedMemoryLockKind_ExportSync);
 		if (lib_try_lock(BeamformerSharedMemoryLockKind_ScratchSpace, 0)) {
 			mem_copy(out, (u8 *)g_bp + BEAMFORMER_SCRATCH_OFF, size);
 			lib_release_lock(BeamformerSharedMemoryLockKind_ScratchSpace);
@@ -400,8 +392,14 @@ beamform_data_synchronized(void *data, u32 data_size, i32 output_points[3], f32 
 			BeamformerExportContext export;
 			export.kind = BeamformerExportKind_BeamformedData;
 			export.size = (u32)output_size;
-			if (beamformer_export_buffer(export) && beamformer_start_compute(0))
+			if (beamformer_export_buffer(export)) {
+				/* NOTE(rnp): if this fails it just means that the work from push_data hasn't
+				 * started yet. This is here to catch the other case where the work started
+				 * and finished before we finished queuing the export work item */
+				beamformer_start_compute(0);
+
 				result = beamformer_read_output(out_data, output_size, timeout_ms);
+			}
 		} else {
 			g_lib_last_error = BF_LIB_ERR_KIND_EXPORT_SPACE_OVERFLOW;
 		}

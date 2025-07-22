@@ -277,8 +277,8 @@ function OS_SHARED_MEMORY_LOCK_REGION_FN(os_shared_memory_region_lock)
 {
 	b32 result = 0;
 	for (;;) {
-		i32 current = atomic_load_u32(locks + lock_index);
-		if (current == 0 && atomic_cas_u32(locks + lock_index, &current, 1)) {
+		i32 current = 0;
+		if (atomic_cas_u32(locks + lock_index, &current, 1)) {
 			result = 1;
 			break;
 		}
