@@ -159,9 +159,9 @@ typedef enum {
 
 #define BEAMFORMER_PARAMS_HEAD \
 	X(xdc_transform,     float,    [16], mat4,       , "/* IMPORTANT: column major order */")                                      \
-	X(dec_data_dim,      uint32_t, [4] , uvec4,      , "/* Samples * Channels * Acquisitions; last element ignored */")            \
+	X(dec_data_dim,      uint32_t, [4] , ivec4,      , "/* Samples * Channels * Acquisitions; last element ignored */")            \
 	X(xdc_element_pitch, float,    [2] , vec2,       , "/* [m] Transducer Element Pitch {row, col} */")                            \
-	X(rf_raw_dim,        uint32_t, [2] , uvec2,      , "/* Raw Data Dimensions */")                                                \
+	X(rf_raw_dim,        uint32_t, [2] , ivec2,      , "/* Raw Data Dimensions */")                                                \
 	X(transmit_mode,     int32_t,      , int,        , "/* Method/Orientation of Transmit */")                                     \
 	X(decode,            uint32_t,     , uint,       , "/* Decode or just reshape data */")                                        \
 	X(das_shader_id,     uint32_t,     , uint,       , "")                                                                         \
