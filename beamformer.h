@@ -165,6 +165,8 @@ typedef struct {
 	uv3 decode_dispatch;
 	uv3 demod_dispatch;
 
+	iz  rf_size;
+
 	u32 ubos[BeamformerComputeUBOKind_Count];
 
 	#define X(k, type, name) type name ##_ubo_data;

@@ -471,6 +471,8 @@ plan_compute_pipeline(SharedMemoryRegion *os_sm, BeamformerComputePipeline *cp, 
 		bp->sampling_frequency /= (f32)mp->decimation_rate * (f32)time_compression;
 		bp->dec_data_dim[0]    /= mp->decimation_rate * time_compression;
 	}
+	/* TODO(rnp): if IQ (* 8) else (* 4) */
+	cp->rf_size = (iz)(bp->dec_data_dim[0] * bp->dec_data_dim[1] * bp->dec_data_dim[2] * 8);
 }
 
 function m4
@@ -606,8 +608,8 @@ do_compute_shader(BeamformerCtx *ctx, Arena arena, BeamformerComputeFrame *frame
 			glBindImageTexture(0, frame->frame.texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RG32F);
 		}
 
-		glBindBufferBase(GL_UNIFORM_BUFFER,        0, cp->ubos[BeamformerComputeUBOKind_DAS]);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx]);
+		glBindBufferBase(GL_UNIFORM_BUFFER, 0, cp->ubos[BeamformerComputeUBOKind_DAS]);
+		glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1, csctx->rf_data_ssbos[input_ssbo_idx], 0, cp->rf_size);
 		glBindImageTexture(1, csctx->sparse_elements_texture, 0, GL_FALSE, 0, GL_READ_ONLY,  GL_R16I);
 		glBindImageTexture(2, csctx->focal_vectors_texture,   0, GL_FALSE, 0, GL_READ_ONLY,  GL_RG32F);
 
