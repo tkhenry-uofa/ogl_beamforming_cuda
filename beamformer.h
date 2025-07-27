@@ -247,28 +247,25 @@ typedef struct {
 	ComputeTimingInfo buffer[4096];
 } ComputeTimingTable;
 
-typedef struct BeamformerFrame BeamformerFrame;
 struct BeamformerFrame {
-	iv3 dim;
 	u32 texture;
+	b32 ready_to_present;
+
+	iv3 dim;
+	i32 mips;
 
 	/* NOTE: for use when displaying either prebeamformed frames or on the current frame
 	 * when we intend to recompute on the next frame */
 	v4  min_coordinate;
 	v4  max_coordinate;
 
-	i32 mips;
-	DASShaderKind das_shader_kind;
-	u32 compound_count;
-	u32 id;
+	// metadata
+	u32                    id;
+	u32                    compound_count;
+	DASShaderKind          das_shader_kind;
+	BeamformerViewPlaneTag view_plane_tag;
 
 	BeamformerFrame *next;
-};
-
-struct BeamformerComputeFrame {
-	BeamformerFrame frame;
-	b32             ready_to_present;
-	BeamformerViewPlaneTag view_plane_tag;
 };
 
 #define GL_PARAMETERS \
@@ -317,14 +314,14 @@ typedef struct {
 
 	SharedMemoryRegion shared_memory;
 
-	BeamformerComputeFrame beamform_frames[MAX_BEAMFORMED_SAVED_FRAMES];
-	BeamformerComputeFrame *latest_frame;
+	BeamformerFrame beamform_frames[MAX_BEAMFORMED_SAVED_FRAMES];
+	BeamformerFrame *latest_frame;
 	u32 next_render_frame_index;
 	u32 display_frame_index;
 
 	/* NOTE: this will only be used when we are averaging */
-	u32                    averaged_frame_index;
-	BeamformerComputeFrame averaged_frames[2];
+	u32             averaged_frame_index;
+	BeamformerFrame averaged_frames[2];
 } BeamformerCtx;
 
 struct ShaderReloadContext {

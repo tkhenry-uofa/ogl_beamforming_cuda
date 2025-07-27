@@ -3847,7 +3847,7 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformerFrame *frame_to_dr
 	if (ui->flush_params) {
 		i32 lock = BeamformerSharedMemoryLockKind_Parameters;
 		validate_ui_parameters(&ui->params);
-		if (os_shared_memory_region_lock(&ctx->shared_memory, sm->locks, lock, 0)) {
+		if (ctx->latest_frame && os_shared_memory_region_lock(&ctx->shared_memory, sm->locks, lock, 0)) {
 			mem_copy(&sm->parameters_ui, &ui->params, sizeof(ui->params));
 			ui->flush_params = 0;
 			atomic_or_u32(&sm->dirty_regions, (1 << (lock - 1)));
@@ -3862,9 +3862,8 @@ draw_ui(BeamformerCtx *ctx, BeamformerInput *input, BeamformerFrame *frame_to_dr
 	update_frame_views(ui, window_rect);
 
 	BeginDrawing();
-		f32 one = 1;
 		glClearNamedFramebufferfv(0, GL_COLOR, 0, BG_COLOUR.E);
-		glClearNamedFramebufferfv(0, GL_DEPTH, 0, &one);
+		glClearNamedFramebufferfv(0, GL_DEPTH, 0, (f32 []){1});
 
 		draw_ui_regions(ui, window_rect, input->mouse);
 		draw_floating_widgets(ui, window_rect, input->mouse);
