@@ -151,6 +151,18 @@ beamformer_get_last_error_string(void)
 	return beamformer_error_string(beamformer_get_last_error());
 }
 
+b32
+beamformer_set_global_timeout(i32 timeout_ms)
+{
+	b32 result = timeout_ms >= -1;
+	if (result) {
+		g_beamformer_library_context.timeout_ms = timeout_ms;
+	} else {
+		g_beamformer_library_context.last_error = BF_LIB_ERR_KIND_INVALID_TIMEOUT;
+	}
+	return result;
+}
+
 function b32
 validate_pipeline(i32 *shaders, i32 shader_count, BeamformerDataKind data_kind)
 {
