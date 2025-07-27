@@ -2619,7 +2619,7 @@ draw_compute_stats_bar_view(BeamformerUI *ui, Arena arena, ComputeShaderStats *s
 		rect.size = (v2){.y = 0.7f * cr.size.h};
 		for (i32 i = 0; i < stages_count; i++) {
 			rect.size.w = total_width * stats->table.times[frame_index][stages[i]] / total_times[row_index];
-			Color color = colour_from_normalized(g_colour_palette[stages[i] % countof(g_colour_palette)]);
+			Color color = colour_from_normalized(g_colour_palette[i % countof(g_colour_palette)]);
 			DrawRectangleRec(rect.rl, color);
 			if (point_in_rect(mouse, rect)) {
 				text_pos   = v2_add(rect.pos, (v2){.x = table->cell_pad.w});
