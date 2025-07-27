@@ -143,20 +143,6 @@ typedef enum {
 	X(interpolate,           uint32_t,    , bool,    , "/* Perform Cubic Interpolation of RF Samples */")                    \
 	X(coherency_weighting,   uint32_t,    , bool,    , "/* Apply coherency weighting to output data */")
 
-#define BEAMFORMER_PARAMS_HEAD_V0 \
-	X(channel_mapping,   uint16_t, [256], uvec4, [32], "/* Transducer Channel to Verasonics Channel */")                           \
-	X(uforces_channels,  uint16_t, [256], uvec4, [32], "/* Channels used for virtual UFORCES elements */")                         \
-	X(focal_depths,      float,    [256], vec4,  [64], "/* [m] Focal Depths for each transmit of a RCA imaging scheme*/")          \
-	X(transmit_angles,   float,    [256], vec4,  [64], "/* [degrees] Transmit Angles for each transmit of a RCA imaging scheme*/") \
-	X(xdc_transform,     float,    [16] , mat4,      , "/* IMPORTANT: column major order */")                                      \
-	X(dec_data_dim,      uint32_t, [4]  , uvec4,     , "/* Samples * Channels * Acquisitions; last element ignored */")            \
-	X(xdc_element_pitch, float,    [2]  , vec2,      , "/* [m] Transducer Element Pitch {row, col} */")                            \
-	X(rf_raw_dim,        uint32_t, [2]  , uvec2,     , "/* Raw Data Dimensions */")                                                \
-	X(transmit_mode,     int32_t,       , int,       , "/* Method/Orientation of Transmit */")                                     \
-	X(decode,            uint32_t,      , uint,      , "/* Decode or just reshape data */")                                        \
-	X(das_shader_id,     uint32_t,      , uint,      , "")                                                                         \
-	X(time_offset,       float,         , float,     , "/* pulse length correction time [s] */")
-
 #define BEAMFORMER_PARAMS_HEAD \
 	X(xdc_transform,     float,    [16], mat4,       , "/* IMPORTANT: column major order */")                                      \
 	X(dec_data_dim,      uint32_t, [4] , ivec4,      , "/* Samples * Channels * Acquisitions; last element ignored */")            \
@@ -176,13 +162,6 @@ typedef enum {
 typedef struct { BEAMFORMER_UI_PARAMS }    BeamformerUIParameters;
 typedef struct { BEAMFORMER_PARAMS_HEAD }  BeamformerParametersHead;
 typedef struct { BEAMFORMER_PARAMS_TAIL }  BeamformerParametersTail;
-
-typedef struct {
-	BEAMFORMER_PARAMS_HEAD_V0
-	BEAMFORMER_UI_PARAMS
-	BEAMFORMER_PARAMS_TAIL
-	float _pad[1];
-} BeamformerParametersV0;
 
 /* NOTE: This struct follows the OpenGL std140 layout. DO NOT modify unless you have
  * read and understood the rules, particulary with regards to _member alignment_ */

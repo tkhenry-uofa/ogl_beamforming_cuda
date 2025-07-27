@@ -88,9 +88,3 @@ LIB_FN uint32_t beamformer_create_kaiser_low_pass_filter(float beta, float cutof
 LIB_FN int32_t  beamformer_live_parameters_get_dirty_flag(void);
 LIB_FN uint32_t beamformer_set_live_parameters(BeamformerLiveImagingParameters *);
 LIB_FN BeamformerLiveImagingParameters *beamformer_get_live_parameters(void);
-
-//////////////
-// Legacy API
-LIB_FN uint32_t set_beamformer_parameters(BeamformerParametersV0 *);
-LIB_FN uint32_t set_beamformer_pipeline(int32_t *stages, int32_t stages_count);
-LIB_FN uint32_t send_data(void *data, uint32_t data_size);

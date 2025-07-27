@@ -203,23 +203,6 @@ beamformer_push_pipeline(i32 *shaders, i32 shader_count, BeamformerDataKind data
 }
 
 b32
-set_beamformer_pipeline(i32 *stages, i32 stages_count)
-{
-	BeamformerDataKind data_kind = BeamformerDataKind_Int16;
-	switch (stages[0]) {
-	case BeamformerShaderKind_DecodeFloat:{
-		data_kind = BeamformerDataKind_Float32;
-	}break;
-	case BeamformerShaderKind_DecodeFloatComplex:{
-		data_kind = BeamformerDataKind_Float32Complex;
-	}break;
-	default:{}break;
-	}
-	b32 result = beamformer_push_pipeline(stages, stages_count, data_kind, 0);
-	return result;
-}
-
-b32
 beamformer_create_kaiser_low_pass_filter(f32 beta, f32 cutoff_frequency, i16 length, u8 slot)
 {
 	b32 result = 0;
@@ -381,31 +364,6 @@ beamformer_push_parameters_head(BeamformerParametersHead *bp, i32 timeout_ms)
 	b32 result = locked_region_upload((u8 *)g_bp + offsetof(BeamformerSharedMemory, parameters_head),
 	                                  bp, sizeof(*bp), BeamformerSharedMemoryLockKind_Parameters,
 	                                  0, timeout_ms);
-	return result;
-}
-
-b32
-set_beamformer_parameters(BeamformerParametersV0 *new_bp)
-{
-	b32 result = 1;
-	result &= beamformer_push_channel_mapping((i16 *)new_bp->channel_mapping,
-	                                          countof(new_bp->channel_mapping), 0);
-	result &= beamformer_push_sparse_elements((i16 *)new_bp->uforces_channels,
-	                                          countof(new_bp->uforces_channels), 0);
-	v2 focal_vectors[256];
-	for (u32 i = 0; i < countof(focal_vectors); i++)
-		focal_vectors[i] = (v2){{new_bp->transmit_angles[i], new_bp->focal_depths[i]}};
-	result &= beamformer_push_focal_vectors((f32 *)focal_vectors, countof(focal_vectors), 0);
-	result &= beamformer_push_parameters((BeamformerParameters *)&new_bp->xdc_transform, 0);
-	return result;
-}
-
-b32
-send_data(void *data, u32 data_size)
-{
-	b32 result = 0;
-	if (beamformer_push_data(data, data_size, 0))
-		result = beamformer_start_compute(-1);
 	return result;
 }
 
