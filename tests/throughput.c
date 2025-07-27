@@ -293,7 +293,7 @@ send_frame(i16 *restrict i16_data, BeamformerParameters *restrict bp)
 	b32 result    = 0;
 	u32 data_size = bp->rf_raw_dim[0] * bp->rf_raw_dim[1] * sizeof(i16);
 	if (beamformer_wait_for_compute_dispatch(10000))
-		result = beamformer_push_data_with_compute(i16_data, data_size, BeamformerViewPlaneTag_XZ, 100);
+		result = beamformer_push_data_with_compute(i16_data, data_size, BeamformerViewPlaneTag_XZ);
 	if (!result && !g_should_exit) printf("lib error: %s\n", beamformer_get_last_error_string());
 
 	return result;
@@ -344,12 +344,12 @@ execute_study(s8 study, Arena arena, Stream path, Options *options)
 		align_as(64) v2 focal_vectors[countof(zbp->focal_depths)];
 		for (u32 i = 0; i < countof(zbp->focal_depths); i++)
 			focal_vectors[i] = (v2){{zbp->transmit_angles[i], zbp->focal_depths[i]}};
-		beamformer_push_focal_vectors((f32 *)focal_vectors, countof(focal_vectors), 0);
+		beamformer_push_focal_vectors((f32 *)focal_vectors, countof(focal_vectors));
 	}
 
-	beamformer_push_channel_mapping(zbp->channel_mapping, countof(zbp->channel_mapping), 0);
-	beamformer_push_sparse_elements(zbp->sparse_elements, countof(zbp->sparse_elements), 0);
-	beamformer_push_parameters(&bp, 0);
+	beamformer_push_channel_mapping(zbp->channel_mapping, countof(zbp->channel_mapping));
+	beamformer_push_sparse_elements(zbp->sparse_elements, countof(zbp->sparse_elements));
+	beamformer_push_parameters(&bp);
 
 	free(zbp);
 
@@ -359,7 +359,7 @@ execute_study(s8 study, Arena arena, Stream path, Options *options)
 	else               shader_stages[shader_stage_count++] = BeamformerShaderKind_Decode;
 	shader_stages[shader_stage_count++] = BeamformerShaderKind_DAS;
 
-	set_beamformer_pipeline(shader_stages, shader_stage_count);
+	beamformer_push_pipeline(shader_stages, shader_stage_count, BeamformerDataKind_Int16);
 
 	stream_reset(&path, path_work_index);
 	i16 *data = decompress_data_at_work_index(&path, options->frame_number);

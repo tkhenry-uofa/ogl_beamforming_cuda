@@ -18,6 +18,7 @@ W32(iptr) OpenFileMappingA(u32, b32, c8 *);
 
 #include "../beamformer_work_queue.c"
 
+global int32_t                 g_timeout_ms;
 global SharedMemoryRegion      g_shared_memory;
 global BeamformerSharedMemory *g_bp;
 global BeamformerLibErrorKind  g_lib_last_error;
@@ -170,11 +171,11 @@ validate_pipeline(i32 *shaders, i32 shader_count, BeamformerDataKind data_kind)
 }
 
 b32
-beamformer_set_pipeline_stage_parameters(i32 stage_index, i32 parameter, i32 timeout_ms)
+beamformer_set_pipeline_stage_parameters(i32 stage_index, i32 parameter)
 {
 	b32 result = 0;
 	BeamformerSharedMemoryLockKind lock = BeamformerSharedMemoryLockKind_ComputePipeline;
-	if (check_shared_memory() && g_bp->shader_count != 0 && lib_try_lock(lock, timeout_ms)) {
+	if (check_shared_memory() && g_bp->shader_count != 0 && lib_try_lock(lock, g_timeout_ms)) {
 		stage_index %= (i32)g_bp->shader_count;
 		g_bp->shader_parameters[stage_index].filter_slot = (u8)parameter;
 		atomic_or_u32(&g_bp->dirty_regions, 1 << (lock - 1));
@@ -184,12 +185,12 @@ beamformer_set_pipeline_stage_parameters(i32 stage_index, i32 parameter, i32 tim
 }
 
 b32
-beamformer_push_pipeline(i32 *shaders, i32 shader_count, BeamformerDataKind data_kind, i32 timeout_ms)
+beamformer_push_pipeline(i32 *shaders, i32 shader_count, BeamformerDataKind data_kind)
 {
 	b32 result = 0;
 	if (validate_pipeline(shaders, shader_count, data_kind) && check_shared_memory()) {
 		BeamformerSharedMemoryLockKind lock = BeamformerSharedMemoryLockKind_ComputePipeline;
-		if (lib_try_lock(lock, timeout_ms)) {
+		if (lib_try_lock(lock, g_timeout_ms)) {
 			g_bp->shader_count = shader_count;
 			g_bp->data_kind    = data_kind;
 			for (i32 i = 0; i < shader_count; i++)
@@ -283,13 +284,13 @@ beamformer_upload_buffer(void *data, u32 size, i32 store_offset, BeamformerUploa
 	X(focal_vectors,   f32, 2, FocalVectors)
 
 #define X(name, dtype, elements, lock_name) \
-b32 beamformer_push_##name (dtype *data, u32 count, i32 timeout_ms) { \
+b32 beamformer_push_##name (dtype *data, u32 count) { \
 	b32 result = 0; \
 	if (count <= countof(g_bp->name)) { \
 		result = beamformer_upload_buffer(data, count * elements * sizeof(dtype), \
 		                                  offsetof(BeamformerSharedMemory, name), \
 		                                  BeamformerUploadKind_##lock_name,       \
-		                                  BeamformerSharedMemoryLockKind_##lock_name, timeout_ms); \
+		                                  BeamformerSharedMemoryLockKind_##lock_name, g_timeout_ms); \
 	} else { \
 		g_lib_last_error = BF_LIB_ERR_KIND_BUFFER_OVERFLOW; \
 	} \
@@ -314,15 +315,15 @@ beamformer_push_data_base(void *data, u32 data_size, i32 timeout_ms, b32 start_f
 }
 
 b32
-beamformer_push_data(void *data, u32 data_size, i32 timeout_ms)
+beamformer_push_data(void *data, u32 data_size)
 {
-	return beamformer_push_data_base(data, data_size, timeout_ms, 1);
+	return beamformer_push_data_base(data, data_size, g_timeout_ms, 1);
 }
 
 b32
-beamformer_push_data_with_compute(void *data, u32 data_size, u32 image_plane_tag, i32 timeout_ms)
+beamformer_push_data_with_compute(void *data, u32 data_size, u32 image_plane_tag)
 {
-	b32 result = beamformer_push_data_base(data, data_size, timeout_ms, 0);
+	b32 result = beamformer_push_data_base(data, data_size, g_timeout_ms, 0);
 	if (result) {
 		result = image_plane_tag < BeamformerViewPlaneTag_Count;
 		if (result) {
@@ -341,29 +342,29 @@ beamformer_push_data_with_compute(void *data, u32 data_size, u32 image_plane_tag
 }
 
 b32
-beamformer_push_parameters(BeamformerParameters *bp, i32 timeout_ms)
+beamformer_push_parameters(BeamformerParameters *bp)
 {
 	b32 result = locked_region_upload((u8 *)g_bp + offsetof(BeamformerSharedMemory, parameters),
 	                                  bp, sizeof(*bp), BeamformerSharedMemoryLockKind_Parameters,
-	                                  0, timeout_ms);
+	                                  0, g_timeout_ms);
 	return result;
 }
 
 b32
-beamformer_push_parameters_ui(BeamformerUIParameters *bp, i32 timeout_ms)
+beamformer_push_parameters_ui(BeamformerUIParameters *bp)
 {
 	b32 result = locked_region_upload((u8 *)g_bp + offsetof(BeamformerSharedMemory, parameters_ui),
 	                                  bp, sizeof(*bp), BeamformerSharedMemoryLockKind_Parameters,
-	                                  0, timeout_ms);
+	                                  0, g_timeout_ms);
 	return result;
 }
 
 b32
-beamformer_push_parameters_head(BeamformerParametersHead *bp, i32 timeout_ms)
+beamformer_push_parameters_head(BeamformerParametersHead *bp)
 {
 	b32 result = locked_region_upload((u8 *)g_bp + offsetof(BeamformerSharedMemory, parameters_head),
 	                                  bp, sizeof(*bp), BeamformerSharedMemoryLockKind_Parameters,
-	                                  0, timeout_ms);
+	                                  0, g_timeout_ms);
 	return result;
 }
 
@@ -410,8 +411,7 @@ beamform_data_synchronized(void *data, u32 data_size, i32 output_points[3], f32 
 		g_bp->parameters.output_points[2] = output_points[2];
 
 		uz output_size = (u32)output_points[0] * (u32)output_points[1] * (u32)output_points[2] * sizeof(f32) * 2;
-		if (output_size <= BEAMFORMER_SCRATCH_SIZE &&
-		    beamformer_push_data_with_compute(data, data_size, 0, 0))
+		if (output_size <= BEAMFORMER_SCRATCH_SIZE && beamformer_push_data_with_compute(data, data_size, 0))
 		{
 			BeamformerExportContext export;
 			export.kind = BeamformerExportKind_BeamformedData;
