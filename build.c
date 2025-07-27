@@ -17,6 +17,8 @@
 
 #include "beamformer_parameters.h"
 
+global char *g_argv0;
+
 #define OUTDIR    "out"
 #define OUTPUT(s) OUTDIR "/" s
 
@@ -376,7 +378,8 @@ function b32
 needs_rebuild_(char *binary, char *deps[], iz deps_count)
 {
 	u64 binary_filetime = os_get_filetime(binary);
-	b32 result = binary_filetime == (u64)-1;
+	u64 argv0_filetime  = os_get_filetime(g_argv0);
+	b32 result = (binary_filetime == (u64)-1) | (argv0_filetime > binary_filetime);
 	for (iz i = 0; i < deps_count; i++) {
 		u64 filetime = os_get_filetime(deps[i]);
 		result |= (filetime == (u64)-1) | (filetime > binary_filetime);
@@ -776,6 +779,7 @@ i32
 main(i32 argc, char *argv[])
 {
 	u64 start_time = os_get_timer_counter();
+	g_argv0 = argv[0];
 
 	b32 result  = 1;
 	Arena arena = os_alloc_arena(MB(8));
