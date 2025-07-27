@@ -369,30 +369,39 @@ beamformer_push_data_with_compute(void *data, u32 data_size, u32 image_plane_tag
 b32
 beamformer_push_parameters(BeamformerParameters *bp)
 {
-	b32 result = locked_region_upload((u8 *)g_beamformer_library_context.bp +
-	                                  offsetof(BeamformerSharedMemory, parameters),
-	                                  bp, sizeof(*bp), BeamformerSharedMemoryLockKind_Parameters,
-	                                  0, g_beamformer_library_context.timeout_ms);
+	b32 result = 0;
+	if (check_shared_memory()) {
+		result = locked_region_upload((u8 *)g_beamformer_library_context.bp +
+		                              offsetof(BeamformerSharedMemory, parameters),
+		                              bp, sizeof(*bp), BeamformerSharedMemoryLockKind_Parameters, 0,
+		                              g_beamformer_library_context.timeout_ms);
+	}
 	return result;
 }
 
 b32
 beamformer_push_parameters_ui(BeamformerUIParameters *bp)
 {
-	b32 result = locked_region_upload((u8 *)g_beamformer_library_context.bp +
-	                                  offsetof(BeamformerSharedMemory, parameters_ui),
-	                                  bp, sizeof(*bp), BeamformerSharedMemoryLockKind_Parameters,
-	                                  0, g_beamformer_library_context.timeout_ms);
+	b32 result = 0;
+	if (check_shared_memory()) {
+		result = locked_region_upload((u8 *)g_beamformer_library_context.bp +
+		                              offsetof(BeamformerSharedMemory, parameters_ui),
+		                              bp, sizeof(*bp), BeamformerSharedMemoryLockKind_Parameters, 0,
+		                              g_beamformer_library_context.timeout_ms);
+	}
 	return result;
 }
 
 b32
 beamformer_push_parameters_head(BeamformerParametersHead *bp)
 {
-	b32 result = locked_region_upload((u8 *)g_beamformer_library_context.bp +
-	                                  offsetof(BeamformerSharedMemory, parameters_head),
-	                                  bp, sizeof(*bp), BeamformerSharedMemoryLockKind_Parameters,
-	                                  0, g_beamformer_library_context.timeout_ms);
+	b32 result = 0;
+	if (check_shared_memory()) {
+		result = locked_region_upload((u8 *)g_beamformer_library_context.bp +
+		                              offsetof(BeamformerSharedMemory, parameters_head),
+		                              bp, sizeof(*bp), BeamformerSharedMemoryLockKind_Parameters, 0,
+		                              g_beamformer_library_context.timeout_ms);
+	}
 	return result;
 }
 
