@@ -129,36 +129,36 @@ typedef enum {
 #define BEAMFORMER_FILTER_SLOTS      4
 
 /* TODO(rnp): actually use a substruct but generate a header compatible with MATLAB */
-/* X(name, type, size, gltype, glsize, comment) */
+/* X(name, type, size, elements, gltype, glsize, comment) */
 #define BEAMFORMER_UI_PARAMS \
-	X(output_min_coordinate, float,    [4], vec4,    , "/* [m] Back-Top-Left corner of output region */")                    \
-	X(output_max_coordinate, float,    [4], vec4,    , "/* [m] Front-Bottom-Right corner of output region */")               \
-	X(output_points,         int32_t,  [4], uvec4,   , "/* Width * Height * Depth * (Frame Average Count) */")               \
-	X(sampling_frequency,    float,       , float,   , "/* [Hz]  */")                                                        \
-	X(center_frequency,      float,       , float,   , "/* [Hz]  */")                                                        \
-	X(speed_of_sound,        float,       , float,   , "/* [m/s] */")                                                        \
-	X(off_axis_pos,          float,       , float,   , "/* [m] Position on screen normal to beamform in TPW/VLSHERCULES */") \
-	X(beamform_plane,        int32_t,     , int,     , "/* Plane to Beamform in TPW/VLS/HERCULES */")                        \
-	X(f_number,              float,       , float,   , "/* F# (set to 0 to disable) */")                                     \
-	X(interpolate,           uint32_t,    , bool,    , "/* Perform Cubic Interpolation of RF Samples */")                    \
-	X(coherency_weighting,   uint32_t,    , bool,    , "/* Apply coherency weighting to output data */")
+	X(output_min_coordinate, float,    [4], 4, vec4,    , "/* [m] Back-Top-Left corner of output region */")                    \
+	X(output_max_coordinate, float,    [4], 4, vec4,    , "/* [m] Front-Bottom-Right corner of output region */")               \
+	X(output_points,         int32_t,  [4], 4, uvec4,   , "/* Width * Height * Depth * (Frame Average Count) */")               \
+	X(sampling_frequency,    float,       , 1, float,   , "/* [Hz]  */")                                                        \
+	X(center_frequency,      float,       , 1, float,   , "/* [Hz]  */")                                                        \
+	X(speed_of_sound,        float,       , 1, float,   , "/* [m/s] */")                                                        \
+	X(off_axis_pos,          float,       , 1, float,   , "/* [m] Position on screen normal to beamform in TPW/VLSHERCULES */") \
+	X(beamform_plane,        int32_t,     , 1, int,     , "/* Plane to Beamform in TPW/VLS/HERCULES */")                        \
+	X(f_number,              float,       , 1, float,   , "/* F# (set to 0 to disable) */")                                     \
+	X(interpolate,           uint32_t,    , 1, bool,    , "/* Perform Cubic Interpolation of RF Samples */")                    \
+	X(coherency_weighting,   uint32_t,    , 1, bool,    , "/* Apply coherency weighting to output data */")
 
 #define BEAMFORMER_PARAMS_HEAD \
-	X(xdc_transform,     float,    [16], mat4,       , "/* IMPORTANT: column major order */")                                      \
-	X(dec_data_dim,      uint32_t, [4] , ivec4,      , "/* Samples * Channels * Acquisitions; last element ignored */")            \
-	X(xdc_element_pitch, float,    [2] , vec2,       , "/* [m] Transducer Element Pitch {row, col} */")                            \
-	X(rf_raw_dim,        uint32_t, [2] , ivec2,      , "/* Raw Data Dimensions */")                                                \
-	X(transmit_mode,     int32_t,      , int,        , "/* Method/Orientation of Transmit */")                                     \
-	X(decode,            uint32_t,     , uint,       , "/* Decode or just reshape data */")                                        \
-	X(das_shader_id,     uint32_t,     , uint,       , "")                                                                         \
-	X(time_offset,       float,        , float,      , "/* pulse length correction time [s] */")
+	X(xdc_transform,     float,    [16], 16, mat4,       , "/* IMPORTANT: column major order */")                                      \
+	X(dec_data_dim,      uint32_t, [4] ,  4, ivec4,      , "/* Samples * Channels * Acquisitions; last element ignored */")            \
+	X(xdc_element_pitch, float,    [2] ,  2, vec2,       , "/* [m] Transducer Element Pitch {row, col} */")                            \
+	X(rf_raw_dim,        uint32_t, [2] ,  2, ivec2,      , "/* Raw Data Dimensions */")                                                \
+	X(transmit_mode,     int32_t,      ,  1, int,        , "/* Method/Orientation of Transmit */")                                     \
+	X(decode,            uint32_t,     ,  1, uint,       , "/* Decode or just reshape data */")                                        \
+	X(das_shader_id,     uint32_t,     ,  1, uint,       , "")                                                                         \
+	X(time_offset,       float,        ,  1, float,      , "/* pulse length correction time [s] */")
 
 #define BEAMFORMER_PARAMS_TAIL \
-	X(decimation_rate,  uint32_t, , uint, , "/* Number of times to decimate */")         \
-	X(readi_group_id,   uint32_t, , uint, , "/* Which readi group this data is from */") \
-	X(readi_group_size, uint32_t, , uint, , "/* Size of readi transmit group */")
+	X(decimation_rate,  uint32_t, , 1, uint, , "/* Number of times to decimate */")         \
+	X(readi_group_id,   uint32_t, , 1, uint, , "/* Which readi group this data is from */") \
+	X(readi_group_size, uint32_t, , 1, uint, , "/* Size of readi transmit group */")
 
-#define X(name, type, size, gltype, glsize, comment) type name size;
+#define X(name, type, size, __e, gltype, glsize, comment) type name size;
 typedef struct { BEAMFORMER_UI_PARAMS }    BeamformerUIParameters;
 typedef struct { BEAMFORMER_PARAMS_HEAD }  BeamformerParametersHead;
 typedef struct { BEAMFORMER_PARAMS_TAIL }  BeamformerParametersTail;
@@ -188,11 +188,14 @@ _Static_assert((sizeof(BeamformerParameters) & 15) == 0, "UBO size must be a mul
 	X(StopImaging,       4)
 /* NOTE(rnp): if this exceeds 32 you need to fix the flag handling code */
 
-typedef struct {
-	uint32_t active;
-	uint32_t save_enabled;
-	uint32_t save_active;
-	float    transmit_power;
-	float    image_plane_offsets[BeamformerViewPlaneTag_Count];
-	float    tgc_control_points[8];
-} BeamformerLiveImagingParameters;
+#define BEAMFORMER_LIVE_IMAGING_PARAMETERS_LIST \
+	X(active,              uint32_t, ,                               1) \
+	X(save_enabled,        uint32_t, ,                               1) \
+	X(save_active,         uint32_t, ,                               1) \
+	X(transmit_power,      float,    ,                               1) \
+	X(image_plane_offsets, float,    [BeamformerViewPlaneTag_Count], BeamformerViewPlaneTag_Count) \
+	X(tgc_control_points,  float,    [8],                            8)
+
+#define X(name, type, size, ...) type name size;
+typedef struct {BEAMFORMER_LIVE_IMAGING_PARAMETERS_LIST} BeamformerLiveImagingParameters;
+#undef X

@@ -742,7 +742,7 @@ meta_begin_scope(MetaprogramContext *m, s8 line)
 }
 
 function void
-meta_append_line(MetaprogramContext *m, s8 line)
+meta_push_line(MetaprogramContext *m, s8 line)
 {
 	meta_indent(m);
 	stream_append_s8s(&m->stream, line, s8("\n"));
@@ -752,12 +752,35 @@ function void
 meta_end_scope(MetaprogramContext *m, s8 line)
 {
 	m->indentation_level--;
-	meta_append_line(m, line);
+	meta_push_line(m, line);
 }
 
-#define meta_begin_matlab_class(m, name, type) \
-	meta_begin_scope(m, s8("classdef " name " < " type))
-#define meta_end_matlab_scope(m) meta_end_scope(m, s8("end"))
+#define meta_begin_matlab_class_cracker(_1, _2, FN, ...) FN
+#define meta_begin_matlab_class_1(m, name) meta_begin_scope(m, s8("classdef " name))
+#define meta_begin_matlab_class_2(m, name, type) \
+  meta_begin_scope(m, s8("classdef " name " < " type))
+
+#define meta_begin_matlab_class(m, ...) \
+  meta_begin_matlab_class_cracker(__VA_ARGS__, \
+                                  meta_begin_matlab_class_2, \
+                                  meta_begin_matlab_class_1)(m, __VA_ARGS__)
+
+function void
+meta_push_matlab_property(MetaprogramContext *m, s8 name, i64 length)
+{
+	meta_indent(m);
+	stream_append_s8s(&m->stream, name, s8("(1,"));
+	stream_append_i64(&m->stream, length);
+	stream_append_s8(&m->stream, s8(")\n"));
+}
+
+function b32
+meta_end_and_write_matlab(MetaprogramContext *m, char *path)
+{
+	while (m->indentation_level > 0) meta_end_scope((m), s8("end"));
+	b32 result = meta_write_and_reset(m, path);
+	return result;
+}
 
 function b32
 build_matlab_bindings(Arena arena)
@@ -765,37 +788,62 @@ build_matlab_bindings(Arena arena)
 	b32 result = 1;
 	os_make_directory(OUTPUT("matlab"));
 
-	char *out = OUTPUT("matlab/LiveFeedbackFlags.m");
+	char *out = OUTPUT("matlab/OGLBeamformerLiveFeedbackFlags.m");
 	/* NOTE(rnp): if one file is outdated all files are outdated */
 	if (needs_rebuild(out, "beamformer_parameters.h")) {
+		/* TODO(rnp): recreate/clear directory incase these file names change */
 		MetaprogramContext m = {.stream = arena_stream(arena)};
 
-		meta_begin_matlab_class(&m, "LiveFeedbackFlags", "int32");
+		meta_begin_matlab_class(&m, "OGLBeamformerLiveFeedbackFlags", "int32");
 		meta_begin_scope(&m, s8("enumeration"));
-		#define X(name, flag, ...) meta_append_line(&m, s8(#name " (" str(flag) ")"));
+		#define X(name, flag, ...) meta_push_line(&m, s8(#name " (" str(flag) ")"));
 		BEAMFORMER_LIVE_IMAGING_DIRTY_FLAG_LIST
 		#undef X
-		meta_end_matlab_scope(&m);
-		meta_end_matlab_scope(&m);
-		result &= meta_write_and_reset(&m, out);
+		result &= meta_end_and_write_matlab(&m, out);
 
-		meta_begin_matlab_class(&m, "OGLShaderStage", "int32");
+		meta_begin_matlab_class(&m, "OGLBeamformerShaderStage", "int32");
 		meta_begin_scope(&m, s8("enumeration"));
-		#define X(name, flag, ...) meta_append_line(&m, s8(#name " (" str(flag) ")"));
+		#define X(name, flag, ...) meta_push_line(&m, s8(#name " (" str(flag) ")"));
 		COMPUTE_SHADERS
 		#undef X
-		meta_end_matlab_scope(&m);
-		meta_end_matlab_scope(&m);
-		result &= meta_write_and_reset(&m, OUTPUT("matlab/OGLShaderStage.m"));
+		result &= meta_end_and_write_matlab(&m, OUTPUT("matlab/OGLBeamformerShaderStage.m"));
 
 		meta_begin_matlab_class(&m, "OGLBeamformerDataKind", "int32");
 		meta_begin_scope(&m, s8("enumeration"));
-		#define X(name, flag, ...) meta_append_line(&m, s8(#name " (" str(flag) ")"));
+		#define X(name, flag, ...) meta_push_line(&m, s8(#name " (" str(flag) ")"));
 		BEAMFORMER_DATA_KIND_LIST
 		#undef X
-		meta_end_matlab_scope(&m);
-		meta_end_matlab_scope(&m);
-		result &= meta_write_and_reset(&m, OUTPUT("matlab/OGLBeamformerDataKind.m"));
+		result &= meta_end_and_write_matlab(&m, OUTPUT("matlab/OGLBeamformerDataKind.m"));
+
+		meta_begin_matlab_class(&m, "OGLBeamformerParameters");
+		meta_begin_scope(&m, s8("properties"));
+		#define X(name, __t, __s, elements, ...) meta_push_line(&m, s8(#name "(1," #elements ")"));
+		BEAMFORMER_PARAMS_HEAD
+		BEAMFORMER_UI_PARAMS
+		BEAMFORMER_PARAMS_TAIL
+		#undef X
+		result &= meta_end_and_write_matlab(&m, OUTPUT("matlab/OGLBeamformerParameters.m"));
+
+		meta_begin_matlab_class(&m, "OGLBeamformerParametersHead");
+		meta_begin_scope(&m, s8("properties"));
+		#define X(name, __t, __s, elements, ...) meta_push_line(&m, s8(#name "(1," #elements ")"));
+		BEAMFORMER_PARAMS_HEAD
+		#undef X
+		result &= meta_end_and_write_matlab(&m, OUTPUT("matlab/OGLBeamformerParametersHead.m"));
+
+		meta_begin_matlab_class(&m, "OGLBeamformerParametersUI");
+		meta_begin_scope(&m, s8("properties"));
+		#define X(name, __t, __s, elements, ...) meta_push_line(&m, s8(#name "(1," #elements ")"));
+		BEAMFORMER_UI_PARAMS
+		#undef X
+		result &= meta_end_and_write_matlab(&m, OUTPUT("matlab/OGLBeamformerParametersUI.m"));
+
+		meta_begin_matlab_class(&m, "OGLBeamformerLiveImagingParameters");
+		meta_begin_scope(&m, s8("properties"));
+		#define X(name, __t, __s, elements, ...) meta_push_matlab_property(&m, s8(#name), elements);
+		BEAMFORMER_LIVE_IMAGING_PARAMETERS_LIST
+		#undef X
+		result &= meta_end_and_write_matlab(&m, OUTPUT("matlab/OGLBeamformerLiveImagingParameters.m"));
 	}
 
 	return result;
