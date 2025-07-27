@@ -710,23 +710,54 @@ build_tests(Arena arena, CommandList cc)
 	return result;
 }
 
-function void
-stream_begin_matlab_enumeration(Stream *s, s8 name, s8 type)
+
+typedef struct {
+	Stream stream;
+	i32    indentation_level;
+} MetaprogramContext;
+
+function b32
+meta_write_and_reset(MetaprogramContext *m, char *file)
 {
-	stream_append_s8s(s, s8("classdef "), name, s8(" < "), type, s8("\n"), s8("    enumeration\n"));
+	b32 result = os_write_new_file(file, stream_to_s8(&m->stream));
+	if (!result) build_log_failure("%s", file);
+	m->stream.widx       = 0;
+	m->indentation_level = 0;
+	return result;
 }
 
 function void
-stream_append_matlab_enumeration_field(Stream *s, s8 field)
+meta_indent(MetaprogramContext *m)
 {
-	stream_append_s8s(s, s8("        "), field, s8("\n"));
+	for (i32 count = m->indentation_level; count > 0; count--)
+		stream_append_byte(&m->stream, '\t');
 }
 
 function void
-stream_end_matlab_enumeration(Stream *s)
+meta_begin_scope(MetaprogramContext *m, s8 line)
 {
-	stream_append_s8(s, s8("    end\nend\n"));
+	meta_indent(m);
+	m->indentation_level++;
+	stream_append_s8s(&m->stream, line, s8("\n"));
 }
+
+function void
+meta_append_line(MetaprogramContext *m, s8 line)
+{
+	meta_indent(m);
+	stream_append_s8s(&m->stream, line, s8("\n"));
+}
+
+function void
+meta_end_scope(MetaprogramContext *m, s8 line)
+{
+	m->indentation_level--;
+	meta_append_line(m, line);
+}
+
+#define meta_begin_matlab_class(m, name, type) \
+	meta_begin_scope(m, s8("classdef " name " < " type))
+#define meta_end_matlab_scope(m) meta_end_scope(m, s8("end"))
 
 function b32
 build_matlab_bindings(Arena arena)
@@ -734,42 +765,37 @@ build_matlab_bindings(Arena arena)
 	b32 result = 1;
 	os_make_directory(OUTPUT("matlab"));
 
-	char *feedback_out = OUTPUT("matlab/LiveFeedbackFlags.m");
+	char *out = OUTPUT("matlab/LiveFeedbackFlags.m");
 	/* NOTE(rnp): if one file is outdated all files are outdated */
-	if (needs_rebuild(feedback_out, "beamformer_parameters.h")) {
-		Stream sb = arena_stream(arena);
-		b32 write_result;
+	if (needs_rebuild(out, "beamformer_parameters.h")) {
+		MetaprogramContext m = {.stream = arena_stream(arena)};
 
-		#define X(name, flag) stream_append_matlab_enumeration_field(&sb, s8(#name " (" str(flag) ")"));
-		stream_begin_matlab_enumeration(&sb, s8("LiveFeedbackFlags"), s8("int32"));
+		meta_begin_matlab_class(&m, "LiveFeedbackFlags", "int32");
+		meta_begin_scope(&m, s8("enumeration"));
+		#define X(name, flag, ...) meta_append_line(&m, s8(#name " (" str(flag) ")"));
 		BEAMFORMER_LIVE_IMAGING_DIRTY_FLAG_LIST
-		stream_end_matlab_enumeration(&sb);
-		write_result = os_write_new_file(feedback_out, stream_to_s8(&sb));
 		#undef X
-		if (!write_result) build_log_failure("%s", feedback_out);
-		result &= write_result;
+		meta_end_matlab_scope(&m);
+		meta_end_matlab_scope(&m);
+		result &= meta_write_and_reset(&m, out);
 
-		sb.widx = 0;
-		char *shader_stages_out = OUTPUT("matlab/OGLShaderStage.m");
-		#define X(name, n, ...) stream_append_matlab_enumeration_field(&sb, s8(#name " (" str(n) ")"));
-		stream_begin_matlab_enumeration(&sb, s8("OGLShaderStage"), s8("int32"));
+		meta_begin_matlab_class(&m, "OGLShaderStage", "int32");
+		meta_begin_scope(&m, s8("enumeration"));
+		#define X(name, flag, ...) meta_append_line(&m, s8(#name " (" str(flag) ")"));
 		COMPUTE_SHADERS
-		stream_end_matlab_enumeration(&sb);
-		write_result = os_write_new_file(shader_stages_out, stream_to_s8(&sb));
 		#undef X
-		if (!write_result) build_log_failure("%s", shader_stages_out);
-		result &= write_result;
+		meta_end_matlab_scope(&m);
+		meta_end_matlab_scope(&m);
+		result &= meta_write_and_reset(&m, OUTPUT("matlab/OGLShaderStage.m"));
 
-		sb.widx = 0;
-		char *data_kinds_out = OUTPUT("matlab/OGLBeamformerDataKind.m");
-		#define X(name, n, ...) stream_append_matlab_enumeration_field(&sb, s8(#name " (" str(n) ")"));
-		stream_begin_matlab_enumeration(&sb, s8("OGLBeamformerDataKind"), s8("int32"));
+		meta_begin_matlab_class(&m, "OGLBeamformerDataKind", "int32");
+		meta_begin_scope(&m, s8("enumeration"));
+		#define X(name, flag, ...) meta_append_line(&m, s8(#name " (" str(flag) ")"));
 		BEAMFORMER_DATA_KIND_LIST
-		stream_end_matlab_enumeration(&sb);
-		write_result = os_write_new_file(data_kinds_out, stream_to_s8(&sb));
 		#undef X
-		if (!write_result) build_log_failure("%s", data_kinds_out);
-		result &= write_result;
+		meta_end_matlab_scope(&m);
+		meta_end_matlab_scope(&m);
+		result &= meta_write_and_reset(&m, OUTPUT("matlab/OGLBeamformerDataKind.m"));
 	}
 
 	return result;
