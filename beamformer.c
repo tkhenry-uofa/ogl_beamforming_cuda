@@ -4,7 +4,6 @@
  *      - this means that das should have a RF version and an IQ version
  *      - this will also flip the current hack to support demodulate after decode to
  *        being a hack to support CudaHilbert after decode
- * [ ]: measure filtering performance when indexing forward on RF data
  * [ ]: filter sampling frequency should be a filter creation parameter
  * [ ]: reinvestigate ring buffer raw_data_ssbo
  *      - to minimize latency the main thread should manage the subbuffer upload so that the

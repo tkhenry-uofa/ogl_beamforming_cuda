@@ -48,23 +48,21 @@ void main()
 	                  output_transmit_stride * transmit +
 	                  output_sample_stride   * out_sample;
 
-	bool in_bounds;
+	int target;
 	if (map_channels) {
-		in_bounds = out_sample < output_channel_stride / output_sample_stride;
+		target = int(output_channel_stride / output_sample_stride);
 	} else {
-		in_bounds = out_sample < output_transmit_stride;
+		target = int(out_sample < output_transmit_stride);
 	}
 
-	if (in_bounds) {
-		vec2 result = vec2(0);
-		int index   = int(in_sample);
-		for (int i = 0;
-		     i < imageSize(filter_coefficients).x && index >= 0;
-		     i++, index -= int(input_sample_stride))
-		{
-			vec2 data  = sample_rf(in_offset + index) * vec2(1, -1);
-			vec2 iq    = sqrt(2.0f) * rotate_iq(data, index);
-			result    += imageLoad(filter_coefficients, i).x * iq;
+	if (out_sample < target) {
+		vec2 result  = vec2(0);
+		int index    = int(in_sample) - imageSize(filter_coefficients).x;
+		int start    = index < 0 ? -index : 0;
+		index       += start;
+		for (int i = start; i < imageSize(filter_coefficients).x && index < target; i++, index++) {
+			vec2 iq = sqrt(2.0f) * rotate_iq(sample_rf(in_offset + index) * vec2(1, -1), index);
+			result += iq * imageLoad(filter_coefficients, imageSize(filter_coefficients).x - i - 1).x;
 		}
 		out_data[out_offset] = RESULT_TYPE_CAST(result);
 	}
