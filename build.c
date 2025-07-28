@@ -815,35 +815,29 @@ build_matlab_bindings(Arena arena)
 		#undef X
 		result &= meta_end_and_write_matlab(&m, OUTPUT("matlab/OGLBeamformerDataKind.m"));
 
+		#define X(name, __t, __s, elements, ...) meta_push_line(&m, s8(#name "(1," #elements ")"));
 		meta_begin_matlab_class(&m, "OGLBeamformerParameters");
 		meta_begin_scope(&m, s8("properties"));
-		#define X(name, __t, __s, elements, ...) meta_push_line(&m, s8(#name "(1," #elements ")"));
 		BEAMFORMER_PARAMS_HEAD
 		BEAMFORMER_UI_PARAMS
 		BEAMFORMER_PARAMS_TAIL
-		#undef X
 		result &= meta_end_and_write_matlab(&m, OUTPUT("matlab/OGLBeamformerParameters.m"));
 
 		meta_begin_matlab_class(&m, "OGLBeamformerParametersHead");
 		meta_begin_scope(&m, s8("properties"));
-		#define X(name, __t, __s, elements, ...) meta_push_line(&m, s8(#name "(1," #elements ")"));
 		BEAMFORMER_PARAMS_HEAD
-		#undef X
 		result &= meta_end_and_write_matlab(&m, OUTPUT("matlab/OGLBeamformerParametersHead.m"));
 
 		meta_begin_matlab_class(&m, "OGLBeamformerParametersUI");
 		meta_begin_scope(&m, s8("properties"));
-		#define X(name, __t, __s, elements, ...) meta_push_line(&m, s8(#name "(1," #elements ")"));
 		BEAMFORMER_UI_PARAMS
-		#undef X
 		result &= meta_end_and_write_matlab(&m, OUTPUT("matlab/OGLBeamformerParametersUI.m"));
 
 		meta_begin_matlab_class(&m, "OGLBeamformerLiveImagingParameters");
 		meta_begin_scope(&m, s8("properties"));
-		#define X(name, __t, __s, elements, ...) meta_push_matlab_property(&m, s8(#name), elements);
 		BEAMFORMER_LIVE_IMAGING_PARAMETERS_LIST
-		#undef X
 		result &= meta_end_and_write_matlab(&m, OUTPUT("matlab/OGLBeamformerLiveImagingParameters.m"));
+		#undef X
 	}
 
 	return result;
