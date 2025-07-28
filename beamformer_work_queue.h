@@ -29,16 +29,19 @@ typedef struct {
 } BeamformerUploadContext;
 
 typedef struct {
-	BeamformerFilterKind kind;
 	union {
-		struct {
-			f32 beta;
-			f32 cutoff_frequency;
-		};
-		f32 xdc_center_frequency;
+		#define X(_k, _i, _n, params, ...) struct params;
+		BEAMFORMER_FILTER_KIND_LIST
+		#undef X
 	};
-	i16 length;
-	i16 slot;
+	f32 sampling_frequency;
+	i32 length;
+} BeamformerFilterParameters;
+
+typedef struct {
+	BeamformerFilterKind       kind;
+	BeamformerFilterParameters parameters;
+	i32 slot;
 } BeamformerCreateFilterContext;
 
 typedef enum {

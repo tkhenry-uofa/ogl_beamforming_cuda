@@ -197,7 +197,7 @@ beamformer_set_pipeline_stage_parameters(i32 stage_index, i32 parameter)
 	if (check_shared_memory() && g_beamformer_library_context.bp->shader_count != 0 &&
 	    lib_try_lock(lock, g_beamformer_library_context.timeout_ms))
 	{
-		stage_index %= (i32)g_beamformer_library_context.bp->shader_count;
+		stage_index %= (i32)countof(g_beamformer_library_context.bp->shaders);
 		g_beamformer_library_context.bp->shader_parameters[stage_index].filter_slot = (u8)parameter;
 		atomic_or_u32(&g_beamformer_library_context.bp->dirty_regions, 1 << (lock - 1));
 		lib_release_lock(lock);
@@ -224,8 +224,8 @@ beamformer_push_pipeline(i32 *shaders, i32 shader_count, BeamformerDataKind data
 	return result;
 }
 
-b32
-beamformer_create_kaiser_low_pass_filter(f32 beta, f32 cutoff_frequency, i16 length, u8 slot)
+function b32
+beamformer_create_filter(BeamformerFilterKind kind, BeamformerFilterParameters params, i32 slot)
 {
 	b32 result = 0;
 	if (check_shared_memory()) {
@@ -233,17 +233,25 @@ beamformer_create_kaiser_low_pass_filter(f32 beta, f32 cutoff_frequency, i16 len
 		result = work != 0;
 		if (result) {
 			BeamformerCreateFilterContext *ctx = &work->create_filter_context;
-			work->kind            = BeamformerWorkKind_CreateFilter;
-			ctx->kind             = BeamformerFilterKind_Kaiser;
-			ctx->cutoff_frequency = cutoff_frequency;
-			ctx->beta             = beta;
-			ctx->length           = length;
-			ctx->slot             = slot % BEAMFORMER_FILTER_SLOTS;
+			work->kind = BeamformerWorkKind_CreateFilter;
+			ctx->kind  = kind;
+			ctx->slot  = slot % BEAMFORMER_FILTER_SLOTS;
+			ctx->parameters = params;
 			beamform_work_queue_push_commit(&g_beamformer_library_context.bp->external_work_queue);
 		}
 	}
 	return result;
 }
+
+#define X(kind, _i, name, _sp, parameters, ...) \
+b32 beamformer_create_##name ##_filter(__VA_ARGS__, f32 sampling_frequency, i16 length, u8 slot) \
+{ \
+	BeamformerFilterParameters fp = {{parameters}, sampling_frequency, length}; \
+	b32 result = beamformer_create_filter(BeamformerFilterKind_##kind, fp, (i32)slot); \
+	return result; \
+}
+BEAMFORMER_FILTER_KIND_LIST
+#undef X
 
 function b32
 beamformer_flush_commands(i32 timeout_ms)

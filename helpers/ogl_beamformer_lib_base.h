@@ -90,7 +90,11 @@ LIB_FN uint32_t beamformer_push_parameters_head(BeamformerParametersHead *);
  *   M = (A - 8) / (2.285 (ω_s - ω_p))
  */
 LIB_FN uint32_t beamformer_create_kaiser_low_pass_filter(float beta, float cutoff_frequency,
+                                                         float sampling_frequency,
                                                          int16_t length, uint8_t slot);
+LIB_FN uint32_t beamformer_create_matched_filter(float xdc_center_frequency, float transmit_frequency,
+                                                 float sampling_frequency,
+                                                 int16_t length, uint8_t slot);
 
 //////////////////////////
 // Live Imaging Controls
