@@ -52,7 +52,7 @@ void main()
 	if (map_channels) {
 		target = int(output_channel_stride / output_sample_stride);
 	} else {
-		target = int(out_sample < output_transmit_stride);
+		target = int(output_transmit_stride);
 	}
 
 	if (out_sample < target) {
