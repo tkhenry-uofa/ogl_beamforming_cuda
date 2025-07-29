@@ -33,7 +33,7 @@ vec2 rotate_iq(vec2 iq, float time)
 }
 
 /* NOTE: See: https://cubic.org/docs/hermite.htm */
-vec2 cubic(int base_index, float x)
+vec2 cubic(int base_index, float t)
 {
 	mat4 h = mat4(
 		 2, -3,  0, 1,
@@ -42,17 +42,14 @@ vec2 cubic(int base_index, float x)
 		 1, -1,  0, 0
 	);
 
-	int   xk = int(floor(x));
-	float t  = x - floor(x);
-	vec4  S  = vec4(t * t * t, t * t, t, 1);
-
 	vec2 samples[4] = {
-		rf_data[base_index + xk - 1],
-		rf_data[base_index + xk + 0],
-		rf_data[base_index + xk + 1],
-		rf_data[base_index + xk + 2],
+		rf_data[base_index - 1],
+		rf_data[base_index + 0],
+		rf_data[base_index + 1],
+		rf_data[base_index + 2],
 	};
 
+	vec4 S  = vec4(t * t * t, t * t, t, 1);
 	vec2 P1 = samples[1];
 	vec2 P2 = samples[2];
 	vec2 T1 = C_SPLINE * (P2 - samples[0]);
@@ -67,9 +64,10 @@ vec2 sample_rf(int channel, int transmit, float index)
 {
 	vec2 result     = vec2(index >= 0.0f) * vec2(int(index) + 2 * int(interpolate) < dec_data_dim.x);
 	int  base_index = channel * dec_data_dim.x * dec_data_dim.z + transmit * dec_data_dim.x;
-	if (interpolate) result *= cubic(base_index, index);
+	float tk, t = modf(index, tk);
+	if (interpolate) result *= cubic(base_index + int(tk), t);
 	else             result *= rf_data[base_index + int(round(index))];
-	result = rotate_iq(result, index / sampling_frequency);
+	result = rotate_iq(result, t / sampling_frequency);
 	return result;
 }
 
