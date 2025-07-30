@@ -2721,11 +2721,9 @@ draw_compute_stats_view(BeamformerUI *ui, Arena arena, Variable *view, Rect r, v
 	push_table_time_row_with_fps(table, &arena, s8("RF Upload Delta:"), stats->rf_time_delta_average);
 
 	{
-		BeamformerRFBuffer *rf = &ui->beamformer_context->csctx.rf_buffer;
 		TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
-
 		Stream sb = arena_stream(arena);
-		stream_append_u64(&sb, rf->rf_size);
+		stream_append_u64(&sb, (u64)cp->rf_size);
 
 		cells[0].text = s8("RF Size:");
 		cells[1].text = arena_stream_commit(&arena, &sb);
