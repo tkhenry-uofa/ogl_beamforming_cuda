@@ -471,7 +471,7 @@ plan_compute_pipeline(SharedMemoryRegion *os_sm, BeamformerComputePipeline *cp, 
 		bp->dec_data_dim[0]    /= mp->decimation_rate * time_compression;
 	}
 	/* TODO(rnp): if IQ (* 8) else (* 4) */
-	cp->rf_size = (iz)(bp->dec_data_dim[0] * bp->dec_data_dim[1] * bp->dec_data_dim[2] * 8);
+	cp->rf_size = bp->dec_data_dim[0] * bp->dec_data_dim[1] * bp->dec_data_dim[2] * 8;
 }
 
 function m4
