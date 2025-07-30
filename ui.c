@@ -2657,6 +2657,23 @@ push_table_time_row(Table *table, Arena *arena, s8 label, f32 time)
 	cells[2].text = s8("[s]");
 }
 
+function void
+push_table_time_row_with_fps(Table *table, Arena *arena, s8 label, f32 time)
+{
+	assert(table->columns == 3);
+	TableCell *cells = table_push_row(table, arena, TRK_CELLS)->data;
+
+	Stream sb = arena_stream(*arena);
+	stream_append_f64_e(&sb, time);
+	stream_append_s8(&sb, s8(" ("));
+	stream_append_f64(&sb, time > 0 ? 1.0f / time : 0, 100);
+	stream_append_s8(&sb, s8(")"));
+
+	cells[0].text = label;
+	cells[1].text = arena_stream_commit(arena, &sb);
+	cells[2].text = s8("[s] (FPS)");
+}
+
 function v2
 draw_compute_stats_view(BeamformerUI *ui, Arena arena, Variable *view, Rect r, v2 mouse)
 {
@@ -2700,8 +2717,20 @@ draw_compute_stats_view(BeamformerUI *ui, Arena arena, Variable *view, Rect r, v
 	InvalidDefaultCase;
 	}
 
-	push_table_time_row(table, &arena, s8("Compute Total:"),   compute_time_sum);
-	push_table_time_row(table, &arena, s8("RF Upload Delta:"), stats->rf_time_delta_average);
+	push_table_time_row_with_fps(table, &arena, s8("Compute Total:"),   compute_time_sum);
+	push_table_time_row_with_fps(table, &arena, s8("RF Upload Delta:"), stats->rf_time_delta_average);
+
+	{
+		BeamformerRFBuffer *rf = &ui->beamformer_context->csctx.rf_buffer;
+		TableCell *cells = table_push_row(table, &arena, TRK_CELLS)->data;
+
+		Stream sb = arena_stream(arena);
+		stream_append_u64(&sb, rf->rf_size);
+
+		cells[0].text = s8("RF Size:");
+		cells[1].text = arena_stream_commit(&arena, &sb);
+		cells[2].text = s8("[B/F]");
+	}
 
 	result = v2_add(result, table_extent(table, arena, text_spec.font));
 	draw_table(ui, arena, table, r, text_spec, (v2){0}, 0);
