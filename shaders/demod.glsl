@@ -60,6 +60,7 @@ void main()
 		int index    = int(in_sample) - imageSize(filter_coefficients).x;
 		int start    = index < 0 ? -index : 0;
 		index       += start;
+		target      *= int(decimation_rate);
 		for (int i = start; i < imageSize(filter_coefficients).x && index < target; i++, index++) {
 			vec2 iq = sqrt(2.0f) * rotate_iq(sample_rf(in_offset + index) * vec2(1, -1), index);
 			result += iq * imageLoad(filter_coefficients, imageSize(filter_coefficients).x - i - 1).x;
