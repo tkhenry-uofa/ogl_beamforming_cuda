@@ -1046,7 +1046,7 @@ complete_queue(BeamformerCtx *ctx, BeamformWorkQueue *q, Arena arena, iptr gl_co
 
 				if (rf->upload_syncs[slot]) {
 					rf->compute_index++;
-					glWaitSync(rf->upload_syncs[slot], 0, 1000000000);
+					glWaitSync(rf->upload_syncs[slot], 0, GL_TIMEOUT_IGNORED);
 					glDeleteSync(rf->upload_syncs[slot]);
 				} else {
 					slot = (rf->compute_index - 1) % countof(rf->compute_syncs);
@@ -1217,6 +1217,7 @@ beamformer_rf_buffer_allocate(BeamformerRFBuffer *rf, u32 rf_size, Arena arena)
 	glDeleteBuffers(1, &rf->ssbo);
 	glCreateBuffers(1, &rf->ssbo);
 
+	rf_size = (u32)round_up_to((iz)rf_size, 64);
 	glNamedBufferStorage(rf->ssbo, countof(rf->compute_syncs) * rf_size, 0,
 	                     GL_DYNAMIC_STORAGE_BIT|GL_MAP_WRITE_BIT|GL_MAP_PERSISTENT_BIT);
 	LABEL_GL_OBJECT(GL_BUFFER, rf->ssbo, s8("Raw_RF_SSBO"));

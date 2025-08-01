@@ -58,6 +58,7 @@
 #define GL_RENDERBUFFER                    0x8D41
 #define GL_RED_INTEGER                     0x8D94
 #define GL_TIMESTAMP                       0x8E28
+#define GL_MIN_MAP_BUFFER_ALIGNMENT        0x90BC
 #define GL_SHADER_STORAGE_BUFFER           0x90D2
 #define GL_MAX_SHADER_STORAGE_BLOCK_SIZE   0x90DE
 #define GL_MAX_SERVER_WAIT_TIMEOUT         0x9111
@@ -67,6 +68,8 @@
 #define GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT 0x919F
 #define GL_COMPUTE_SHADER                  0x91B9
 #define GL_DEBUG_OUTPUT                    0x92E0
+
+#define GL_TIMEOUT_IGNORED                 0xFFFFFFFFFFFFFFFFull
 
 typedef char      GLchar;
 typedef ptrdiff_t GLsizeiptr;

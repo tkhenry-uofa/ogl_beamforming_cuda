@@ -294,6 +294,7 @@ struct BeamformerFrame {
 #define GL_PARAMETERS \
 	X(MAJOR_VERSION,                   version_major,                   "")      \
 	X(MINOR_VERSION,                   version_minor,                   "")      \
+	X(MIN_MAP_BUFFER_ALIGNMENT,        min_map_buffer_alignment,        "")      \
 	X(TEXTURE_BUFFER_OFFSET_ALIGNMENT, texture_buffer_offset_alignment, "")      \
 	X(MAX_TEXTURE_BUFFER_SIZE,         max_texture_buffer_size,         "")      \
 	X(MAX_TEXTURE_SIZE,                max_2d_texture_dim,              "")      \
