@@ -386,11 +386,36 @@ plan_compute_pipeline(SharedMemoryRegion *os_sm, BeamformerComputePipeline *cp, 
 	}
 	os_shared_memory_region_unlock(os_sm, sm->locks, compute_lock);
 
-	u32 time_compression = 1;
-	if (demodulate) time_compression = 2;
+	u32 das_sample_stride   = 1;
+	u32 das_transmit_stride = bp->dec_data_dim[0];
+	u32 das_channel_stride  = bp->dec_data_dim[2] * bp->dec_data_dim[0];
+
+	bp->decimation_rate = MAX(bp->decimation_rate, 1);
+	if (demodulate) {
+		das_channel_stride  /= (2 * bp->decimation_rate);
+		das_transmit_stride /= (2 * bp->decimation_rate);
+	}
+
+	u32 input_sample_stride   = 1;
+	u32 input_transmit_stride = bp->dec_data_dim[0];
+	u32 input_channel_stride  = bp->rf_raw_dim[0];
+
+	BeamformerDecodeUBO *dp = &cp->decode_ubo_data;
+	dp->decode_mode    = bp->decode;
+	dp->transmit_count = bp->dec_data_dim[2];
+
+	dp->input_sample_stride    = decode_first? input_sample_stride   : bp->dec_data_dim[2];
+	dp->input_channel_stride   = decode_first? input_channel_stride  : das_channel_stride;
+	dp->input_transmit_stride  = decode_first? input_transmit_stride : 1;
+	dp->output_sample_stride   = das_sample_stride;
+	dp->output_channel_stride  = das_channel_stride;
+	dp->output_transmit_stride = das_transmit_stride;
+	if (decode_first) {
+		dp->output_channel_stride  *= bp->decimation_rate;
+		dp->output_transmit_stride *= bp->decimation_rate;
+	}
 
 	if (!demodulate) bp->center_frequency = 0;
-	bp->decimation_rate = MAX(bp->decimation_rate, 1);
 
 	cp->decode_dispatch.x = (u32)ceil_f32((f32)bp->dec_data_dim[0] / DECODE_LOCAL_SIZE_X);
 	cp->decode_dispatch.y = (u32)ceil_f32((f32)bp->dec_data_dim[1] / DECODE_LOCAL_SIZE_Y);
@@ -399,29 +424,6 @@ plan_compute_pipeline(SharedMemoryRegion *os_sm, BeamformerComputePipeline *cp, 
 	/* NOTE(rnp): decode 2 samples per dispatch when data is i16 */
 	if (decode_first && cp->data_kind == BeamformerDataKind_Int16)
 		cp->decode_dispatch.x = (u32)ceil_f32((f32)cp->decode_dispatch.x / 2);
-
-	BeamformerDecodeUBO *dp = &cp->decode_ubo_data;
-	dp->decode_mode    = bp->decode;
-	dp->transmit_count = bp->dec_data_dim[2];
-
-	if (decode_first) {
-		dp->input_channel_stride   = bp->rf_raw_dim[0];
-		dp->input_sample_stride    = 1;
-		dp->input_transmit_stride  = bp->dec_data_dim[0];
-
-		dp->output_channel_stride  = bp->dec_data_dim[0] * bp->dec_data_dim[2] / time_compression;
-		dp->output_sample_stride   = 1;
-		dp->output_transmit_stride = bp->dec_data_dim[0] / time_compression;
-	} else {
-		dp->input_channel_stride   = bp->dec_data_dim[0] * bp->dec_data_dim[2] /
-		                             bp->decimation_rate / time_compression;
-		dp->input_sample_stride    = bp->dec_data_dim[2];
-		dp->input_transmit_stride  = 1;
-
-		dp->output_channel_stride  = dp->input_channel_stride;
-		dp->output_sample_stride   = 1;
-		dp->output_transmit_stride = bp->dec_data_dim[0] / bp->decimation_rate / time_compression;
-	}
 
 	/* NOTE(rnp): when we are demodulating we pretend that the sampler was alternating
 	 * between sampling the I portion and the Q portion of an IQ signal. Therefore there
@@ -435,40 +437,37 @@ plan_compute_pipeline(SharedMemoryRegion *os_sm, BeamformerComputePipeline *cp, 
 	if (demodulate) {
 		BeamformerDemodulateUBO *mp = &cp->demod_ubo_data;
 		mp->demodulation_frequency = bp->center_frequency;
-		mp->sampling_frequency     = bp->sampling_frequency / (f32)time_compression;
+		mp->sampling_frequency     = bp->sampling_frequency / 2;
 		mp->decimation_rate        = bp->decimation_rate;
 		mp->map_channels           = !decode_first;
+
+		bp->sampling_frequency /= 2 * (f32)mp->decimation_rate;
+		bp->dec_data_dim[0]    /= 2 * mp->decimation_rate;
 
 		if (decode_first) {
 			mp->input_channel_stride  = dp->output_channel_stride;
 			mp->input_sample_stride   = dp->output_sample_stride;
 			mp->input_transmit_stride = dp->output_transmit_stride;
 
-			mp->output_channel_stride  = bp->dec_data_dim[0] * bp->dec_data_dim[2] /
-			                             mp->decimation_rate / time_compression;
-			mp->output_sample_stride   = 1;
-			mp->output_transmit_stride = bp->dec_data_dim[0] /  mp->decimation_rate / time_compression;
+			mp->output_channel_stride  = das_channel_stride;
+			mp->output_sample_stride   = das_sample_stride;
+			mp->output_transmit_stride = das_transmit_stride;
 		} else {
-			mp->input_channel_stride  = bp->rf_raw_dim[0] / time_compression;
-			mp->input_sample_stride   = 1;
-			mp->input_transmit_stride = bp->dec_data_dim[0] / time_compression;
+			mp->input_channel_stride  = input_channel_stride  / 2;
+			mp->input_sample_stride   = input_sample_stride;
+			mp->input_transmit_stride = input_transmit_stride / 2;
 
 			/* NOTE(rnp): output optimized layout for decoding */
 			mp->output_channel_stride  = dp->input_channel_stride;
 			mp->output_sample_stride   = dp->input_sample_stride;
 			mp->output_transmit_stride = dp->input_transmit_stride;
 
-			u32 time_samples = bp->dec_data_dim[0] / mp->decimation_rate / time_compression;
-			cp->decode_dispatch.x = (u32)ceil_f32((f32)time_samples / DECODE_LOCAL_SIZE_X);
+			cp->decode_dispatch.x = (u32)ceil_f32((f32)bp->dec_data_dim[0] / DECODE_LOCAL_SIZE_X);
 		}
 
-		f32 local_size_x = DEMOD_LOCAL_SIZE_X * (f32)time_compression * (f32)mp->decimation_rate;
-		cp->demod_dispatch.x = (u32)ceil_f32((f32)bp->dec_data_dim[0] / local_size_x);
+		cp->demod_dispatch.x = (u32)ceil_f32((f32)bp->dec_data_dim[0] / DEMOD_LOCAL_SIZE_X);
 		cp->demod_dispatch.y = (u32)ceil_f32((f32)bp->dec_data_dim[1] / DEMOD_LOCAL_SIZE_Y);
 		cp->demod_dispatch.z = (u32)ceil_f32((f32)bp->dec_data_dim[2] / DEMOD_LOCAL_SIZE_Z);
-
-		bp->sampling_frequency /= (f32)mp->decimation_rate * (f32)time_compression;
-		bp->dec_data_dim[0]    /= mp->decimation_rate * time_compression;
 	}
 	/* TODO(rnp): if IQ (* 8) else (* 4) */
 	cp->rf_size = bp->dec_data_dim[0] * bp->dec_data_dim[1] * bp->dec_data_dim[2] * 8;
